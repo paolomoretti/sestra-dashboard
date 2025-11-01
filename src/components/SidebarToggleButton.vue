@@ -1,12 +1,12 @@
 <template>
   <button
-    @click="toggleLabels"
-    class="label-toggle-button"
-    :class="{ 'active': labelsVisible }"
-    :title="labelsVisible ? 'Hide Labels' : 'Show Labels'"
+    @click="toggleSidebar"
+    class="sidebar-toggle-button"
+    :class="{ 'active': sidebarVisible }"
+    :title="sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar'"
   >
-    <span class="button-icon">🏷️</span>
-    <span class="button-text">{{ labelsVisible ? 'Hide Labels' : 'Show Labels' }}</span>
+    <span class="button-icon">📋</span>
+    <span class="button-text">{{ sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar' }}</span>
   </button>
 </template>
 
@@ -15,12 +15,12 @@ import { storeToRefs } from 'pinia';
 import { useUIStore } from '../stores/ui';
 
 const uiStore = useUIStore();
-const { labelsVisible } = storeToRefs(uiStore);
-const { toggleLabels } = uiStore;
+const { sidebarVisible } = storeToRefs(uiStore);
+const { toggleSidebar } = uiStore;
 </script>
 
 <style scoped>
-.label-toggle-button {
+.sidebar-toggle-button {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -34,17 +34,17 @@ const { toggleLabels } = uiStore;
   transition: all 0.2s ease;
 }
 
-.label-toggle-button:hover {
+.sidebar-toggle-button:hover {
   background-color: #3a3a3a;
   border-color: #5a5a5a;
 }
 
-.label-toggle-button.active {
+.sidebar-toggle-button.active {
   background-color: #2d5aa0;
   border-color: #4a7bc8;
 }
 
-.label-toggle-button.active:hover {
+.sidebar-toggle-button.active:hover {
   background-color: #3570c4;
   border-color: #5a8fd8;
 }

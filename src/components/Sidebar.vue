@@ -100,6 +100,11 @@ watch(searchQuery, () => {
 });
 
 onMounted(() => {
+  // Initialize palette if it hasn't been initialized yet (sidebar was hidden on load)
+  if (window.initPalette) {
+    window.initPalette();
+  }
+  
   // Notify dashboard.js of initial tab and search
   if (window.updatePaletteFilter) {
     window.updatePaletteFilter(activeEntityTab.value, searchQuery.value);

@@ -20,12 +20,14 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { storeToRefs } from 'pinia';
 import * as go from 'gojs';
 import { selectedEntity, setSelectedEntity } from '../composables/useEntitySelection';
-import { useLabelsVisibility } from '../composables/useLabelsVisibility';
+import { useUIStore } from '../stores/ui';
 
-// Use composable for labels visibility
-const { labelsVisible } = useLabelsVisibility();
+// Use UI store for labels visibility
+const uiStore = useUIStore();
+const { labelsVisible } = storeToRefs(uiStore);
 
 const entities = ref([]);
 const viewportUpdateTrigger = ref(0);

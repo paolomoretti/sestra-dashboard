@@ -19,6 +19,7 @@
   "dependencies": {
     "@mdi/js": "^7.4.47",
     "gojs": "^3.1.0",
+    "pinia": "^3.0.3",
     "vue": "^3.5.22"
   },
   "devDependencies": {

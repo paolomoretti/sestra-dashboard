@@ -1,6 +1,7 @@
 import * as go from 'gojs';
 import { setSelectedEntity, clearSelection } from './composables/useEntitySelection.js';
 import { extractIconFromHA, getDefaultIcon, getMDIIconPath, createIconSVG } from './utils/iconUtils.js';
+// Edit mode is accessed via window.__editMode (set by Vue component) to avoid reactivity issues in non-Vue context
 
 let diagram;
 let palette;
@@ -18,6 +19,7 @@ const STORAGE_KEY_ENTITIES = 'ha_dashboard_entities'; // Which entities are on t
 const STORAGE_KEY_SCALE = 'ha_dashboard_scale'; // Diagram scale/zoom level
 const STORAGE_KEY_SIZES = 'ha_dashboard_sizes'; // Node sizes
 const STORAGE_KEY_ICONS = 'ha_dashboard_icons'; // Custom icon preferences per entity
+const STORAGE_KEY_ACTIONS = 'ha_dashboard_actions'; // Tap and hold actions per entity
 
 // Floor plan dimensions
 const FLOORPLAN_WIDTH = 2190;
@@ -58,6 +60,11 @@ export function initDashboard(config) {
     return;
   };
   
+  // Check if diagram already exists and clean it up
+  if (diagram) {
+    diagram.div = null;
+  }
+  
   diagram = new go.Diagram('diagramDiv', {
     'undoManager.isEnabled': true,
     allowCopy: false,
@@ -70,6 +77,9 @@ export function initDashboard(config) {
 
   // Expose diagram instance to Vue components for coordinate conversion
   window.diagramInstance = diagram;
+  
+  // Expose updateSensorStates globally for action handler
+  window.updateSensorStates = updateSensorStates;
   
   // Override default selection handles - we'll use our custom adornment
   // But keep resize handles by making them part of our custom adornment
@@ -111,6 +121,39 @@ export function initDashboard(config) {
     diagram.clearSelection();
   });
   
+  // Override ClickSelectingTool.doMouseUp to intercept BEFORE selection happens
+  // Clicking on an icon executes the action, clicking on a label selects the node
+  const clickSelectingTool = diagram.toolManager.clickSelectingTool;
+  const originalDoMouseUp = clickSelectingTool.doMouseUp.bind(clickSelectingTool);
+  
+  clickSelectingTool.doMouseUp = function() {
+    // Check what was clicked
+    const obj = this.diagram.findObjectAt(this.diagram.lastInput.documentPoint, null, null);
+    
+    // If clicking on a node, check if it has a tap action
+    if (obj && obj.part && obj.part instanceof go.Node && obj.part.data) {
+      const tapAction = obj.part.data.tapAction;
+      
+      // If clicking on the icon/picture (name === 'ICON') and there's a tap action, execute it
+      if (obj.name === 'ICON' && tapAction && tapAction.action) {
+        // Prevent selection - execute action instead
+        (async () => {
+          try {
+            const { executeTapAction } = await import('./utils/actionHandler.js');
+            await executeTapAction(tapAction, obj.part.data, config);
+          } catch (error) {
+            console.error('Error executing tap action:', error);
+            addEvent(`Error: ${error.message}`, 'error');
+          }
+        })();
+        return; // Don't call originalDoMouseUp - prevents selection
+      }
+    }
+    
+    // Clicking on label (Vue component handles it) or no tap action - allow normal selection
+    return originalDoMouseUp.call(this);
+  };
+  
   // Listen for selection changes and update Vue state
   diagram.addDiagramListener('ChangedSelection', (e) => {
     if (diagram.selection.count > 0) {
@@ -137,17 +180,18 @@ export function initDashboard(config) {
     }, 300);
   });
   
-  // Also save after any transaction completes (catches all changes)
-  // But skip if we're currently loading entities
-  diagram.addModelChangedListener((e) => {
-    if (e.isTransactionFinished && !isLoadingEntities) {
-      // Final save after any transaction (but not during initial load)
-      setTimeout(() => {
-        savePlacedEntities();
-        savePositions();
-      }, 200);
-    }
-  });
+    // Also save after any transaction completes (catches all changes)
+    // But skip if we're currently loading entities
+    diagram.addModelChangedListener((e) => {
+      if (e.isTransactionFinished && !isLoadingEntities) {
+        // Final save after any transaction (but not during initial load)
+        setTimeout(() => {
+          savePlacedEntities();
+          savePositions();
+          saveActions();
+        }, 200);
+      }
+    });
   
   // Listen for when parts are dragged/moved - update panel position
   diagram.addDiagramListener('SelectionMoved', () => {
@@ -326,9 +370,13 @@ export function initDashboard(config) {
           loadPlacedEntities(config).then(() => {
             // After loading completes, allow saves
             isLoadingEntities = false;
-          }).catch(() => {
+            console.log('✓ Initial load complete, saving enabled. Diagram has', diagram.nodes.count, 'nodes');
+          }).catch((error) => {
+            console.error('Error in loadPlacedEntities:', error);
             isLoadingEntities = false;
           });
+        }).catch((error) => {
+          console.error('Error in loadEntities:', error);
         });
       })
       .catch((error) => {
@@ -380,6 +428,12 @@ export function initDashboard(config) {
   window.getZoomLevel = () => {
     return diagram ? Math.round(diagram.scale * 100) : 100;
   };
+  
+  // Expose updateSensorStates globally for action handler
+  window.updateSensorStates = updateSensorStates;
+  
+  // Expose initPalette function for when sidebar becomes visible
+  window.initPalette = initPalette;
 }
 
 
@@ -827,6 +881,18 @@ async function testHAConnection(config) {
  * Initialize the palette for drag-and-drop
  */
 function initPalette() {
+  const paletteDiv = document.getElementById('paletteDiv');
+  if (!paletteDiv) {
+    // Palette div doesn't exist yet (sidebar might be hidden)
+    // We'll initialize it later when the sidebar becomes visible
+    return;
+  }
+  
+  // Check if palette already exists and clean it up
+  if (palette) {
+    palette.div = null;
+  }
+  
   palette = new go.Palette('paletteDiv');
   
   // Use the same node templates as the diagram
@@ -1107,6 +1173,9 @@ async function loadPlacedEntities(config) {
   const savedEntities = loadSavedEntities();
   const savedPositions = loadPositions();
   
+  console.log('loadPlacedEntities: Found', savedEntities.length, 'saved entities');
+  console.log('Saved entities:', savedEntities);
+  
   if (savedEntities.length === 0) {
     addEvent('No saved entities found. Drag entities from the palette to add them.', 'info');
     isLoadingEntities = false;
@@ -1204,6 +1273,16 @@ async function loadPlacedEntities(config) {
       const savedIcons = loadIcons();
       const savedIcon = savedIcons[entityId];
       
+      // Get saved actions if available
+      let savedActionData = {};
+      try {
+        const savedActions = loadActions();
+        savedActionData = savedActions[entityId] || {};
+      } catch (error) {
+        console.warn('Error loading actions for', entityId, ':', error);
+        savedActionData = {};
+      }
+      
       const nodeData = {
         key: entityId,
         category: category,
@@ -1213,14 +1292,39 @@ async function loadPlacedEntities(config) {
         loc: location,
         size: savedSize, // Add saved size if available
         icon: savedIcon || iconName, // Use saved icon or HA icon
-        deviceClass: state.attributes.device_class || null
+        deviceClass: state.attributes.device_class || null,
+        tapAction: savedActionData.tapAction || null, // Load saved tap action
+        holdAction: savedActionData.holdAction || null // Load saved hold action
       };
       
       nodes.push(nodeData);
     });
     
+    console.log('Loading', nodes.length, 'entities onto diagram');
+    if (nodes.length > 0) {
+      console.log('First node sample:', JSON.stringify(nodes[0], null, 2));
+    }
+    
     // Update diagram with placed entities (this will trigger model changes, so we're already flagged)
-    diagram.model = new go.GraphLinksModel(nodes, []);
+    if (nodes.length > 0) {
+      try {
+        diagram.model = new go.GraphLinksModel(nodes, []);
+        console.log('Diagram model updated with', nodes.length, 'nodes');
+        console.log('Diagram now has', diagram.nodes.count, 'nodes visible');
+        
+        // Check if nodes are actually in the diagram
+        const nodeCount = diagram.nodes.count;
+        if (nodeCount === 0) {
+          console.error('WARNING: Model set but no nodes visible in diagram!');
+          console.log('Node data array length:', diagram.model.nodeDataArray.length);
+        }
+      } catch (error) {
+        console.error('Error setting diagram model:', error);
+        addEvent(`Error loading entities: ${error.message}`, 'error');
+      }
+    } else {
+      console.warn('No nodes to add to diagram');
+    }
     
     // After model is set, update node positions from saved locations
     // This ensures positions are correctly applied even if they were saved as strings
@@ -1296,6 +1400,22 @@ async function loadPlacedEntities(config) {
       });
       
       diagram.commitTransaction('applyPositions');
+      
+      console.log('After applying positions, diagram has', diagram.nodes.count, 'nodes');
+      
+      // Verify nodes are visible and positioned correctly
+      let visibleCount = 0;
+      diagram.nodes.each(node => {
+        const bounds = node.actualBounds;
+        console.log('Node:', node.data.key || node.data.name, 
+                    'Location:', node.location.toString(), 
+                    'Bounds:', bounds.toString(),
+                    'Visible:', bounds.width > 0 && bounds.height > 0);
+        if (bounds.width > 0 && bounds.height > 0) {
+          visibleCount++;
+        }
+      });
+      console.log('Visible nodes:', visibleCount, 'out of', diagram.nodes.count);
       
       // Save positions after fixing them (with proper entityId keys)
       // This ensures all positions use entityId keys, not negative keys
@@ -1734,7 +1854,9 @@ function savePlacedEntities() {
     return;
   }
   
-  if (!diagram || !diagram.model) return;
+  if (!diagram || !diagram.model) {
+    return;
+  }
 
   const entitiesSet = new Set(); // Use Set to avoid duplicates
   
@@ -1810,6 +1932,45 @@ function saveIcons() {
     localStorage.setItem(STORAGE_KEY_ICONS, JSON.stringify(icons));
   } catch (e) {
     console.error('Failed to save icons:', e);
+  }
+}
+
+/**
+ * Save tap and hold actions to localStorage
+ */
+function saveActions() {
+  try {
+    if (isLoadingEntities || !diagram || !diagram.model) return;
+    
+    const actions = {};
+    diagram.nodes.each(node => {
+      const data = node.data;
+      if (data && data.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
+        const entityId = data.key;
+        if (data.tapAction || data.holdAction) {
+          actions[entityId] = {
+            tapAction: data.tapAction || null,
+            holdAction: data.holdAction || null
+          };
+        }
+      }
+    });
+    localStorage.setItem(STORAGE_KEY_ACTIONS, JSON.stringify(actions));
+  } catch (error) {
+    console.error('Error saving actions:', error);
+  }
+}
+
+/**
+ * Load tap and hold actions from localStorage
+ */
+function loadActions() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_ACTIONS);
+    return saved ? JSON.parse(saved) : {};
+  } catch (error) {
+    console.error('Error loading actions:', error);
+    return {};
   }
 }
 

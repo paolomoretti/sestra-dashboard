@@ -56,6 +56,35 @@
               </option>
             </select>
           </div>
+          
+          <!-- Tap Action -->
+          <div class="detail-row">
+            <span class="detail-label">Tap Action:</span>
+            <select 
+              :value="currentTapAction"
+              @change="handleTapActionChange"
+              @click.stop
+              class="icon-select"
+            >
+              <option value="">None</option>
+              <option value="toggle">Toggle</option>
+              <option value="more-info">More Info</option>
+              <option value="navigate">Navigate</option>
+            </select>
+          </div>
+          
+          <!-- Navigation Path (only show if navigate is selected) -->
+          <div v-if="currentTapAction === 'navigate'" class="detail-row">
+            <span class="detail-label">Navigation Path:</span>
+            <input
+              type="text"
+              :value="currentNavigationPath"
+              @input="handleNavigationPathChange"
+              @click.stop
+              class="text-input"
+              placeholder="/dashboard/living-room"
+            />
+          </div>
         </div>
       </div>
     </transition>
@@ -107,6 +136,16 @@ const currentIcon = computed(() => {
   return 'radar'; // Default for sensors
 });
 
+// Current tap action value
+const currentTapAction = computed(() => {
+  return selectedEntity.value?.tapAction?.action || '';
+});
+
+// Current navigation path
+const currentNavigationPath = computed(() => {
+  return selectedEntity.value?.tapAction?.navigation_path || '';
+});
+
 // Handle icon change
 function handleIconChange(event) {
   const newIcon = event.target.value;
@@ -141,6 +180,87 @@ function handleIconChange(event) {
       changeEntityIcon(selectedEntity.value.key, newIcon);
     }
   }
+}
+
+// Handle tap action change
+function handleTapActionChange(event) {
+  const actionType = event.target.value;
+  const entityId = selectedEntity.value?.key;
+  if (!entityId || !window.diagramInstance) return;
+  
+  const nodeData = window.diagramInstance.model.findNodeDataForKey(entityId);
+  if (!nodeData) return;
+  
+  window.diagramInstance.startTransaction('updateTapAction');
+  
+  if (!actionType || actionType === '') {
+    // Remove tap action
+    window.diagramInstance.model.setDataProperty(nodeData, 'tapAction', null);
+    selectedEntity.value.tapAction = null;
+  } else {
+    // Set tap action
+    const tapAction = { action: actionType };
+    
+    // If navigate, preserve navigation path if it exists
+    if (actionType === 'navigate' && selectedEntity.value?.tapAction?.navigation_path) {
+      tapAction.navigation_path = selectedEntity.value.tapAction.navigation_path;
+    }
+    
+    window.diagramInstance.model.setDataProperty(nodeData, 'tapAction', tapAction);
+    selectedEntity.value.tapAction = tapAction;
+  }
+  
+  window.diagramInstance.commitTransaction('updateTapAction');
+  
+  // Save actions to localStorage
+  const actions = {};
+  window.diagramInstance.nodes.each(node => {
+    const data = node.data;
+    if (data && data.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
+      if (data.tapAction || data.holdAction) {
+        actions[data.key] = {
+          tapAction: data.tapAction || null,
+          holdAction: data.holdAction || null
+        };
+      }
+    }
+  });
+  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+}
+
+// Handle navigation path change
+function handleNavigationPathChange(event) {
+  const path = event.target.value;
+  const entityId = selectedEntity.value?.key;
+  if (!entityId || !window.diagramInstance) return;
+  
+  const nodeData = window.diagramInstance.model.findNodeDataForKey(entityId);
+  if (!nodeData) return;
+  
+  window.diagramInstance.startTransaction('updateNavigationPath');
+  
+  const tapAction = nodeData.tapAction || { action: 'navigate' };
+  tapAction.navigation_path = path;
+  
+  window.diagramInstance.model.setDataProperty(nodeData, 'tapAction', tapAction);
+  selectedEntity.value.tapAction = tapAction;
+  
+  window.diagramInstance.commitTransaction('updateNavigationPath');
+  
+  // Save actions
+  const actions = {};
+  window.diagramInstance.nodes.each(node => {
+    const data = node.data;
+    if (data && data.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
+      if (data.tapAction || data.holdAction) {
+        actions[data.key] = {
+          tapAction: data.tapAction || null,
+          holdAction: data.holdAction || null
+        };
+      }
+    }
+  });
+  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
 }
 
 /**
