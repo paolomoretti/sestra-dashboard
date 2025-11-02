@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue';
+import type { TapAction } from '../utils/actionHandler';
 
 export interface EntityData {
   key: string;
@@ -11,10 +12,7 @@ export interface EntityData {
   deviceClass?: string | null;
   loc?: string;
   size?: string | null;
-  tapAction?: {
-    action: string;
-    navigation_path?: string;
-  } | null;
+  tapAction?: TapAction | null;
   holdAction?: any;
 }
 

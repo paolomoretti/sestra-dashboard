@@ -1,12 +1,21 @@
 import * as go from 'gojs';
-import { setSelectedEntity, clearSelection, type EntityData } from './composables/useEntitySelection';
-import { extractIconFromHA, getDefaultIcon, getMDIIconPath, createIconSVG, getIconColor } from './utils/iconUtils';
+import {
+  setSelectedEntity,
+  clearSelection,
+  type EntityData,
+} from './composables/useEntitySelection';
+import {
+  extractIconFromHA,
+  getDefaultIcon,
+  getMDIIconPath,
+  createIconSVG,
+  getIconColor,
+} from './utils/iconUtils';
 import type { HAConfig } from '../config';
 import type { HAEntityState } from './utils/iconUtils';
 
 let diagram: go.Diagram | null = null;
 let palette: go.Palette | null = null;
-const eventLog: Array<{ message: string; type: string; timestamp: string }> = [];
 let backgroundPart: go.Part | null = null;
 let hasBackground: boolean = false;
 const allEntities: any[] = []; // Store all available entities
@@ -51,21 +60,21 @@ function getApiBaseUrl(config: HAConfig): string {
 export function initDashboard(config: HAConfig): void {
   // Set loading flag immediately to prevent saves during initialization
   isLoadingEntities = true;
-  
+
   // Initialize GoJS diagram
   // Create a "no-op" layout that doesn't reposition nodes - satisfies GoJS requirement
   // while allowing manual positioning
   const noOpLayout = new go.Layout();
-  noOpLayout.doLayout = function(parts) {
+  noOpLayout.doLayout = function (parts) {
     // Do nothing - nodes stay where they are positioned
     return;
   };
-  
+
   // Check if diagram already exists and clean it up
   if (diagram) {
     diagram.div = null;
   }
-  
+
   diagram = new go.Diagram('diagramDiv', {
     'undoManager.isEnabled': true,
     allowCopy: false,
@@ -73,18 +82,18 @@ export function initDashboard(config: HAConfig): void {
     'toolManager.mouseWheelBehavior': go.ToolManager.WheelZoom,
     layout: noOpLayout,
     'toolManager.showToolTip': true, // Enable tooltips
-    maxSelectionCount: 1 // Only allow selecting one node at a time (better for menu)
+    maxSelectionCount: 1, // Only allow selecting one node at a time (better for menu)
   });
 
   // Expose diagram instance to Vue components for coordinate conversion
   window.diagramInstance = diagram;
-  
+
   // Expose updateSensorStates globally for action handler
   window.updateSensorStates = updateSensorStates;
-  
+
   // Override default selection handles - we'll use our custom adornment
   // But keep resize handles by making them part of our custom adornment
-  
+
   // Listen for scale/viewport changes to update panel position and save zoom level
   diagram.addDiagramListener('ViewportBoundsChanged', () => {
     // Update Vue panel position if entity is selected
@@ -94,7 +103,7 @@ export function initDashboard(config: HAConfig): void {
         const bounds = node.actualBounds;
         setSelectedEntity(node.data, {
           x: bounds.center.x,
-          y: bounds.bottom
+          y: bounds.bottom,
         });
       }
     }
@@ -102,7 +111,7 @@ export function initDashboard(config: HAConfig): void {
     setTimeout(() => {
       saveScale();
     }, 300);
-    
+
     // Save scroll position (viewport center) to UI store
     if (window.pinia?._s) {
       try {
@@ -124,32 +133,32 @@ export function initDashboard(config: HAConfig): void {
 
   // Create initial empty model (this won't trigger saves because isLoadingEntities is true)
   diagram.model = new go.GraphLinksModel([], []);
-  
+
   // Initialize palette for drag-and-drop
   initPalette();
-  
+
   // Enable drag-and-drop from palette to diagram
   diagram.allowDrop = true;
   setupDragDrop();
 
   // Allow clicking on background to deselect nodes (closes menu)
-  diagram.addDiagramListener('BackgroundSingleClicked', (e) => {
+  diagram.addDiagramListener('BackgroundSingleClicked', e => {
     diagram.clearSelection();
   });
-  
+
   // Override ClickSelectingTool.doMouseUp to intercept BEFORE selection happens
   // Clicking on an icon executes the action, clicking on a label selects the node
   const clickSelectingTool = diagram.toolManager.clickSelectingTool;
   const originalDoMouseUp = clickSelectingTool.doMouseUp.bind(clickSelectingTool);
-  
-  clickSelectingTool.doMouseUp = function() {
+
+  clickSelectingTool.doMouseUp = function () {
     // Check what was clicked
     const obj = this.diagram.findObjectAt(this.diagram.lastInput.documentPoint, null, null);
-    
+
     // If clicking on a node, check if it has a tap action
     if (obj && obj.part && obj.part instanceof go.Node && obj.part.data) {
       const tapAction = obj.part.data.tapAction;
-      
+
       // If clicking on the icon/picture (name === 'ICON') and there's a tap action, execute it
       if (obj.name === 'ICON' && tapAction?.action) {
         // Prevent selection - execute action instead
@@ -165,21 +174,21 @@ export function initDashboard(config: HAConfig): void {
         return; // Don't call originalDoMouseUp - prevents selection
       }
     }
-    
+
     // Clicking on label (Vue component handles it) or no tap action - allow normal selection
     return originalDoMouseUp.call(this);
   };
-  
+
   // Show pointer cursor when hovering over nodes with tap actions
   // Use DOM mouse events since GoJS doesn't have MouseMove diagram event
   if (diagram.div) {
     let currentCursor = 'default';
-    diagram.div.addEventListener('mousemove', (e) => {
+    diagram.div.addEventListener('mousemove', e => {
       if (!diagram) return;
-      
+
       const point = diagram.transformViewToDoc(new go.Point(e.offsetX, e.offsetY));
       const obj = diagram.findObjectAt(point, null, null);
-      
+
       if (obj && obj.part && obj.part instanceof go.Node && obj.part.data) {
         // Check if hovering over the icon specifically
         if (obj.name === 'ICON' && obj.part.data.tapAction?.action) {
@@ -197,9 +206,9 @@ export function initDashboard(config: HAConfig): void {
       }
     });
   }
-  
+
   // Listen for selection changes and update Vue state
-  diagram.addDiagramListener('ChangedSelection', (e) => {
+  diagram.addDiagramListener('ChangedSelection', e => {
     if (diagram.selection.count > 0) {
       const node = diagram.selection.first();
       if (node instanceof go.Node && node.data) {
@@ -207,7 +216,7 @@ export function initDashboard(config: HAConfig): void {
         const bounds = node.actualBounds;
         const position = {
           x: bounds.center.x,
-          y: bounds.bottom
+          y: bounds.bottom,
         };
         // Update Vue state with selected entity and position
         setSelectedEntity(node.data, position);
@@ -216,27 +225,27 @@ export function initDashboard(config: HAConfig): void {
       // No selection, clear Vue state (but keep labels visible)
       clearSelection();
     }
-    
+
     // Also save positions after selection change (debounced)
     setTimeout(() => {
       savePositions();
       savePlacedEntities();
     }, 300);
   });
-  
-    // Also save after any transaction completes (catches all changes)
-    // But skip if we're currently loading entities
-    diagram.addModelChangedListener((e) => {
-      if (e.isTransactionFinished && !isLoadingEntities) {
-        // Final save after any transaction (but not during initial load)
-        setTimeout(() => {
-          savePlacedEntities();
-          savePositions();
-          saveActions();
-        }, 200);
-      }
-    });
-  
+
+  // Also save after any transaction completes (catches all changes)
+  // But skip if we're currently loading entities
+  diagram.addModelChangedListener(e => {
+    if (e.isTransactionFinished && !isLoadingEntities) {
+      // Final save after any transaction (but not during initial load)
+      setTimeout(() => {
+        savePlacedEntities();
+        savePositions();
+        saveActions();
+      }, 200);
+    }
+  });
+
   // Listen for when parts are dragged/moved - update panel position
   diagram.addDiagramListener('SelectionMoved', () => {
     savePositions();
@@ -247,39 +256,39 @@ export function initDashboard(config: HAConfig): void {
         const bounds = node.actualBounds;
         setSelectedEntity(node.data, {
           x: bounds.center.x,
-          y: bounds.bottom
+          y: bounds.bottom,
         });
       }
     }
   });
-  
+
   // Debounce timer for saving sizes after resize completes
   let resizeSaveTimeout = null;
   let resizeTransactionActive = false;
-  
+
   // Listen for when nodes are resized (fires continuously during resize)
-  diagram.addDiagramListener('PartResized', (e) => {
+  diagram.addDiagramListener('PartResized', e => {
     const part = e.subject;
     if (part?.data && part instanceof go.Node) {
       // Store reference to the node being resized
       const resizedNode = part;
-      
+
       // Always save the entire node bounds, not just the shape
       const bounds = part.actualBounds;
       const width = bounds.width;
       const height = bounds.height;
       const sizeStr = `${width} ${height}`;
-      
+
       // Update size in model data within a transaction
       if (!resizeTransactionActive) {
         resizeTransactionActive = true;
         diagram.startTransaction('resizeNode');
       }
       diagram.model.setDataProperty(part.data, 'size', sizeStr);
-      
+
       // Force update by invalidating the layout
       part.invalidateLayout();
-      
+
       // Debounce the save - wait 600ms after last resize event
       // This ensures we capture the final size when user releases mouse
       clearTimeout(resizeSaveTimeout);
@@ -289,7 +298,7 @@ export function initDashboard(config: HAConfig): void {
           diagram.commitTransaction('resizeNode');
           resizeTransactionActive = false;
         }
-        
+
         // Wait a bit more for GoJS to finalize, then update only the resized node
         setTimeout(() => {
           // Only update the specific node that was resized, not all nodes
@@ -297,26 +306,30 @@ export function initDashboard(config: HAConfig): void {
             diagram.startTransaction('resizeFinalSave');
             const finalBounds = resizedNode.actualBounds;
             const finalSizeStr = `${finalBounds.width} ${finalBounds.height}`;
-            
+
             // Only update if different (avoid unnecessary updates)
             if (resizedNode.data.size !== finalSizeStr) {
               diagram.model.setDataProperty(resizedNode.data, 'size', finalSizeStr);
             }
             diagram.commitTransaction('resizeFinalSave');
           }
-          
+
           // Now save to localStorage
           saveSizes();
           savePositions();
-          
+
           // Update Vue panel position if this node is selected
           if (diagram.selection.count > 0) {
             const selectedNode = diagram.selection.first();
-            if (selectedNode === resizedNode && selectedNode instanceof go.Node && selectedNode.data) {
+            if (
+              selectedNode === resizedNode &&
+              selectedNode instanceof go.Node &&
+              selectedNode.data
+            ) {
               const bounds = selectedNode.actualBounds;
               setSelectedEntity(selectedNode.data, {
                 x: bounds.center.x,
-                y: bounds.bottom
+                y: bounds.bottom,
               });
             }
           }
@@ -324,11 +337,11 @@ export function initDashboard(config: HAConfig): void {
       }, 600);
     }
   });
-  
+
   // Listen for model changes (for programmatic changes and palette drops)
   // Note: We also have a final save listener above that catches all transactions
   let processingInsert = false;
-  diagram.addModelChangedListener((e) => {
+  diagram.addModelChangedListener(e => {
     if (e.isTransactionFinished) {
       if (e.change === go.ChangedEvent.Property && e.propertyName === 'loc') {
         setTimeout(() => savePositions(), 100);
@@ -336,49 +349,58 @@ export function initDashboard(config: HAConfig): void {
         processingInsert = true;
         // Entity added - could be from palette or programmatic
         const nodeData = e.newValue;
-        
+
         // Check if this came from palette (has entityId)
         if (nodeData?.entityId) {
           const entityId = nodeData.entityId;
           const entityInfo = allEntities.find(e => e.entityId === entityId);
-          
+
           if (entityInfo) {
             // Wait a bit for the node to be fully created
             setTimeout(() => {
               // This came from palette - update it with proper entity info
               // Use transaction to avoid errors
               diagram.startTransaction('updatePaletteNode');
-              
+
               diagram.model.setDataProperty(nodeData, 'key', entityId);
               diagram.model.setDataProperty(nodeData, 'name', entityInfo.friendlyName);
               diagram.model.setDataProperty(nodeData, 'state', entityInfo.state.state);
               if (entityInfo.state.attributes.status) {
-                diagram.model.setDataProperty(nodeData, 'status', entityInfo.state.attributes.status);
+                diagram.model.setDataProperty(
+                  nodeData,
+                  'status',
+                  entityInfo.state.attributes.status
+                );
               }
-              
+
               // Set icon from entity info or use default
-              const iconName = extractIconFromHA(entityInfo.state) || 
-                              getDefaultIcon(entityInfo.domain, entityInfo.state.attributes.device_class);
+              const iconName =
+                extractIconFromHA(entityInfo.state) ||
+                getDefaultIcon(entityInfo.domain, entityInfo.state.attributes.device_class);
               diagram.model.setDataProperty(nodeData, 'icon', iconName);
-              diagram.model.setDataProperty(nodeData, 'deviceClass', entityInfo.state.attributes.device_class || null);
-              
+              diagram.model.setDataProperty(
+                nodeData,
+                'deviceClass',
+                entityInfo.state.attributes.device_class || null
+              );
+
               // Ensure location is set
               const part = diagram.findPartForData(nodeData);
               if (part) {
                 const loc = part.location;
                 diagram.model.setDataProperty(nodeData, 'loc', `${loc.x} ${loc.y}`);
-                
+
                 // Set default size if not present
                 if (!nodeData.size) {
-                  const defaultSize = `${part.actualBounds.width  } ${  part.actualBounds.height}`;
+                  const defaultSize = `${part.actualBounds.width} ${part.actualBounds.height}`;
                   diagram.model.setDataProperty(nodeData, 'size', defaultSize);
                 }
               }
-              
+
               diagram.commitTransaction('updatePaletteNode');
-              
+
               addEvent(`Added ${entityInfo.friendlyName}`, 'success');
-              
+
               // Save after transaction completes
               setTimeout(() => {
                 savePlacedEntities();
@@ -393,7 +415,9 @@ export function initDashboard(config: HAConfig): void {
             processingInsert = false;
           }, 100);
         }
-        setTimeout(() => { processingInsert = false; }, 500);
+        setTimeout(() => {
+          processingInsert = false;
+        }, 500);
       } else if (e.change === go.ChangedEvent.Remove) {
         // Entity removed
         setTimeout(() => savePlacedEntities(), 100);
@@ -409,27 +433,31 @@ export function initDashboard(config: HAConfig): void {
     testHAConnection(config)
       .then(() => {
         addEvent('Connected to Home Assistant', 'success');
-        loadEntities(config).then(() => {
-          // Load entities that were previously placed on the floor plan
-          loadPlacedEntities(config).then(() => {
-            // After entities are loaded, try one more time to restore scroll position
-            // This ensures we have the latest position even if store wasn't ready earlier
-            if (!hasRestoredScrollPosition) {
-              setTimeout(() => {
-                restoreScrollPosition();
-              }, 100);
-            }
-            // After loading completes, allow saves
-            isLoadingEntities = false;
-          }).catch((error) => {
-            console.error('Error in loadPlacedEntities:', error);
-            isLoadingEntities = false;
+        loadEntities(config)
+          .then(() => {
+            // Load entities that were previously placed on the floor plan
+            loadPlacedEntities(config)
+              .then(() => {
+                // After entities are loaded, try one more time to restore scroll position
+                // This ensures we have the latest position even if store wasn't ready earlier
+                if (!hasRestoredScrollPosition) {
+                  setTimeout(() => {
+                    restoreScrollPosition();
+                  }, 100);
+                }
+                // After loading completes, allow saves
+                isLoadingEntities = false;
+              })
+              .catch(error => {
+                console.error('Error in loadPlacedEntities:', error);
+                isLoadingEntities = false;
+              });
+          })
+          .catch(error => {
+            console.error('Error in loadEntities:', error);
           });
-        }).catch((error) => {
-          console.error('Error in loadEntities:', error);
-        });
       })
-      .catch((error) => {
+      .catch(error => {
         addEvent(`Failed to connect: ${error.message}`, 'error');
         console.error('Home Assistant connection error:', error);
         isLoadingEntities = false; // Enable saves even if connection fails
@@ -445,14 +473,14 @@ export function initDashboard(config: HAConfig): void {
       updateSensorStates(config);
     }, 5000); // Update every 5 seconds
   }
-  
+
   // Expose filter function to window for Vue components
   window.updatePaletteFilter = (filterValue, searchValue = '') => {
     currentEntityFilter = filterValue;
     currentSearchQuery = searchValue || '';
     filterAndUpdatePalette();
   };
-  
+
   // Expose zoom functions to window for Vue components
   window.zoomIn = () => {
     if (diagram) {
@@ -460,32 +488,31 @@ export function initDashboard(config: HAConfig): void {
       saveScale();
     }
   };
-  
+
   window.zoomOut = () => {
     if (diagram) {
       diagram.commandHandler.decreaseZoom();
       saveScale();
     }
   };
-  
+
   window.zoomReset = () => {
     if (diagram && hasBackground) {
       fitDiagramToViewport(FLOORPLAN_WIDTH, FLOORPLAN_HEIGHT);
       saveScale();
     }
   };
-  
+
   window.getZoomLevel = () => {
     return diagram ? Math.round(diagram.scale * 100) : 100;
   };
-  
+
   // Expose updateSensorStates globally for action handler
   window.updateSensorStates = updateSensorStates;
-  
+
   // Expose initPalette function for when sidebar becomes visible
   window.initPalette = initPalette;
 }
-
 
 /**
  * Define GoJS node templates for sensors, doors, cameras, etc.
@@ -494,251 +521,92 @@ function defineTemplates() {
   // Define a menu-style selection adornment that appears when clicking an entity
   // Using 'Auto' with a Spot panel inside to position the menu below the node
   // The resize handles are handled separately by GoJS for resizable nodes
-  const selectionAdornmentTemplate = 
-    go.GraphObject.make(go.Adornment, 'Auto',
-      {
-        isShadowed: true,
-        shadowColor: 'rgba(0, 0, 0, 0.5)',
-        shadowBlur: 10,
-        shadowOffset: new go.Point(0, 3)
-      },
-      // Background/border shape
-      go.GraphObject.make(go.Shape,
+  const selectionAdornmentTemplate = go.GraphObject.make(
+    go.Adornment,
+    'Auto',
+    {
+      isShadowed: true,
+      shadowColor: 'rgba(0, 0, 0, 0.5)',
+      shadowBlur: 10,
+      shadowOffset: new go.Point(0, 3),
+    },
+    // Background/border shape
+    go.GraphObject.make(go.Shape, {
+      figure: 'Rectangle',
+      fill: '#2a2a2a',
+      stroke: '#4a4a4a',
+      strokeWidth: 1,
+    }),
+    // Content panel
+    go.GraphObject.make(
+      go.Panel,
+      'Vertical',
+      // Border shape - first element in Auto panel fills the panel
+      go.GraphObject.make(go.Shape, {
+        figure: 'Rectangle',
+        fill: '#2a2a2a',
+        stroke: '#4a4a4a',
+        strokeWidth: 1,
+      }),
+      go.GraphObject.make(
+        go.Panel,
+        'Vertical',
         {
-          figure: 'Rectangle',
-          fill: '#2a2a2a',
-          stroke: '#4a4a4a',
-          strokeWidth: 1
-        }
-      ),
-      // Content panel
-      go.GraphObject.make(go.Panel, 'Vertical',
-        // Border shape - first element in Auto panel fills the panel
-        go.GraphObject.make(go.Shape,
-          {
-            figure: 'Rectangle',
-            fill: '#2a2a2a',
-            stroke: '#4a4a4a',
-            strokeWidth: 1
-          }
-        ),
-        go.GraphObject.make(go.Panel, 'Vertical',
-          {
-            padding: new go.Margin(4, 0, 4, 0)
-          },
-          // Entity name header
-          go.GraphObject.make(go.Panel, 'Horizontal',
-            {
-              background: '#333333',
-              padding: new go.Margin(10, 14, 10, 14),
-              defaultAlignment: go.Spot.Left
-            },
-            go.GraphObject.make(go.TextBlock,
-              {
-                font: 'bold 16px sans-serif',
-                stroke: '#ffffff',
-                textAlign: 'left',
-                maxLines: 2,
-                wrap: go.TextBlock.WrapFit,
-                overflow: go.TextOverflow.Ellipsis,
-                width: 280
-              },
-              new go.Binding('text', 'name')
-            )
-          ),
-          // Divider
-          go.GraphObject.make(go.Shape,
-            {
-              figure: 'Rectangle',
-              height: 1,
-              stroke: '#4a4a4a',
-              margin: new go.Margin(4, 0, 4, 0)
-            }
-          ),
-          // Entity details
-          go.GraphObject.make(go.Panel, 'Table',
-            {
-              padding: new go.Margin(8, 14, 10, 14),
-              defaultColumnSeparatorStroke: 'transparent',
-              defaultRowSeparatorStroke: '#3a3a3a',
-              defaultAlignment: go.Spot.Left
-            },
-            go.GraphObject.make(go.RowColumnDefinition, { column: 0, width: 90 }),
-            go.GraphObject.make(go.RowColumnDefinition, { column: 1, width: 220 }),
-            // Entity ID row
-            go.GraphObject.make(go.TextBlock,
-              {
-                column: 0,
-                row: 0,
-                font: '11px sans-serif',
-                stroke: '#aaaaaa',
-                text: 'Entity ID:',
-                margin: new go.Margin(0, 8, 4, 0)
-              }
-            ),
-            go.GraphObject.make(go.TextBlock,
-              {
-                column: 1,
-                row: 0,
-                font: '11px sans-serif',
-                stroke: '#ffffff',
-                maxLines: 1,
-                overflow: go.TextOverflow.Ellipsis,
-                margin: new go.Margin(0, 0, 4, 0)
-              },
-              new go.Binding('text', 'key', (key) => key || 'N/A')
-            ),
-            // State row
-            go.GraphObject.make(go.TextBlock,
-              {
-                column: 0,
-                row: 1,
-                font: '11px sans-serif',
-                stroke: '#aaaaaa',
-                text: 'State:',
-                margin: new go.Margin(0, 8, 4, 0)
-              }
-            ),
-            go.GraphObject.make(go.TextBlock,
-              {
-                column: 1,
-                row: 1,
-                font: 'bold 11px sans-serif',
-                stroke: '#4CAF50',
-                margin: new go.Margin(0, 0, 4, 0)
-              },
-              new go.Binding('text', 'state', (state) => state || 'unknown')
-            ),
-            // Category row
-            go.GraphObject.make(go.TextBlock,
-              {
-                column: 0,
-                row: 2,
-                font: '11px sans-serif',
-                stroke: '#aaaaaa',
-                text: 'Category:',
-                margin: new go.Margin(0, 8, 4, 0)
-              }
-            ),
-            go.GraphObject.make(go.TextBlock,
-              {
-                column: 1,
-                row: 2,
-                font: '11px sans-serif',
-                stroke: '#ffffff',
-                margin: new go.Margin(0, 0, 4, 0)
-              },
-              new go.Binding('text', 'category', (cat) => cat || 'sensor')
-            )
-          ),
-          // Divider before menu items
-          go.GraphObject.make(go.Shape,
-            {
-              figure: 'Rectangle',
-              height: 1,
-              stroke: '#4a4a4a',
-              margin: new go.Margin(4, 0, 4, 0)
-            }
-          ),
-          // Menu items container (ready for future options)
-          go.GraphObject.make(go.Panel, 'Vertical',
-            {
-              name: 'MENUITEMS',
-              padding: new go.Margin(0, 0, 0, 0)
-            },
-            // Placeholder for future menu items like "Change Shape", "Delete", etc.
-            // Example menu item structure (ready to be uncommented and customized):
-            // go.GraphObject.make(go.Panel, 'Horizontal',
-            //   {
-            //     click: (e, obj) => {
-            //       const node = obj.part.adornedPart;
-            //       if (node) {
-            //         // Example: Change shape category
-            //         e.diagram.startTransaction('changeShape');
-            //         e.diagram.model.setDataProperty(node.data, 'category', 'sensor');
-            //         e.diagram.commitTransaction('changeShape');
-            //       }
-            //       e.diagram.clearSelection();
-            //     },
-            //     cursor: 'pointer',
-            //     padding: new go.Margin(6, 12, 6, 12),
-            //     background: 'rgba(255, 255, 255, 0)',
-            //     mouseEnter: (e, obj) => {
-            //       obj.background = 'rgba(255, 255, 255, 0.1)';
-            //     },
-            //     mouseLeave: (e, obj) => {
-            //       obj.background = 'rgba(255, 255, 255, 0)';
-            //     }
-            //   },
-            //   go.GraphObject.make(go.TextBlock,
-            //     {
-            //       font: '13px sans-serif',
-            //       stroke: '#ffffff',
-            //       text: 'Change Shape'
-            //     }
-            //   )
-            // )
-          )
-        )
-      )
-    );
-
-  // Define a reusable tooltip template for all nodes
-  // This can be extended later for menu functionality
-  const tooltipTemplate = 
-    go.GraphObject.make(go.Adornment, 'Auto',
-      {
-        isShadowed: true,
-        shadowColor: 'rgba(0, 0, 0, 0.5)',
-        shadowBlur: 10,
-        shadowOffset: new go.Point(0, 3)
-      },
-      go.GraphObject.make(go.Panel, 'Vertical',
-        {
-          background: '#2a2a2a'
+          padding: new go.Margin(4, 0, 4, 0),
         },
-        go.GraphObject.make(go.TextBlock,
+        // Entity name header
+        go.GraphObject.make(
+          go.Panel,
+          'Horizontal',
           {
-            font: 'bold 14px sans-serif',
-            stroke: '#ffffff',
-            margin: new go.Margin(8, 10, 4, 10),
-            textAlign: 'left',
-            maxLines: 2,
-            overflow: go.TextOverflow.Ellipsis,
-            width: 250
+            background: '#333333',
+            padding: new go.Margin(10, 14, 10, 14),
+            defaultAlignment: go.Spot.Left,
           },
-          new go.Binding('text', 'name')
+          go.GraphObject.make(
+            go.TextBlock,
+            {
+              font: 'bold 16px sans-serif',
+              stroke: '#ffffff',
+              textAlign: 'left',
+              maxLines: 2,
+              wrap: go.TextBlock.WrapFit,
+              overflow: go.TextOverflow.Ellipsis,
+              width: 280,
+            },
+            new go.Binding('text', 'name')
+          )
         ),
-        go.GraphObject.make(go.Shape,
+        // Divider
+        go.GraphObject.make(go.Shape, {
+          figure: 'Rectangle',
+          height: 1,
+          stroke: '#4a4a4a',
+          margin: new go.Margin(4, 0, 4, 0),
+        }),
+        // Entity details
+        go.GraphObject.make(
+          go.Panel,
+          'Table',
           {
-            figure: 'Rectangle',
-            height: 1,
-            width: 250,
-            stroke: '#4a4a4a',
-            margin: new go.Margin(0, 0, 4, 0)
-          }
-        ),
-        go.GraphObject.make(go.Panel, 'Table',
-          {
+            padding: new go.Margin(8, 14, 10, 14),
             defaultColumnSeparatorStroke: 'transparent',
             defaultRowSeparatorStroke: '#3a3a3a',
             defaultAlignment: go.Spot.Left,
-            padding: new go.Margin(4, 10, 8, 10)
           },
-          go.GraphObject.make(go.RowColumnDefinition, { column: 0, width: 100 }),
-          go.GraphObject.make(go.RowColumnDefinition, { column: 1, width: 200 }),
+          go.GraphObject.make(go.RowColumnDefinition, { column: 0, width: 90 }),
+          go.GraphObject.make(go.RowColumnDefinition, { column: 1, width: 220 }),
           // Entity ID row
-          go.GraphObject.make(go.TextBlock,
-            {
-              column: 0,
-              row: 0,
-              font: '11px sans-serif',
-              stroke: '#aaaaaa',
-              text: 'Entity ID:',
-              margin: new go.Margin(0, 8, 4, 0)
-            }
-          ),
-          go.GraphObject.make(go.TextBlock,
+          go.GraphObject.make(go.TextBlock, {
+            column: 0,
+            row: 0,
+            font: '11px sans-serif',
+            stroke: '#aaaaaa',
+            text: 'Entity ID:',
+            margin: new go.Margin(0, 8, 4, 0),
+          }),
+          go.GraphObject.make(
+            go.TextBlock,
             {
               column: 1,
               row: 0,
@@ -746,193 +614,364 @@ function defineTemplates() {
               stroke: '#ffffff',
               maxLines: 1,
               overflow: go.TextOverflow.Ellipsis,
-              margin: new go.Margin(0, 0, 4, 0)
+              margin: new go.Margin(0, 0, 4, 0),
             },
-            new go.Binding('text', 'key', (key) => key || 'N/A')
+            new go.Binding('text', 'key', key => key || 'N/A')
           ),
           // State row
-          go.GraphObject.make(go.TextBlock,
-            {
-              column: 0,
-              row: 1,
-              font: '11px sans-serif',
-              stroke: '#aaaaaa',
-              text: 'State:',
-              margin: new go.Margin(0, 8, 4, 0)
-            }
-          ),
-          go.GraphObject.make(go.TextBlock,
+          go.GraphObject.make(go.TextBlock, {
+            column: 0,
+            row: 1,
+            font: '11px sans-serif',
+            stroke: '#aaaaaa',
+            text: 'State:',
+            margin: new go.Margin(0, 8, 4, 0),
+          }),
+          go.GraphObject.make(
+            go.TextBlock,
             {
               column: 1,
               row: 1,
               font: 'bold 11px sans-serif',
               stroke: '#4CAF50',
-              margin: new go.Margin(0, 0, 4, 0)
+              margin: new go.Margin(0, 0, 4, 0),
             },
-            new go.Binding('text', 'state', (state) => state || 'unknown')
+            new go.Binding('text', 'state', state => state || 'unknown')
           ),
           // Category row
-          go.GraphObject.make(go.TextBlock,
-            {
-              column: 0,
-              row: 2,
-              font: '11px sans-serif',
-              stroke: '#aaaaaa',
-              text: 'Category:',
-              margin: new go.Margin(0, 8, 4, 0)
-            }
-          ),
-          go.GraphObject.make(go.TextBlock,
+          go.GraphObject.make(go.TextBlock, {
+            column: 0,
+            row: 2,
+            font: '11px sans-serif',
+            stroke: '#aaaaaa',
+            text: 'Category:',
+            margin: new go.Margin(0, 8, 4, 0),
+          }),
+          go.GraphObject.make(
+            go.TextBlock,
             {
               column: 1,
               row: 2,
               font: '11px sans-serif',
               stroke: '#ffffff',
-              margin: new go.Margin(0, 0, 4, 0)
-            },
-            new go.Binding('text', 'category', (cat) => cat || 'sensor')
-          ),
-          // Status row (if available, for cameras)
-          go.GraphObject.make(go.TextBlock,
-            {
-              column: 0,
-              row: 3,
-              font: '11px sans-serif',
-              stroke: '#aaaaaa',
-              text: 'Status:',
-              margin: new go.Margin(0, 8, 4, 0),
-              visible: false
-            },
-            new go.Binding('visible', 'status', (status) => !!status)
-          ),
-          go.GraphObject.make(go.TextBlock,
-            {
-              column: 1,
-              row: 3,
-              font: '11px sans-serif',
-              stroke: '#2196F3',
               margin: new go.Margin(0, 0, 4, 0),
-              visible: false
             },
-            new go.Binding('text', 'status', (status) => status || 'N/A'),
-            new go.Binding('visible', 'status', (status) => !!status)
+            new go.Binding('text', 'category', cat => cat || 'sensor')
           )
+        ),
+        // Divider before menu items
+        go.GraphObject.make(go.Shape, {
+          figure: 'Rectangle',
+          height: 1,
+          stroke: '#4a4a4a',
+          margin: new go.Margin(4, 0, 4, 0),
+        }),
+        // Menu items container (ready for future options)
+        go.GraphObject.make(
+          go.Panel,
+          'Vertical',
+          {
+            name: 'MENUITEMS',
+            padding: new go.Margin(0, 0, 0, 0),
+          }
+          // Placeholder for future menu items like "Change Shape", "Delete", etc.
+          // Example menu item structure (ready to be uncommented and customized):
+          // go.GraphObject.make(go.Panel, 'Horizontal',
+          //   {
+          //     click: (e, obj) => {
+          //       const node = obj.part.adornedPart;
+          //       if (node) {
+          //         // Example: Change shape category
+          //         e.diagram.startTransaction('changeShape');
+          //         e.diagram.model.setDataProperty(node.data, 'category', 'sensor');
+          //         e.diagram.commitTransaction('changeShape');
+          //       }
+          //       e.diagram.clearSelection();
+          //     },
+          //     cursor: 'pointer',
+          //     padding: new go.Margin(6, 12, 6, 12),
+          //     background: 'rgba(255, 255, 255, 0)',
+          //     mouseEnter: (e, obj) => {
+          //       obj.background = 'rgba(255, 255, 255, 0.1)';
+          //     },
+          //     mouseLeave: (e, obj) => {
+          //       obj.background = 'rgba(255, 255, 255, 0)';
+          //     }
+          //   },
+          //   go.GraphObject.make(go.TextBlock,
+          //     {
+          //       font: '13px sans-serif',
+          //       stroke: '#ffffff',
+          //       text: 'Change Shape'
+          //     }
+          //   )
+          // )
         )
       )
-    );
+    )
+  );
+
+  // Define a reusable tooltip template for all nodes
+  // This can be extended later for menu functionality
+  const tooltipTemplate = go.GraphObject.make(
+    go.Adornment,
+    'Auto',
+    {
+      isShadowed: true,
+      shadowColor: 'rgba(0, 0, 0, 0.5)',
+      shadowBlur: 10,
+      shadowOffset: new go.Point(0, 3),
+    },
+    go.GraphObject.make(
+      go.Panel,
+      'Vertical',
+      {
+        background: '#2a2a2a',
+      },
+      go.GraphObject.make(
+        go.TextBlock,
+        {
+          font: 'bold 14px sans-serif',
+          stroke: '#ffffff',
+          margin: new go.Margin(8, 10, 4, 10),
+          textAlign: 'left',
+          maxLines: 2,
+          overflow: go.TextOverflow.Ellipsis,
+          width: 250,
+        },
+        new go.Binding('text', 'name')
+      ),
+      go.GraphObject.make(go.Shape, {
+        figure: 'Rectangle',
+        height: 1,
+        width: 250,
+        stroke: '#4a4a4a',
+        margin: new go.Margin(0, 0, 4, 0),
+      }),
+      go.GraphObject.make(
+        go.Panel,
+        'Table',
+        {
+          defaultColumnSeparatorStroke: 'transparent',
+          defaultRowSeparatorStroke: '#3a3a3a',
+          defaultAlignment: go.Spot.Left,
+          padding: new go.Margin(4, 10, 8, 10),
+        },
+        go.GraphObject.make(go.RowColumnDefinition, { column: 0, width: 100 }),
+        go.GraphObject.make(go.RowColumnDefinition, { column: 1, width: 200 }),
+        // Entity ID row
+        go.GraphObject.make(go.TextBlock, {
+          column: 0,
+          row: 0,
+          font: '11px sans-serif',
+          stroke: '#aaaaaa',
+          text: 'Entity ID:',
+          margin: new go.Margin(0, 8, 4, 0),
+        }),
+        go.GraphObject.make(
+          go.TextBlock,
+          {
+            column: 1,
+            row: 0,
+            font: '11px sans-serif',
+            stroke: '#ffffff',
+            maxLines: 1,
+            overflow: go.TextOverflow.Ellipsis,
+            margin: new go.Margin(0, 0, 4, 0),
+          },
+          new go.Binding('text', 'key', key => key || 'N/A')
+        ),
+        // State row
+        go.GraphObject.make(go.TextBlock, {
+          column: 0,
+          row: 1,
+          font: '11px sans-serif',
+          stroke: '#aaaaaa',
+          text: 'State:',
+          margin: new go.Margin(0, 8, 4, 0),
+        }),
+        go.GraphObject.make(
+          go.TextBlock,
+          {
+            column: 1,
+            row: 1,
+            font: 'bold 11px sans-serif',
+            stroke: '#4CAF50',
+            margin: new go.Margin(0, 0, 4, 0),
+          },
+          new go.Binding('text', 'state', state => state || 'unknown')
+        ),
+        // Category row
+        go.GraphObject.make(go.TextBlock, {
+          column: 0,
+          row: 2,
+          font: '11px sans-serif',
+          stroke: '#aaaaaa',
+          text: 'Category:',
+          margin: new go.Margin(0, 8, 4, 0),
+        }),
+        go.GraphObject.make(
+          go.TextBlock,
+          {
+            column: 1,
+            row: 2,
+            font: '11px sans-serif',
+            stroke: '#ffffff',
+            margin: new go.Margin(0, 0, 4, 0),
+          },
+          new go.Binding('text', 'category', cat => cat || 'sensor')
+        ),
+        // Status row (if available, for cameras)
+        go.GraphObject.make(
+          go.TextBlock,
+          {
+            column: 0,
+            row: 3,
+            font: '11px sans-serif',
+            stroke: '#aaaaaa',
+            text: 'Status:',
+            margin: new go.Margin(0, 8, 4, 0),
+            visible: false,
+          },
+          new go.Binding('visible', 'status', status => !!status)
+        ),
+        go.GraphObject.make(
+          go.TextBlock,
+          {
+            column: 1,
+            row: 3,
+            font: '11px sans-serif',
+            stroke: '#2196F3',
+            margin: new go.Margin(0, 0, 4, 0),
+            visible: false,
+          },
+          new go.Binding('text', 'status', status => status || 'N/A'),
+          new go.Binding('visible', 'status', status => !!status)
+        )
+      )
+    )
+  );
 
   // Helper function to create icon display
   function createIconDisplay() {
     return new go.Picture({
       name: 'ICON',
       source: '', // Empty string instead of null
-      imageStretch: go.GraphObject.Uniform
+      imageStretch: go.GraphObject.Uniform,
     })
-    .bind(new go.Binding('source', 'icon', ((iconName, pictureObj) => {
-      try {
-        // In GoJS binding: pictureObj is the Picture itself
-        // To get the Node's data, we need to go up: pictureObj.part.data
-        const node = pictureObj ? pictureObj.part : null;
-        if (!node?.data) {
-          return '';
-        }
-        
-        const data = node.data;
-        
-        // Get icon name from parameter (binding value)
-        const icon = iconName || data.icon || '';
-        if (!icon) {
-          return '';
-        }
-        
-        const path = getMDIIconPath(icon);
-        if (!path) {
-          return '';
-        }
-        
-        // Get color based on entity state - read from data
-        const entityId = data.key || '';
-        const entityState = data.state || '';
-        const color = getIconColor(entityId, entityState, icon);
-        const svgUri = createIconSVG(path, color, 24);
-        
-        return svgUri || '';
-      } catch (error) {
-        return '';
-      }
-    })))
-    .bind('width', 'size', (size) => {
-      if (!size) return 50;
-      const nodeWidth = parseFloat(size.split(' ')[0]);
-      return Math.max(24, nodeWidth * 0.6);
-    })
-    .bind('height', 'size', (size) => {
-      if (!size) return 50;
-      const nodeWidth = parseFloat(size.split(' ')[0]);
-      return Math.max(24, nodeWidth * 0.6);
-    })
-    .bind('visible', 'source', (source) => source && source !== '');
+      .bind(
+        new go.Binding('source', 'icon', (iconName, pictureObj) => {
+          try {
+            // In GoJS binding: pictureObj is the Picture itself
+            // To get the Node's data, we need to go up: pictureObj.part.data
+            const node = pictureObj ? pictureObj.part : null;
+            if (!node?.data) {
+              return '';
+            }
+
+            const data = node.data;
+
+            // Get icon name from parameter (binding value)
+            const icon = iconName || data.icon || '';
+            if (!icon) {
+              return '';
+            }
+
+            const path = getMDIIconPath(icon);
+            if (!path) {
+              return '';
+            }
+
+            // Get color based on entity state - read from data
+            const entityId = data.key || '';
+            const entityState = data.state || '';
+            const color = getIconColor(entityId, entityState, icon);
+            const svgUri = createIconSVG(path, color, 24);
+
+            return svgUri || '';
+          } catch (error) {
+            return '';
+          }
+        })
+      )
+      .bind('width', 'size', size => {
+        if (!size) return 50;
+        const nodeWidth = parseFloat(size.split(' ')[0]);
+        return Math.max(24, nodeWidth * 0.6);
+      })
+      .bind('height', 'size', size => {
+        if (!size) return 50;
+        const nodeWidth = parseFloat(size.split(' ')[0]);
+        return Math.max(24, nodeWidth * 0.6);
+      })
+      .bind('visible', 'source', source => source && source !== '');
   }
 
   // Template for sensors - shows icon (numeric values displayed via Vue overlay)
-  diagram.nodeTemplateMap.add('sensor',
+  diagram.nodeTemplateMap.add(
+    'sensor',
     new go.Node('Vertical', {
       resizable: true,
       selectable: true,
       minSize: new go.Size(60, 80),
       maxSize: new go.Size(1000, 1000),
       padding: new go.Margin(4, 4, 4, 4),
-      defaultAlignment: go.Spot.Center
-    }).set({ 
-      toolTip: tooltipTemplate,
-      selectionAdornmentTemplate
+      defaultAlignment: go.Spot.Center,
     })
+      .set({
+        toolTip: tooltipTemplate,
+        selectionAdornmentTemplate,
+      })
       .add(createIconDisplay())
   );
 
   // Template for doors - shows name and open/closed state (resizable)
-  diagram.nodeTemplateMap.add('door',
+  diagram.nodeTemplateMap.add(
+    'door',
     new go.Node('Vertical', {
       resizable: true,
       selectable: true,
       minSize: new go.Size(50, 50),
       maxSize: new go.Size(1000, 1000),
-      padding: new go.Margin(4, 4, 4, 4)
-    }).set({ 
-      toolTip: tooltipTemplate,
-      selectionAdornmentTemplate
+      padding: new go.Margin(4, 4, 4, 4),
     })
+      .set({
+        toolTip: tooltipTemplate,
+        selectionAdornmentTemplate,
+      })
       .add(createIconDisplay())
   );
 
   // Template for cameras - shows name and status (resizable)
-  diagram.nodeTemplateMap.add('camera',
+  diagram.nodeTemplateMap.add(
+    'camera',
     new go.Node('Vertical', {
       resizable: true,
       selectable: true,
       minSize: new go.Size(50, 50),
       maxSize: new go.Size(1000, 1000),
-      padding: new go.Margin(4, 4, 4, 4)
-    }).set({ 
-      toolTip: tooltipTemplate,
-      selectionAdornmentTemplate
+      padding: new go.Margin(4, 4, 4, 4),
     })
+      .set({
+        toolTip: tooltipTemplate,
+        selectionAdornmentTemplate,
+      })
       .add(createIconDisplay())
   );
 
   // Default template (resizable)
-  diagram.nodeTemplate =
-    new go.Node('Vertical', {
-      resizable: true,
-      selectable: true,
-      minSize: new go.Size(40, 40),
-      maxSize: new go.Size(1000, 1000),
-      padding: new go.Margin(4, 4, 4, 4)
-    }).set({ 
+  diagram.nodeTemplate = new go.Node('Vertical', {
+    resizable: true,
+    selectable: true,
+    minSize: new go.Size(40, 40),
+    maxSize: new go.Size(1000, 1000),
+    padding: new go.Margin(4, 4, 4, 4),
+  })
+    .set({
       toolTip: tooltipTemplate,
-      selectionAdornmentTemplate
+      selectionAdornmentTemplate,
     })
-      .add(createIconDisplay());
+    .add(createIconDisplay());
 }
 
 /**
@@ -943,9 +982,9 @@ async function testHAConnection(config: HAConfig): Promise<any> {
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      'Authorization': `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json'
-    }
+      Authorization: `Bearer ${config.accessToken}`,
+      'Content-Type': 'application/json',
+    },
   });
 
   if (!response.ok) {
@@ -965,30 +1004,30 @@ function initPalette() {
     // We'll initialize it later when the sidebar becomes visible
     return;
   }
-  
+
   // Check if palette already exists and clean it up
   if (palette) {
     palette.div = null;
   }
-  
+
   palette = new go.Palette('paletteDiv');
-  
+
   // Use the same node templates as the diagram
   definePaletteTemplates();
-  
+
   // Set palette to use list layout for better organization (single column)
   palette.layout = new go.GridLayout({
     wrappingColumn: 1,
     cellSize: new go.Size(NaN, NaN), // Auto-size based on content
-    spacing: new go.Size(0, 4) // Small vertical spacing between items
+    spacing: new go.Size(0, 4), // Small vertical spacing between items
   });
-  
+
   // Make sure palette allows dragging
   palette.allowDragOut = true;
-  
+
   // Override the copy function to preserve entityId
   const originalCopyNodeData = go.Node.prototype.copyNodeData;
-  go.Node.prototype.copyNodeData = function(data) {
+  go.Node.prototype.copyNodeData = function (data) {
     const copy = originalCopyNodeData.call(this, data);
     // Preserve entityId when copying from palette
     if (data.entityId) {
@@ -1007,11 +1046,11 @@ function definePaletteTemplates() {
     return new go.Node('Horizontal', {
       padding: new go.Margin(6, 6, 6, 6),
       minSize: new go.Size(250, 55),
-      maxSize: new go.Size(NaN, NaN)
-    })
-      .add(
-        // Icon on the left (MDI icon or fallback shape)
-        new go.Panel('Auto').add(
+      maxSize: new go.Size(NaN, NaN),
+    }).add(
+      // Icon on the left (MDI icon or fallback shape)
+      new go.Panel('Auto')
+        .add(
           // Fallback shape (hidden if icon exists)
           new go.Shape('Circle', {
             name: 'FALLBACK_SHAPE',
@@ -1020,71 +1059,70 @@ function definePaletteTemplates() {
             strokeWidth: 2,
             width: iconSize,
             height: iconSize,
-            visible: false
-          })
-          .bind('visible', 'icon', (icon) => !icon || !getMDIIconPath(icon)),
+            visible: false,
+          }).bind('visible', 'icon', icon => !icon || !getMDIIconPath(icon)),
           // MDI Icon picture
           new go.Picture({
             name: 'PALETTE_ICON',
             source: '', // Empty string instead of null
             width: iconSize,
             height: iconSize,
-            imageStretch: go.GraphObject.Uniform
+            imageStretch: go.GraphObject.Uniform,
           })
-          .bind('source', 'icon', (iconName) => {
-            if (!iconName) return '';
-            const path = getMDIIconPath(iconName);
-            if (!path) return '';
-            return createIconSVG(path, '#ffffff', iconSize);
-          })
-          .bind('visible', 'source', (source) => source && source !== '')
-        ).set({
+            .bind('source', 'icon', iconName => {
+              if (!iconName) return '';
+              const path = getMDIIconPath(iconName);
+              if (!path) return '';
+              return createIconSVG(path, '#ffffff', iconSize);
+            })
+            .bind('visible', 'source', source => source && source !== '')
+        )
+        .set({
           alignment: go.Spot.Center,
-          margin: new go.Margin(0, 10, 0, 0)
+          margin: new go.Margin(0, 10, 0, 0),
         }),
-        // Text content on the right
-        new go.Panel('Vertical', {
-          alignment: go.Spot.Left,
-          defaultAlignment: go.Spot.Left
-        })
-          .add(
-            // Name (larger, bold)
-            new go.TextBlock({
-              font: '13px sans-serif',
-              stroke: '#ffffff',
-              fontWeight: 'bold',
-              textAlign: 'left',
-              maxLines: 1,
-              overflow: go.TextOverflow.Ellipsis,
-              width: 180
-            }).bind('text', 'name'),
-            // Entity ID / Description (smaller, gray)
-            new go.TextBlock({
-              font: '10px sans-serif',
-              stroke: '#aaaaaa',
-              textAlign: 'left',
-              maxLines: 1,
-              overflow: go.TextOverflow.Ellipsis,
-              width: 180
-            }).bind('text', 'entityId', (id) => id || ''),
-            // Current state/value (medium, colored)
-            new go.TextBlock({
-              font: '11px sans-serif',
-              stroke: '#4CAF50',
-              textAlign: 'left',
-              maxLines: 1,
-              overflow: go.TextOverflow.Ellipsis,
-              width: 180
-            }).bind('text', 'state', (val) => val ? `State: ${val}` : '')
-          )
-      );
+      // Text content on the right
+      new go.Panel('Vertical', {
+        alignment: go.Spot.Left,
+        defaultAlignment: go.Spot.Left,
+      }).add(
+        // Name (larger, bold)
+        new go.TextBlock({
+          font: '13px sans-serif',
+          stroke: '#ffffff',
+          fontWeight: 'bold',
+          textAlign: 'left',
+          maxLines: 1,
+          overflow: go.TextOverflow.Ellipsis,
+          width: 180,
+        }).bind('text', 'name'),
+        // Entity ID / Description (smaller, gray)
+        new go.TextBlock({
+          font: '10px sans-serif',
+          stroke: '#aaaaaa',
+          textAlign: 'left',
+          maxLines: 1,
+          overflow: go.TextOverflow.Ellipsis,
+          width: 180,
+        }).bind('text', 'entityId', id => id || ''),
+        // Current state/value (medium, colored)
+        new go.TextBlock({
+          font: '11px sans-serif',
+          stroke: '#4CAF50',
+          textAlign: 'left',
+          maxLines: 1,
+          overflow: go.TextOverflow.Ellipsis,
+          width: 180,
+        }).bind('text', 'state', val => (val ? `State: ${val}` : ''))
+      )
+    );
   };
-  
+
   // All palette templates use the same template with dynamic icons
   palette.nodeTemplateMap.add('sensor', createHorizontalTemplate());
   palette.nodeTemplateMap.add('door', createHorizontalTemplate());
   palette.nodeTemplateMap.add('camera', createHorizontalTemplate());
-  
+
   // Default template
   palette.nodeTemplate = createHorizontalTemplate();
 }
@@ -1098,9 +1136,9 @@ async function loadEntities(config: HAConfig): Promise<void> {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Content-Type': 'application/json'
-      }
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) {
@@ -1108,7 +1146,7 @@ async function loadEntities(config: HAConfig): Promise<void> {
     }
 
     const states = await response.json();
-    
+
     // Filter entities and store for palette
     const paletteNodes = [];
     const excludedPatterns = [
@@ -1119,22 +1157,22 @@ async function loadEntities(config: HAConfig): Promise<void> {
       /^sensor\.last_boot/,
       /^sensor\.hostname/,
     ];
-    
-    states.forEach((state) => {
+
+    states.forEach(state => {
       const entityId = state.entity_id;
-      
+
       // Skip excluded sensors
       if (excludedPatterns.some(pattern => pattern.test(entityId))) {
         return;
       }
-      
+
       // Extract domain (first part before dot)
       const domain = entityId.split('.')[0];
-      
+
       // Determine category and domain mapping
       let category = null;
       let entityDomain = domain;
-      
+
       // Map to visual categories
       if (entityId.startsWith('binary_sensor.door') || entityId.includes('door')) {
         category = 'door';
@@ -1168,20 +1206,20 @@ async function loadEntities(config: HAConfig): Promise<void> {
       // Add all relevant entities (no filtering by category here - we'll filter when displaying)
       if (category) {
         const friendlyName = state.attributes.friendly_name || entityId.replace(/^[^.]+\./, '');
-        
+
         // Store entity info for later use
         allEntities.push({
           entityId,
           category,
           domain: entityDomain,
           friendlyName,
-          state
+          state,
         });
-        
+
         // Extract icon from HA or use default
-        const iconName = extractIconFromHA(state) || 
-                        getDefaultIcon(entityDomain, state.attributes.device_class);
-        
+        const iconName =
+          extractIconFromHA(state) || getDefaultIcon(entityDomain, state.attributes.device_class);
+
         // Add to palette (with negative keys so they don't conflict)
         paletteNodes.push({
           key: -Math.abs(entityId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)),
@@ -1192,7 +1230,7 @@ async function loadEntities(config: HAConfig): Promise<void> {
           state: state.state,
           status: state.attributes.status || null,
           icon: iconName, // Store MDI icon name
-          deviceClass: state.attributes.device_class || null
+          deviceClass: state.attributes.device_class || null,
         });
       }
     });
@@ -1201,12 +1239,11 @@ async function loadEntities(config: HAConfig): Promise<void> {
     window.allEntitiesForFiltering = paletteNodes;
     // Also expose allEntities globally for EntityInfoPanel
     window.allEntities = allEntities;
-    
+
     // Filter and populate palette based on current filter
     filterAndUpdatePalette();
-    
-    addEvent(`Loaded ${paletteNodes.length} entities in palette`, 'info');
 
+    addEvent(`Loaded ${paletteNodes.length} entities in palette`, 'info');
   } catch (error) {
     addEvent(`Error loading sensors: ${error.message}`, 'error');
     console.error('Error loading sensors:', error);
@@ -1218,16 +1255,16 @@ async function loadEntities(config: HAConfig): Promise<void> {
  */
 function filterAndUpdatePalette() {
   if (!window.allEntitiesForFiltering || !palette) return;
-  
+
   let filteredNodes = [...window.allEntitiesForFiltering];
-  
+
   // Filter by domain
   if (currentEntityFilter !== 'all') {
     filteredNodes = filteredNodes.filter(node => {
       return node.domain === currentEntityFilter;
     });
   }
-  
+
   // Filter by search query (case-insensitive)
   if (currentSearchQuery && currentSearchQuery.trim()) {
     const query = currentSearchQuery.toLowerCase().trim();
@@ -1237,7 +1274,7 @@ function filterAndUpdatePalette() {
       return name.includes(query) || entityId.includes(query);
     });
   }
-  
+
   // Update palette with filtered nodes
   palette.model = new go.GraphLinksModel(filteredNodes, []);
 }
@@ -1247,28 +1284,28 @@ function filterAndUpdatePalette() {
  */
 async function loadPlacedEntities(config: HAConfig): Promise<void> {
   isLoadingEntities = true; // Prevent saves during load
-  
+
   const savedEntities = loadSavedEntities();
   const savedPositions = loadPositions();
-  
+
   console.log('loadPlacedEntities: Found', savedEntities.length, 'saved entities');
   console.log('Saved entities:', savedEntities);
-  
+
   if (savedEntities.length === 0) {
     addEvent('No saved entities found. Drag entities from the palette to add them.', 'info');
     isLoadingEntities = false;
     return;
   }
-  
+
   // Fetch current states for placed entities
   try {
     const url = `${getApiBaseUrl(config)}/states`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Content-Type': 'application/json'
-      }
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) {
@@ -1278,7 +1315,7 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
 
     const states = await response.json();
     const stateMap = new Map(states.map(s => [s.entity_id, s]));
-    
+
     // Create nodes for saved entities
     const nodes = [];
     savedEntities.forEach(entityId => {
@@ -1287,11 +1324,11 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
         console.warn('State not found for entity:', entityId);
         return;
       }
-      
+
       // Determine category and domain (must match logic in loadEntities)
       let category = null;
       let entityDomain = entityId.split('.')[0];
-      
+
       if (entityId.startsWith('binary_sensor.door') || entityId.includes('door')) {
         category = 'door';
         entityDomain = 'binary_sensor';
@@ -1320,18 +1357,18 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
         category = 'sensor'; // Use sensor template
         entityDomain = 'device_tracker';
       }
-      
+
       if (!category) {
         console.warn('No category for entity:', entityId);
         return;
       }
-      
+
       const friendlyName = state.attributes.friendly_name || entityId.replace(/^[^.]+\./, '');
-      
+
       // Extract icon from HA or use default
-      const iconName = extractIconFromHA(state) || 
-                      getDefaultIcon(entityDomain, state.attributes.device_class);
-      
+      const iconName =
+        extractIconFromHA(state) || getDefaultIcon(entityDomain, state.attributes.device_class);
+
       // Get saved location and validate it
       let location = savedPositions[entityId] || '100 100';
       if (typeof location === 'string') {
@@ -1342,15 +1379,15 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
           location = '100 100';
         }
       }
-      
+
       // Get saved size if available
       const savedSizes = loadSizes();
       const savedSize = savedSizes[entityId] || null;
-      
+
       // Get saved icon if available
       const savedIcons = loadIcons();
       const savedIcon = savedIcons[entityId];
-      
+
       // Get saved actions if available
       let savedActionData = {};
       try {
@@ -1360,7 +1397,7 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
         console.warn('Error loading actions for', entityId, ':', error);
         savedActionData = {};
       }
-      
+
       const nodeData = {
         key: entityId,
         category,
@@ -1372,24 +1409,24 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
         icon: savedIcon || iconName, // Use saved icon or HA icon
         deviceClass: state.attributes.device_class || null,
         tapAction: savedActionData.tapAction || null, // Load saved tap action
-        holdAction: savedActionData.holdAction || null // Load saved hold action
+        holdAction: savedActionData.holdAction || null, // Load saved hold action
       };
-      
+
       nodes.push(nodeData);
     });
-    
+
     console.log('Loading', nodes.length, 'entities onto diagram');
     if (nodes.length > 0) {
       console.log('First node sample:', JSON.stringify(nodes[0], null, 2));
     }
-    
+
     // Update diagram with placed entities (this will trigger model changes, so we're already flagged)
     if (nodes.length > 0) {
       try {
         diagram.model = new go.GraphLinksModel(nodes, []);
         console.log('Diagram model updated with', nodes.length, 'nodes');
         console.log('Diagram now has', diagram.nodes.count, 'nodes visible');
-        
+
         // Check if nodes are actually in the diagram
         const nodeCount = diagram.nodes.count;
         if (nodeCount === 0) {
@@ -1403,17 +1440,17 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
     } else {
       console.warn('No nodes to add to diagram');
     }
-    
+
     // After model is set, update node positions from saved locations
     // This ensures positions are correctly applied even if they were saved as strings
     setTimeout(() => {
       diagram.startTransaction('applyPositions');
       let positionsUpdated = false;
-      
+
       // First, migrate any negative key positions to entityId keys
       const migratedPositions = { ...savedPositions };
       const negativeKeys = Object.keys(savedPositions).filter(k => k.toString().startsWith('-'));
-      
+
       if (negativeKeys.length > 0) {
         // For each negative key, try to find matching entity
         negativeKeys.forEach(negKey => {
@@ -1423,7 +1460,7 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
           diagram.nodes.each(node => {
             const nodeData = node.data;
             const entityId = nodeData.entityId || nodeData.key;
-            
+
             // If this entity doesn't have a position yet, and we have a negative key position,
             // and this is the only node without a position, assign it
             if (!migratedPositions[entityId] && typeof entityId === 'string') {
@@ -1435,18 +1472,18 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
             }
           });
         });
-        
+
         // Save migrated positions
         localStorage.setItem(STORAGE_KEY_POSITIONS, JSON.stringify(migratedPositions));
       }
-      
+
       // Also load saved sizes
       const savedSizes = loadSizes();
-      
+
       diagram.nodes.each(node => {
         const key = node.data.key;
         const savedLoc = migratedPositions[key];
-        
+
         if (savedLoc && typeof savedLoc === 'string') {
           const [x, y] = savedLoc.split(' ').map(Number);
           if (!isNaN(x) && !isNaN(y)) {
@@ -1458,9 +1495,14 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
             console.warn('Invalid position for', key, ':', savedLoc);
           }
         } else {
-          console.warn('No saved position found for', key, 'Available keys:', Object.keys(migratedPositions));
+          console.warn(
+            'No saved position found for',
+            key,
+            'Available keys:',
+            Object.keys(migratedPositions)
+          );
         }
-        
+
         // Apply saved size if available
         const savedSize = savedSizes[key];
         if (savedSize && typeof savedSize === 'string') {
@@ -1476,25 +1518,31 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
           }
         }
       });
-      
+
       diagram.commitTransaction('applyPositions');
-      
+
       console.log('After applying positions, diagram has', diagram.nodes.count, 'nodes');
-      
+
       // Verify nodes are visible and positioned correctly
       let visibleCount = 0;
       diagram.nodes.each(node => {
         const bounds = node.actualBounds;
-        console.log('Node:', node.data.key || node.data.name, 
-                    'Location:', node.location.toString(), 
-                    'Bounds:', bounds.toString(),
-                    'Visible:', bounds.width > 0 && bounds.height > 0);
+        console.log(
+          'Node:',
+          node.data.key || node.data.name,
+          'Location:',
+          node.location.toString(),
+          'Bounds:',
+          bounds.toString(),
+          'Visible:',
+          bounds.width > 0 && bounds.height > 0
+        );
         if (bounds.width > 0 && bounds.height > 0) {
           visibleCount++;
         }
       });
       console.log('Visible nodes:', visibleCount, 'out of', diagram.nodes.count);
-      
+
       // Save positions after fixing them (with proper entityId keys)
       // This ensures all positions use entityId keys, not negative keys
       if (positionsUpdated) {
@@ -1503,11 +1551,10 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
         }, 200);
       }
     }, 200);
-    
+
     addEvent(`Loaded ${nodes.length} placed entities`, 'success');
-    
+
     // Note: isLoadingEntities will be set to false by the caller after this completes
-    
   } catch (error) {
     console.error('Error loading placed entities:', error);
     isLoadingEntities = false;
@@ -1520,12 +1567,12 @@ async function loadPlacedEntities(config: HAConfig): Promise<void> {
 function setupDragDrop() {
   // Use CommandHandler to intercept copy operations from palette
   const cmdHandler = diagram.commandHandler;
-  
+
   // Override copySelection to handle palette drops
   const originalCopySelection = cmdHandler.copySelection.bind(cmdHandler);
-  cmdHandler.copySelection = function() {
+  cmdHandler.copySelection = function () {
     const result = originalCopySelection();
-    
+
     // After copy, check if any nodes need entityId -> key conversion
     setTimeout(() => {
       diagram.nodes.each(node => {
@@ -1533,31 +1580,31 @@ function setupDragDrop() {
         if (nodeData?.entityId && nodeData.key !== nodeData.entityId) {
           const entityId = nodeData.entityId;
           const entityInfo = allEntities.find(e => e.entityId === entityId);
-          
+
           if (entityInfo) {
             // Check if this node already has the correct key (avoid duplicate processing)
             if (nodeData.key === entityId) {
               return; // Already processed
             }
-            
+
             // Update with proper key and entity info
             diagram.startTransaction('fixPaletteNode');
-            
+
             diagram.model.setDataProperty(nodeData, 'key', entityId);
             diagram.model.setDataProperty(nodeData, 'name', entityInfo.friendlyName);
             diagram.model.setDataProperty(nodeData, 'state', entityInfo.state.state);
             if (entityInfo.state.attributes.status) {
               diagram.model.setDataProperty(nodeData, 'status', entityInfo.state.attributes.status);
             }
-            
+
             // Get location from the node
             const loc = node.location;
             diagram.model.setDataProperty(nodeData, 'loc', `${loc.x} ${loc.y}`);
-            
+
             diagram.commitTransaction('fixPaletteNode');
-            
+
             addEvent(`Added ${entityInfo.friendlyName}`, 'success');
-            
+
             // Save after transaction
             setTimeout(() => {
               savePlacedEntities();
@@ -1567,12 +1614,12 @@ function setupDragDrop() {
         }
       });
     }, 100);
-    
+
     return result;
   };
-  
+
   // Also listen for external drops as backup
-  diagram.addDiagramListener('ExternalObjectsDropped', (e) => {
+  diagram.addDiagramListener('ExternalObjectsDropped', e => {
     setTimeout(() => {
       diagram.nodes.each(node => {
         const nodeData = node.data;
@@ -1580,29 +1627,31 @@ function setupDragDrop() {
           const entityId = nodeData.entityId;
           if (nodeData.key !== entityId) {
             const entityInfo = allEntities.find(e => e.entityId === entityId);
-            
+
             if (entityInfo) {
               // Remember the old key and position before updating
               const oldKey = nodeData.key;
               const loc = node.location;
-              
+
               // Start a transaction to avoid "Change not within a transaction" error
               diagram.startTransaction('updateEntity');
-              
+
               diagram.model.setDataProperty(nodeData, 'key', entityId);
               diagram.model.setDataProperty(nodeData, 'name', entityInfo.friendlyName);
               diagram.model.setDataProperty(nodeData, 'loc', `${loc.x} ${loc.y}`);
-              
+
               // Set default size if not present
               if (!nodeData.size) {
-                const defaultSize = node.location ? `${node.location.x} ${node.location.y}` : '40 40';
+                const defaultSize = node.location
+                  ? `${node.location.x} ${node.location.y}`
+                  : '40 40';
                 // Actually, get the actual node size
-                const actualSize = `${node.actualBounds.width  } ${  node.actualBounds.height}`;
+                const actualSize = `${node.actualBounds.width} ${node.actualBounds.height}`;
                 diagram.model.setDataProperty(nodeData, 'size', actualSize);
               }
-              
+
               diagram.commitTransaction('updateEntity');
-              
+
               // Immediately save position with correct entityId key
               // This must happen BEFORE any other save calls, right after changing the key
               if (typeof oldKey === 'number' && oldKey < 0) {
@@ -1619,13 +1668,16 @@ function setupDragDrop() {
                 }
                 // Also remove any other negative keys for this entityId
                 Object.keys(existingPositions).forEach(key => {
-                  if (key.startsWith('-') && existingPositions[key] === existingPositions[entityId]) {
+                  if (
+                    key.startsWith('-') &&
+                    existingPositions[key] === existingPositions[entityId]
+                  ) {
                     delete existingPositions[key];
                   }
                 });
                 localStorage.setItem(STORAGE_KEY_POSITIONS, JSON.stringify(existingPositions));
               }
-              
+
               // Save after transaction completes
               setTimeout(() => {
                 savePlacedEntities();
@@ -1648,9 +1700,9 @@ async function updateSensorStates(config: HAConfig): Promise<void> {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Content-Type': 'application/json'
-      }
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) return;
@@ -1669,7 +1721,7 @@ async function updateSensorStates(config: HAConfig): Promise<void> {
           model.setDataProperty(nodeData, 'status', state.attributes.status);
         }
         model.setDataProperty(nodeData, 'lastUpdated', state.last_updated);
-        
+
         // Force icon refresh by re-setting the icon property
         // This triggers the binding to re-evaluate with the new state
         if (nodeData.icon) {
@@ -1683,37 +1735,32 @@ async function updateSensorStates(config: HAConfig): Promise<void> {
       }
     });
     diagram.commitTransaction('updateStates');
-
   } catch (error) {
     console.error('Error updating states:', error);
   }
 }
 
 /**
- * Add an event to the event log
+ * Add an event to the console log
  */
 function addEvent(message: string, type: string = 'info'): void {
   const timestamp = new Date().toLocaleTimeString();
-  eventLog.unshift({ timestamp, message, type });
-  
-  // Keep only last 50 events
-  if (eventLog.length > 50) {
-    eventLog.pop();
-  }
+  const logMessage = `[${timestamp}] ${message}`;
 
-  // Update UI
-  const eventLogDiv = document.getElementById('eventLog');
-  if (eventLogDiv) {
-    eventLogDiv.innerHTML = eventLog.map(event => `
-      <div class="event-item" style="border-left: 3px solid ${
-        event.type === 'error' ? '#f44336' :
-        event.type === 'success' ? '#4CAF50' :
-        event.type === 'warning' ? '#ff9800' : '#2196F3'
-      }">
-        <div class="event-time">${event.timestamp}</div>
-        <div>${event.message}</div>
-      </div>
-    `).join('');
+  // Log to console based on type
+  switch (type) {
+    case 'error':
+      console.error(logMessage);
+      break;
+    case 'warning':
+      console.warn(logMessage);
+      break;
+    case 'success':
+      console.log(`✅ ${logMessage}`);
+      break;
+    default:
+      console.log(logMessage);
+      break;
   }
 }
 
@@ -1747,7 +1794,7 @@ function setBackgroundImage(imageUrl, width, height) {
     layerName: 'Background',
     pickable: false,
     selectable: false,
-    isLayoutPositioned: false
+    isLayoutPositioned: false,
   });
 
   const backgroundShape = new go.Picture();
@@ -1766,7 +1813,7 @@ function setBackgroundImage(imageUrl, width, height) {
   if (savedScale) {
     diagram.scale = savedScale;
   }
-  
+
   // Wait a bit for scale to apply, then restore scroll position or center
   setTimeout(() => {
     // Try to restore scroll position
@@ -1804,12 +1851,12 @@ function fitDiagramToViewport(width, height) {
 
   // Scale to fit width (since image is very tall)
   const scale = viewportWidth / width;
-  
+
   // Don't scale up beyond 100%
   const finalScale = Math.min(scale, 1);
 
   diagram.scale = finalScale;
-  
+
   // Center the diagram vertically and horizontally
   diagram.centerRect(new go.Rect(0, 0, width, height));
 }
@@ -1833,14 +1880,14 @@ function saveSizes() {
   if (!diagram?.model) return;
 
   const sizes = {};
-  
+
   diagram.nodes.each(node => {
     const nodeData = node.data;
     const key = nodeData.entityId || nodeData.key;
-    
+
     if (key && typeof key === 'string') {
       // Read from data.size first (most accurate), fallback to actualBounds
-      const size = nodeData.size || (`${node.actualBounds.width  } ${  node.actualBounds.height}`);
+      const size = nodeData.size || `${node.actualBounds.width} ${node.actualBounds.height}`;
       sizes[key] = size;
     }
   });
@@ -1874,24 +1921,28 @@ function savePositions() {
   if (!diagram?.model) return;
 
   const positions = {};
-  
+
   // Load existing positions to preserve old ones during key changes
   const existingPositions = loadPositions();
-  
+
   // Get positions from actual node parts in the diagram (more reliable than model data)
   diagram.nodes.each(node => {
     const nodeData = node.data;
-    
+
     // CRITICAL: Always prefer entityId over key when saving positions
     // This ensures positions are saved with entityId even if key hasn't been updated yet
     let entityId = null;
-    
+
     // Priority 1: Use entityId if available (most reliable)
     if (nodeData.entityId && typeof nodeData.entityId === 'string') {
       entityId = nodeData.entityId;
     }
     // Priority 2: Use key if it's a string (should be entityId)
-    else if (nodeData.key && typeof nodeData.key === 'string' && !nodeData.key.toString().startsWith('-')) {
+    else if (
+      nodeData.key &&
+      typeof nodeData.key === 'string' &&
+      !nodeData.key.toString().startsWith('-')
+    ) {
       entityId = nodeData.key;
     }
     // Priority 3: If key is negative, try to find entityId elsewhere or skip
@@ -1899,14 +1950,14 @@ function savePositions() {
       console.warn('Node has negative key and no entityId - cannot save position:', nodeData);
       return; // Skip nodes with negative keys and no entityId
     }
-    
+
     // Only save if we have a valid entityId
     if (entityId && typeof entityId === 'string') {
       const loc = node.location;
       // Only save valid positions (not NaN)
       if (loc && !isNaN(loc.x) && !isNaN(loc.y) && isFinite(loc.x) && isFinite(loc.y)) {
         positions[entityId] = `${loc.x} ${loc.y}`;
-        
+
         // If key was negative, migrate any old position
         if (nodeData.key && typeof nodeData.key === 'number' && nodeData.key < 0) {
           const negKey = nodeData.key.toString();
@@ -1926,7 +1977,7 @@ function savePositions() {
       positions[key] = existingPositions[key];
     }
   });
-  
+
   // Clean up old negative keys (positions should now be migrated to entityIds)
   // But don't delete them yet - wait until after all nodes are processed
   const cleanedPositions = {};
@@ -1951,13 +2002,13 @@ function savePlacedEntities() {
   if (isLoadingEntities) {
     return;
   }
-  
+
   if (!diagram?.model) {
     return;
   }
 
   const entitiesSet = new Set(); // Use Set to avoid duplicates
-  
+
   diagram.model.nodeDataArray.forEach(nodeData => {
     // Use key (entity ID) - should already be set correctly
     const entityId = nodeData.key;
@@ -1968,7 +2019,7 @@ function savePlacedEntities() {
   });
 
   const entities = Array.from(entitiesSet);
-  
+
   // CRITICAL: Never save empty arrays - this would overwrite existing saved data!
   if (entities.length === 0) {
     return;
@@ -2018,10 +2069,15 @@ function saveIcons() {
   if (isLoadingEntities || !diagram?.model) return;
 
   const icons = {};
-  
+
   diagram.model.nodeDataArray.forEach(nodeData => {
     const entityId = nodeData.key;
-    if (entityId && typeof entityId === 'string' && !entityId.toString().startsWith('-') && nodeData.icon) {
+    if (
+      entityId &&
+      typeof entityId === 'string' &&
+      !entityId.toString().startsWith('-') &&
+      nodeData.icon
+    ) {
       icons[entityId] = nodeData.icon;
     }
   });
@@ -2039,7 +2095,7 @@ function saveIcons() {
 function saveActions() {
   try {
     if (isLoadingEntities || !diagram?.model) return;
-    
+
     const actions = {};
     diagram.nodes.each(node => {
       const data = node.data;
@@ -2048,7 +2104,7 @@ function saveActions() {
         if (data.tapAction || data.holdAction) {
           actions[entityId] = {
             tapAction: data.tapAction || null,
-            holdAction: data.holdAction || null
+            holdAction: data.holdAction || null,
           };
         }
       }
@@ -2079,18 +2135,18 @@ function loadActions() {
  */
 export function changeEntityIcon(entityId: string, iconValue: string): void {
   if (!diagram || !entityId) return;
-  
+
   const nodeData = diagram.model.findNodeDataForKey(entityId);
   if (!nodeData) return;
-  
+
   // Validate icon exists in options
   const iconExists = ICON_OPTIONS.find(opt => opt.value === iconValue);
   if (!iconExists) return;
-  
+
   diagram.startTransaction('changeIcon');
   diagram.model.setDataProperty(nodeData, 'icon', iconValue);
   diagram.commitTransaction('changeIcon');
-  
+
   // Save icons to localStorage
   setTimeout(() => saveIcons(), 100);
 }
@@ -2100,7 +2156,7 @@ export function changeEntityIcon(entityId: string, iconValue: string): void {
  */
 function saveScale() {
   if (!diagram) return;
-  
+
   try {
     localStorage.setItem(STORAGE_KEY_SCALE, JSON.stringify(diagram.scale));
   } catch (e) {
@@ -2114,25 +2170,30 @@ function saveScale() {
 let hasRestoredScrollPosition = false;
 function restoreScrollPosition() {
   if (!diagram || hasRestoredScrollPosition) return false;
-  
+
   try {
     if (window.pinia?._s) {
       const uiStore = window.pinia._s.get('ui');
       if (uiStore?.scrollPosition) {
         const pos = uiStore.scrollPosition;
-        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' && (pos.x !== 0 || pos.y !== 0)) {
+        if (
+          pos &&
+          typeof pos.x === 'number' &&
+          typeof pos.y === 'number' &&
+          (pos.x !== 0 || pos.y !== 0)
+        ) {
           // Center the viewport at the saved position
           // First, ensure the point is visible by scrolling to it
           const centerPoint = new go.Point(pos.x, pos.y);
-          
+
           // Use scrollToRect to bring the area into view, then center on it
           diagram.scrollToRect(new go.Rect(pos.x - 50, pos.y - 50, 100, 100));
-          
+
           // Then center the viewport on the exact point
           setTimeout(() => {
             diagram.centerRect(new go.Rect(centerPoint.x, centerPoint.y, 0, 0));
           }, 50);
-          
+
           hasRestoredScrollPosition = true;
           return true;
         }
@@ -2171,11 +2232,11 @@ function loadPositions() {
     const saved = localStorage.getItem(STORAGE_KEY_POSITIONS);
     if (saved) {
       const parsed = JSON.parse(saved);
-      
+
       // Migrate any negative keys to entityIds if we can match them
       const cleaned = {};
       const negativeKeyPositions = {};
-      
+
       Object.keys(parsed).forEach(key => {
         if (key.toString().startsWith('-')) {
           // Store negative key positions for potential migration
@@ -2184,13 +2245,13 @@ function loadPositions() {
           cleaned[key] = parsed[key];
         }
       });
-      
+
       // If we have negative keys, try to migrate them using the diagram nodes
       if (Object.keys(negativeKeyPositions).length > 0 && diagram && diagram.nodes.count > 0) {
         diagram.nodes.each(node => {
           const nodeData = node.data;
           const entityId = nodeData.entityId || nodeData.key;
-          
+
           // If we find a node with a negative key but we know its entityId,
           // and we have a position saved with that negative key, migrate it
           if (typeof nodeData.key === 'number' && nodeData.key < 0 && nodeData.entityId) {
@@ -2200,13 +2261,13 @@ function loadPositions() {
             }
           }
         });
-        
+
         // Save the cleaned positions back
         if (Object.keys(negativeKeyPositions).length > 0) {
           localStorage.setItem(STORAGE_KEY_POSITIONS, JSON.stringify(cleaned));
         }
       }
-      
+
       return cleaned;
     }
   } catch (e) {
@@ -2215,7 +2276,5 @@ function loadPositions() {
   return {};
 }
 
-
 // Export addEvent function
 export { addEvent };
-

@@ -18,6 +18,7 @@ declare global {
     zoomIn?: () => void;
     zoomOut?: () => void;
     zoomReset?: () => void;
+    zoomToEntity?: (x: number, y: number) => void;
     getZoomLevel?: () => number;
   }
 }
@@ -34,10 +35,27 @@ const app = createApp(App);
 const pinia = createPinia();
 app.use(pinia);
 
-// Expose Pinia instance to window for dashboard.js access
+// Expose Pinia instance to window for backward compatibility
 window.pinia = pinia;
 
 app.mount('#app');
 
-// Dashboard initialization is now handled in App.vue's onMounted
+// Load entities after app is mounted
+nextTick(async () => {
+  // Import after Pinia is set up
+  const { useEntitiesStore } = await import('./stores/entities');
+  const entitiesStore = useEntitiesStore();
+  if (haConfig.address && haConfig.accessToken) {
+    try {
+      await entitiesStore.loadEntities(haConfig);
+      
+      // Set up periodic state updates
+      setInterval(() => {
+        entitiesStore.updateEntityStates(haConfig);
+      }, 5000);
+    } catch (error) {
+      console.error('Failed to load entities:', error);
+    }
+  }
+});
 

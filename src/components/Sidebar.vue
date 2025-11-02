@@ -1,49 +1,47 @@
 <template>
   <div id="sidebar" class="w-[300px] bg-[#2a2a2a] border-l border-[#3a3a3a] overflow-y-auto overflow-x-hidden flex flex-col min-w-[200px] transition-all duration-300">
-    <CollapsiblePanel
-      v-model="paletteCollapsed"
-      title="Entities"
-      icon="📋"
-      storage-key="paletteCollapsed"
-      :style="{ flex: paletteCollapsed ? '0 0 auto' : eventLogCollapsed ? '1 1 100%' : '1 1 auto' }"
-    >
-      <div>
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Search entities..."
-          class="w-full px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-sm text-white placeholder-[#666] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          @input="handleSearch"
-        />
+    <div class="flex flex-col h-full">
+      <div class="px-4 py-3 border-b border-[#3a3a3a] flex-shrink-0">
+        <h2 class="text-lg font-semibold text-white m-0">📋 Entities</h2>
       </div>
-      <EntityTabs 
-        :tabs="entityTabs" 
-        :active-tab="activeEntityTab"
-        @update:active-tab="activeEntityTab = $event"
-      />
-      <div id="paletteDiv" class="border border-[#3a3a3a] rounded bg-[#1a1a1a] min-h-0" :style="paletteHeightStyle"></div>
-    </CollapsiblePanel>
-    
-    <CollapsiblePanel
-      v-model="eventLogCollapsed"
-      title="Event Log"
-      icon="📝"
-      storage-key="eventLogCollapsed"
-      :style="{ flex: eventLogCollapsed ? '0 0 auto' : '1 1 auto' }"
-    >
-      <div id="eventLog" class="max-h-[600px] overflow-y-auto"></div>
-    </CollapsiblePanel>
+      <div class="flex-1 flex flex-col min-h-0">
+        <div class="p-4 flex-shrink-0">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search entities..."
+            class="w-full px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-sm text-white placeholder-[#666] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            @input="handleSearch"
+          />
+        </div>
+        <EntityTabs 
+          :tabs="entityTabs" 
+          :active-tab="activeEntityTab"
+          @update:active-tab="activeEntityTab = $event"
+        />
+        <div class="flex-1 overflow-y-auto min-h-0">
+          <EntityPalette
+            :entities="allEntities"
+            :filter="activeEntityTab"
+            :search-query="searchQuery"
+            @entity-selected="handleEntitySelected"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { useSidebarState } from '../composables/useSidebarState';
+import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
-import CollapsiblePanel from './CollapsiblePanel.vue';
+import { useEntitiesStore } from '../stores/entities';
 import EntityTabs from './EntityTabs.vue';
-
-const { paletteCollapsed, eventLogCollapsed } = useSidebarState();
+import EntityPalette from './EntityPalette.vue';
+import type { EntityData } from '../composables/useEntitySelection';
+const entitiesStore = useEntitiesStore();
+const { allEntities } = storeToRefs(entitiesStore);
 
 // Entity tabs state
 const [storedTab, setStoredTab] = useLocalStorage('activeEntityTab', 'all');
@@ -51,6 +49,11 @@ const activeEntityTab = ref(storedTab.value);
 
 // Search query state
 const searchQuery = ref('');
+
+function handleEntitySelected(entity: EntityData) {
+  // For now, just log - can be used to add entity directly
+  console.log('Entity selected:', entity);
+}
 
 // Debounce function for search
 let searchTimeout = null;
@@ -63,14 +66,6 @@ function handleSearch() {
   }, 300); // 300ms debounce
 }
 
-// Calculate palette height/style dynamically based on sidebar space
-const paletteHeightStyle = computed(() => {
-  if (paletteCollapsed.value) return { height: '0px', flex: '0 0 auto' };
-  // When event log is collapsed, let flex-1 class handle it; otherwise use fixed height
-  return eventLogCollapsed.value 
-    ? { flex: '1 1 auto', minHeight: 0 } 
-    : { height: '400px', flex: '0 0 auto' };
-});
 
 // Entity tabs configuration
 const entityTabs = computed(() => [

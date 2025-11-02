@@ -93,9 +93,9 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
-import * as go from 'gojs';
 import { selectedEntity, selectedEntityPosition } from '../composables/useEntitySelection';
-import { changeEntityIcon, ICON_OPTIONS } from '../dashboard';
+import { changeEntityIcon } from '../utils/entityUtils';
+import { ICON_OPTIONS } from '../utils/mdiIconList';
 import { extractIconFromHA, getDefaultIcon } from '../utils/iconUtils';
 
 const panelRef = ref(null);
@@ -264,42 +264,78 @@ function handleNavigationPathChange(event) {
 }
 
 /**
- * Convert GoJS diagram coordinates to DOM pixel coordinates
+ * Convert dashboard coordinates to DOM pixel coordinates
  */
-function diagramToDOM(diagram, point) {
-  if (!diagram) return { x: 0, y: 0 };
-  
-  const diagramDiv = document.getElementById('diagramDiv');
-  if (!diagramDiv) return { x: 0, y: 0 };
+function dashboardToDOM(x: number, y: number): { x: number; y: number } {
+  // Use the wrapper as reference, not the transformed container
+  const wrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
+  if (!wrapper) return { x: 0, y: 0 };
 
-  // Use GoJS's built-in method to convert document point to viewport point
-  const viewPoint = diagram.transformDocToView(point);
-  
-  // Get diagram div position to offset correctly
-  const divRect = diagramDiv.getBoundingClientRect();
-  
+  // Get dashboard transform
+  const scale = parseFloat(localStorage.getItem('ha_dashboard_scale') ?? '1');
+  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
+  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
+
+  // Apply transform (scale first, then pan)
+  const transformedX = (x * scale) + panX;
+  const transformedY = (y * scale) + panY;
+
+  // Get wrapper position relative to parent
+  const wrapperRect = wrapper.getBoundingClientRect();
+  const parentContainer = wrapper.parentElement;
+  if (!parentContainer) return { x: 0, y: 0 };
+
+  const parentRect = parentContainer.getBoundingClientRect();
+
+  // Position relative to parent container
   return {
-    x: divRect.left + viewPoint.x,
-    y: divRect.top + viewPoint.y
+    x: wrapperRect.left - parentRect.left + transformedX,
+    y: wrapperRect.top - parentRect.top + transformedY,
   };
 }
 
 /**
- * Get the position of the selected entity in DOM coordinates
+ * Get the position of the selected entity's label in DOM coordinates
+ * Label is positioned below the widget, so we need widget position + widget height
+ * We get position from localStorage to ensure we track the widget's actual position during drag
  */
 const domPosition = computed(() => {
-  // Access viewportUpdateTrigger to make this reactive to viewport changes
-  void viewportUpdateTrigger.value;
+  void viewportUpdateTrigger.value; // Trigger reactivity
   
-  const diagram = window.diagramInstance;
-  
-  if (!diagram || !selectedEntityPosition.value || !selectedEntity.value) {
+  if (!selectedEntity.value) {
     return { x: 0, y: 0 };
   }
 
-  // Use GoJS coordinate conversion
-  const diagramPoint = new go.Point(selectedEntityPosition.value.x, selectedEntityPosition.value.y);
-  return diagramToDOM(diagram, diagramPoint);
+  // Get widget position from localStorage (updated during drag) or fallback to selectedEntityPosition
+  const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}');
+  const savedLoc = positions[selectedEntity.value.key];
+  let widgetX: number;
+  let widgetY: number;
+  
+  if (savedLoc) {
+    const [x, y] = savedLoc.split(' ').map(Number);
+    widgetX = Number.isNaN(x) ? 0 : x;
+    widgetY = Number.isNaN(y) ? 0 : y;
+  } else if (selectedEntityPosition.value) {
+    widgetX = selectedEntityPosition.value.x;
+    widgetY = selectedEntityPosition.value.y;
+  } else {
+    return { x: 0, y: 0 };
+  }
+  
+  // Get widget height from localStorage (to position label below widget)
+  const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}');
+  const entitySize = sizes[selectedEntity.value.key] || selectedEntity.value.size || '60 80';
+  const [entityWidth, entityHeight] = entitySize.split(' ').map(Number);
+  const widgetHeight = Number.isNaN(entityHeight) ? 80 : entityHeight;
+  
+  // Label position is at widget bottom + small offset
+  const labelY = widgetY + widgetHeight + 4; // 4px margin (matches label margin-top)
+  
+  // Get center X position of widget
+  const labelX = widgetX + (Number.isNaN(entityWidth) ? 60 : entityWidth) / 2;
+  
+  return dashboardToDOM(labelX, labelY);
 });
 
 /**
@@ -310,23 +346,21 @@ const panelStyle = computed(() => {
     return { display: 'none' };
   }
 
-  const diagramDiv = document.getElementById('diagramDiv');
-  if (!diagramDiv) return { display: 'none' };
+  const dashboardDiv = document.querySelector('.dashboard-container') as HTMLElement;
+  if (!dashboardDiv) return { display: 'none' };
 
-  const divRect = diagramDiv.getBoundingClientRect();
   const panelWidth = isExpanded.value ? 320 : 'auto'; // Auto width when collapsed (fits content)
-  const offsetY = isExpanded.value ? 20 : 5; // Closer offset when collapsed (matches label position)
-
+  
   // Position relative to parent container (which has position: relative)
   // domPosition is already in screen coordinates, so we need to convert relative to parent
-  const parentContainer = diagramDiv.parentElement;
+  const parentContainer = dashboardDiv.parentElement;
   if (!parentContainer) return { display: 'none' };
   
   const parentRect = parentContainer.getBoundingClientRect();
-  // When collapsed, center based on content; when expanded, center on entity
+  // Center the panel horizontally on the label position
   const panelWidthPx = typeof panelWidth === 'number' ? panelWidth : 150; // Estimate for collapsed
   const left = domPosition.value.x - parentRect.left - (panelWidthPx / 2);
-  const top = domPosition.value.y - parentRect.top + offsetY;
+  const top = domPosition.value.y - parentRect.top;
 
   return {
     position: 'absolute',
@@ -335,7 +369,7 @@ const panelStyle = computed(() => {
     display: 'block',
     zIndex: 1000,
     pointerEvents: 'auto',
-    transition: 'all 0.2s ease',
+    transition: 'none',
     width: typeof panelWidth === 'number' ? `${panelWidth}px` : panelWidth
   };
 });
@@ -406,7 +440,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: none;
 }
 
 .panel-header.collapsed {
@@ -519,7 +553,7 @@ onUnmounted(() => {
 /* Expand/collapse animation */
 .expand-enter-active,
 .expand-leave-active {
-  transition: all 0.2s ease;
+  transition: none;
   overflow: hidden;
 }
 

@@ -47,3 +47,6 @@ export const COMMON_MDI_ICONS: MDIIconOption[] = [
   { value: 'shield', label: 'Shield' },
 ];
 
+// Export as ICON_OPTIONS for backward compatibility
+export const ICON_OPTIONS = COMMON_MDI_ICONS;
+
