@@ -10,7 +10,7 @@
   </button>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { useUIStore } from '../stores/ui';
 

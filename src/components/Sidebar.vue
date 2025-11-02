@@ -36,10 +36,10 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { useSidebarState } from '../composables/useSidebarState.js';
-import { useLocalStorage } from '../composables/useLocalStorage.js';
+import { useSidebarState } from '../composables/useSidebarState';
+import { useLocalStorage } from '../composables/useLocalStorage';
 import CollapsiblePanel from './CollapsiblePanel.vue';
 import EntityTabs from './EntityTabs.vue';
 

@@ -1,17 +1,18 @@
 import * as go from 'gojs';
-import { setSelectedEntity, clearSelection } from './composables/useEntitySelection.js';
-import { extractIconFromHA, getDefaultIcon, getMDIIconPath, createIconSVG, getIconColor } from './utils/iconUtils.js';
-// Edit mode is accessed via window.__editMode (set by Vue component) to avoid reactivity issues in non-Vue context
+import { setSelectedEntity, clearSelection, type EntityData } from './composables/useEntitySelection';
+import { extractIconFromHA, getDefaultIcon, getMDIIconPath, createIconSVG, getIconColor } from './utils/iconUtils';
+import type { HAConfig } from '../config';
+import type { HAEntityState } from './utils/iconUtils';
 
-let diagram;
-let palette;
-let eventLog = [];
-let backgroundPart = null;
-let hasBackground = false;
-let allEntities = []; // Store all available entities
-let isLoadingEntities = false; // Flag to prevent saving during initial load
-let currentEntityFilter = 'all'; // Current filter for entity types
-let currentSearchQuery = ''; // Current search query
+let diagram: go.Diagram | null = null;
+let palette: go.Palette | null = null;
+const eventLog: Array<{ message: string; type: string; timestamp: string }> = [];
+let backgroundPart: go.Part | null = null;
+let hasBackground: boolean = false;
+const allEntities: any[] = []; // Store all available entities
+let isLoadingEntities: boolean = false; // Flag to prevent saving during initial load
+let currentEntityFilter: string = 'all'; // Current filter for entity types
+let currentSearchQuery: string = ''; // Current search query
 
 // Storage keys
 const STORAGE_KEY_POSITIONS = 'ha_dashboard_positions';
@@ -27,7 +28,7 @@ const FLOORPLAN_HEIGHT = 6501;
 const FLOORPLAN_IMAGE = '/floorplan.png';
 
 // Import MDI icon list for selection
-import { COMMON_MDI_ICONS } from './utils/mdiIconList.js';
+import { COMMON_MDI_ICONS } from './utils/mdiIconList';
 
 // Export for use in components
 export const ICON_OPTIONS = COMMON_MDI_ICONS;
@@ -35,7 +36,7 @@ export const ICON_OPTIONS = COMMON_MDI_ICONS;
 /**
  * Get the API base URL - use proxy in development, direct URL in production
  */
-function getApiBaseUrl(config) {
+function getApiBaseUrl(config: HAConfig): string {
   // In development, use the Vite proxy
   if (import.meta.env.DEV) {
     return '/api';
@@ -47,7 +48,7 @@ function getApiBaseUrl(config) {
 /**
  * Initialize the dashboard with GoJS diagram
  */
-export function initDashboard(config) {
+export function initDashboard(config: HAConfig): void {
   // Set loading flag immediately to prevent saves during initialization
   isLoadingEntities = true;
   
@@ -103,7 +104,7 @@ export function initDashboard(config) {
     }, 300);
     
     // Save scroll position (viewport center) to UI store
-    if (window.pinia && window.pinia._s) {
+    if (window.pinia?._s) {
       try {
         const uiStore = window.pinia._s.get('ui');
         if (uiStore) {
@@ -150,11 +151,11 @@ export function initDashboard(config) {
       const tapAction = obj.part.data.tapAction;
       
       // If clicking on the icon/picture (name === 'ICON') and there's a tap action, execute it
-      if (obj.name === 'ICON' && tapAction && tapAction.action) {
+      if (obj.name === 'ICON' && tapAction?.action) {
         // Prevent selection - execute action instead
         (async () => {
           try {
-            const { executeTapAction } = await import('./utils/actionHandler.js');
+            const { executeTapAction } = await import('./utils/actionHandler');
             await executeTapAction(tapAction, obj.part.data, config);
           } catch (error) {
             console.error('Error executing tap action:', error);
@@ -181,7 +182,7 @@ export function initDashboard(config) {
       
       if (obj && obj.part && obj.part instanceof go.Node && obj.part.data) {
         // Check if hovering over the icon specifically
-        if (obj.name === 'ICON' && obj.part.data.tapAction && obj.part.data.tapAction.action) {
+        if (obj.name === 'ICON' && obj.part.data.tapAction?.action) {
           if (currentCursor !== 'pointer') {
             diagram.div.style.cursor = 'pointer';
             currentCursor = 'pointer';
@@ -259,7 +260,7 @@ export function initDashboard(config) {
   // Listen for when nodes are resized (fires continuously during resize)
   diagram.addDiagramListener('PartResized', (e) => {
     const part = e.subject;
-    if (part && part.data && part instanceof go.Node) {
+    if (part?.data && part instanceof go.Node) {
       // Store reference to the node being resized
       const resizedNode = part;
       
@@ -292,7 +293,7 @@ export function initDashboard(config) {
         // Wait a bit more for GoJS to finalize, then update only the resized node
         setTimeout(() => {
           // Only update the specific node that was resized, not all nodes
-          if (resizedNode && resizedNode.data && !resizedNode.isDeleted) {
+          if (resizedNode?.data && !resizedNode.isDeleted) {
             diagram.startTransaction('resizeFinalSave');
             const finalBounds = resizedNode.actualBounds;
             const finalSizeStr = `${finalBounds.width} ${finalBounds.height}`;
@@ -337,7 +338,7 @@ export function initDashboard(config) {
         const nodeData = e.newValue;
         
         // Check if this came from palette (has entityId)
-        if (nodeData && nodeData.entityId) {
+        if (nodeData?.entityId) {
           const entityId = nodeData.entityId;
           const entityInfo = allEntities.find(e => e.entityId === entityId);
           
@@ -369,7 +370,7 @@ export function initDashboard(config) {
                 
                 // Set default size if not present
                 if (!nodeData.size) {
-                  const defaultSize = part.actualBounds.width + ' ' + part.actualBounds.height;
+                  const defaultSize = `${part.actualBounds.width  } ${  part.actualBounds.height}`;
                   diagram.model.setDataProperty(nodeData, 'size', defaultSize);
                 }
               }
@@ -434,7 +435,7 @@ export function initDashboard(config) {
         isLoadingEntities = false; // Enable saves even if connection fails
       });
   } else {
-    addEvent('Please configure Home Assistant credentials in config.js', 'warning');
+    addEvent('Please configure Home Assistant credentials in config.ts', 'warning');
     isLoadingEntities = false; // Enable saves even without config
   }
 
@@ -827,12 +828,12 @@ function defineTemplates() {
       source: '', // Empty string instead of null
       imageStretch: go.GraphObject.Uniform
     })
-    .bind(new go.Binding('source', 'icon', function(iconName, pictureObj) {
+    .bind(new go.Binding('source', 'icon', ((iconName, pictureObj) => {
       try {
         // In GoJS binding: pictureObj is the Picture itself
         // To get the Node's data, we need to go up: pictureObj.part.data
         const node = pictureObj ? pictureObj.part : null;
-        if (!node || !node.data) {
+        if (!node?.data) {
           return '';
         }
         
@@ -859,7 +860,7 @@ function defineTemplates() {
       } catch (error) {
         return '';
       }
-    }))
+    })))
     .bind('width', 'size', (size) => {
       if (!size) return 50;
       const nodeWidth = parseFloat(size.split(' ')[0]);
@@ -884,7 +885,7 @@ function defineTemplates() {
       defaultAlignment: go.Spot.Center
     }).set({ 
       toolTip: tooltipTemplate,
-      selectionAdornmentTemplate: selectionAdornmentTemplate
+      selectionAdornmentTemplate
     })
       .add(createIconDisplay())
   );
@@ -899,7 +900,7 @@ function defineTemplates() {
       padding: new go.Margin(4, 4, 4, 4)
     }).set({ 
       toolTip: tooltipTemplate,
-      selectionAdornmentTemplate: selectionAdornmentTemplate
+      selectionAdornmentTemplate
     })
       .add(createIconDisplay())
   );
@@ -914,7 +915,7 @@ function defineTemplates() {
       padding: new go.Margin(4, 4, 4, 4)
     }).set({ 
       toolTip: tooltipTemplate,
-      selectionAdornmentTemplate: selectionAdornmentTemplate
+      selectionAdornmentTemplate
     })
       .add(createIconDisplay())
   );
@@ -929,7 +930,7 @@ function defineTemplates() {
       padding: new go.Margin(4, 4, 4, 4)
     }).set({ 
       toolTip: tooltipTemplate,
-      selectionAdornmentTemplate: selectionAdornmentTemplate
+      selectionAdornmentTemplate
     })
       .add(createIconDisplay());
 }
@@ -937,7 +938,7 @@ function defineTemplates() {
 /**
  * Test connection to Home Assistant API
  */
-async function testHAConnection(config) {
+async function testHAConnection(config: HAConfig): Promise<any> {
   const url = `${getApiBaseUrl(config)}/`;
   const response = await fetch(url, {
     method: 'GET',
@@ -951,7 +952,7 @@ async function testHAConnection(config) {
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
 
-  return await response.json();
+  return response.json();
 }
 
 /**
@@ -1091,7 +1092,7 @@ function definePaletteTemplates() {
 /**
  * Load all entities from Home Assistant and populate palette
  */
-async function loadEntities(config) {
+async function loadEntities(config: HAConfig): Promise<void> {
   try {
     const url = `${getApiBaseUrl(config)}/states`;
     const response = await fetch(url, {
@@ -1174,7 +1175,7 @@ async function loadEntities(config) {
           category,
           domain: entityDomain,
           friendlyName,
-          state: state
+          state
         });
         
         // Extract icon from HA or use default
@@ -1184,8 +1185,8 @@ async function loadEntities(config) {
         // Add to palette (with negative keys so they don't conflict)
         paletteNodes.push({
           key: -Math.abs(entityId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)),
-          entityId: entityId, // Store actual entity ID
-          category: category,
+          entityId, // Store actual entity ID
+          category,
           domain: entityDomain, // Store domain for filtering
           name: friendlyName,
           state: state.state,
@@ -1244,7 +1245,7 @@ function filterAndUpdatePalette() {
 /**
  * Load entities that were previously placed on the floor plan
  */
-async function loadPlacedEntities(config) {
+async function loadPlacedEntities(config: HAConfig): Promise<void> {
   isLoadingEntities = true; // Prevent saves during load
   
   const savedEntities = loadSavedEntities();
@@ -1362,7 +1363,7 @@ async function loadPlacedEntities(config) {
       
       const nodeData = {
         key: entityId,
-        category: category,
+        category,
         name: friendlyName,
         state: state.state,
         status: state.attributes.status || null,
@@ -1444,7 +1445,7 @@ async function loadPlacedEntities(config) {
       
       diagram.nodes.each(node => {
         const key = node.data.key;
-        let savedLoc = migratedPositions[key];
+        const savedLoc = migratedPositions[key];
         
         if (savedLoc && typeof savedLoc === 'string') {
           const [x, y] = savedLoc.split(' ').map(Number);
@@ -1529,7 +1530,7 @@ function setupDragDrop() {
     setTimeout(() => {
       diagram.nodes.each(node => {
         const nodeData = node.data;
-        if (nodeData && nodeData.entityId && nodeData.key !== nodeData.entityId) {
+        if (nodeData?.entityId && nodeData.key !== nodeData.entityId) {
           const entityId = nodeData.entityId;
           const entityInfo = allEntities.find(e => e.entityId === entityId);
           
@@ -1575,7 +1576,7 @@ function setupDragDrop() {
     setTimeout(() => {
       diagram.nodes.each(node => {
         const nodeData = node.data;
-        if (nodeData && nodeData.entityId) {
+        if (nodeData?.entityId) {
           const entityId = nodeData.entityId;
           if (nodeData.key !== entityId) {
             const entityInfo = allEntities.find(e => e.entityId === entityId);
@@ -1596,7 +1597,7 @@ function setupDragDrop() {
               if (!nodeData.size) {
                 const defaultSize = node.location ? `${node.location.x} ${node.location.y}` : '40 40';
                 // Actually, get the actual node size
-                const actualSize = node.actualBounds.width + ' ' + node.actualBounds.height;
+                const actualSize = `${node.actualBounds.width  } ${  node.actualBounds.height}`;
                 diagram.model.setDataProperty(nodeData, 'size', actualSize);
               }
               
@@ -1641,7 +1642,7 @@ function setupDragDrop() {
 /**
  * Update sensor states
  */
-async function updateSensorStates(config) {
+async function updateSensorStates(config: HAConfig): Promise<void> {
   try {
     const url = `${getApiBaseUrl(config)}/states`;
     const response = await fetch(url, {
@@ -1691,7 +1692,7 @@ async function updateSensorStates(config) {
 /**
  * Add an event to the event log
  */
-function addEvent(message, type = 'info') {
+function addEvent(message: string, type: string = 'info'): void {
   const timestamp = new Date().toLocaleTimeString();
   eventLog.unshift({ timestamp, message, type });
   
@@ -1829,7 +1830,7 @@ window.addEventListener('resize', handleResize);
  * Save node sizes to localStorage
  */
 function saveSizes() {
-  if (!diagram || !diagram.model) return;
+  if (!diagram?.model) return;
 
   const sizes = {};
   
@@ -1839,7 +1840,7 @@ function saveSizes() {
     
     if (key && typeof key === 'string') {
       // Read from data.size first (most accurate), fallback to actualBounds
-      const size = nodeData.size || (node.actualBounds.width + ' ' + node.actualBounds.height);
+      const size = nodeData.size || (`${node.actualBounds.width  } ${  node.actualBounds.height}`);
       sizes[key] = size;
     }
   });
@@ -1870,7 +1871,7 @@ function loadSizes() {
  * Save positions to localStorage
  */
 function savePositions() {
-  if (!diagram || !diagram.model) return;
+  if (!diagram?.model) return;
 
   const positions = {};
   
@@ -1951,7 +1952,7 @@ function savePlacedEntities() {
     return;
   }
   
-  if (!diagram || !diagram.model) {
+  if (!diagram?.model) {
     return;
   }
 
@@ -2014,7 +2015,7 @@ function loadIcons() {
  * Save icon preferences to localStorage
  */
 function saveIcons() {
-  if (isLoadingEntities || !diagram || !diagram.model) return;
+  if (isLoadingEntities || !diagram?.model) return;
 
   const icons = {};
   
@@ -2037,12 +2038,12 @@ function saveIcons() {
  */
 function saveActions() {
   try {
-    if (isLoadingEntities || !diagram || !diagram.model) return;
+    if (isLoadingEntities || !diagram?.model) return;
     
     const actions = {};
     diagram.nodes.each(node => {
       const data = node.data;
-      if (data && data.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
+      if (data?.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
         const entityId = data.key;
         if (data.tapAction || data.holdAction) {
           actions[entityId] = {
@@ -2076,7 +2077,7 @@ function loadActions() {
  * @param {string} entityId - The entity ID
  * @param {string} iconValue - The icon value (circle, rectangle, etc.)
  */
-export function changeEntityIcon(entityId, iconValue) {
+export function changeEntityIcon(entityId: string, iconValue: string): void {
   if (!diagram || !entityId) return;
   
   const nodeData = diagram.model.findNodeDataForKey(entityId);
@@ -2115,9 +2116,9 @@ function restoreScrollPosition() {
   if (!diagram || hasRestoredScrollPosition) return false;
   
   try {
-    if (window.pinia && window.pinia._s) {
+    if (window.pinia?._s) {
       const uiStore = window.pinia._s.get('ui');
-      if (uiStore && uiStore.scrollPosition) {
+      if (uiStore?.scrollPosition) {
         const pos = uiStore.scrollPosition;
         if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' && (pos.x !== 0 || pos.y !== 0)) {
           // Center the viewport at the saved position
@@ -2215,6 +2216,6 @@ function loadPositions() {
 }
 
 
-// Export for use in other modules
+// Export addEvent function
 export { addEvent };
 

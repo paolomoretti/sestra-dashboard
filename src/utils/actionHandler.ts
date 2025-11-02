@@ -1,21 +1,33 @@
+import type { HAConfig } from '../../config';
+import type { EntityData } from '../composables/useEntitySelection';
+
 // Import config or get from window
-function getApiBaseUrl(config) {
+function getApiBaseUrl(config: HAConfig): string {
   if (import.meta.env.DEV) {
     return '/api';
   }
   return `${config.address}/api`;
 }
 
+export interface TapAction {
+  action: 'toggle' | 'more-info' | 'navigate' | 'call-service';
+  navigation_path?: string;
+  service?: string;
+  target?: {
+    entity_id?: string;
+  };
+}
+
 /**
  * Execute a tap action on an entity
- * @param {Object} action - Action configuration { action: 'toggle'|'more-info'|'navigate', navigation_path?: string }
- * @param {Object} entityData - Entity data from GoJS node
- * @param {Object} config - HA configuration with accessToken
+ * @param action - Action configuration { action: 'toggle'|'more-info'|'navigate', navigation_path?: string }
+ * @param entityData - Entity data from GoJS node
+ * @param config - HA configuration with accessToken
  */
-export async function executeTapAction(action, entityData, config) {
+export async function executeTapAction(action: TapAction | null | undefined, entityData: EntityData, config: HAConfig): Promise<void> {
   console.log('executeTapAction called with:', { action, entityData, config });
   
-  if (!action || !action.action) {
+  if (!action?.action) {
     console.warn('No action provided or action.action is missing');
     return;
   }
@@ -31,7 +43,7 @@ export async function executeTapAction(action, entityData, config) {
   switch (action.action) {
     case 'toggle':
       console.log('Calling toggleEntity for:', entityId);
-      return await toggleEntity(entityId, config);
+      return toggleEntity(entityId, config);
     
     case 'more-info':
       return showMoreInfo(entityData);
@@ -44,7 +56,11 @@ export async function executeTapAction(action, entityData, config) {
       break;
     
     case 'call-service':
-      return await callService(action.service, entityId, action.target, config);
+      if (action.service) {
+        return callService(action.service, entityId, action.target, config);
+      }
+      console.warn('Call-service action requires service');
+      break;
     
     default:
       console.warn(`Unknown action type: ${action.action}`);
@@ -54,7 +70,7 @@ export async function executeTapAction(action, entityData, config) {
 /**
  * Toggle an entity (lights, switches, etc.)
  */
-async function toggleEntity(entityId, config) {
+async function toggleEntity(entityId: string, config: HAConfig): Promise<void> {
   try {
     const [domain] = entityId.split('.');
     const url = `${getApiBaseUrl(config)}/services/${domain}/toggle`;
@@ -99,7 +115,7 @@ async function toggleEntity(entityId, config) {
 /**
  * Show more info dialog (for now, just log - can be enhanced later)
  */
-function showMoreInfo(entityData) {
+function showMoreInfo(entityData: EntityData): void {
   console.log('More info for:', entityData);
   // TODO: Could open a modal or navigate to entity detail page
   // For now, we'll just select it (which shows the EntityInfoPanel)
@@ -114,7 +130,7 @@ function showMoreInfo(entityData) {
 /**
  * Navigate to a path (for now, just log - can be enhanced with Vue Router)
  */
-function navigateTo(navigationPath) {
+function navigateTo(navigationPath: string): void {
   console.log('Navigate to:', navigationPath);
   // TODO: Implement navigation if using Vue Router
   // For now, we can use window.location or a router if added later
@@ -129,7 +145,7 @@ function navigateTo(navigationPath) {
 /**
  * Call a Home Assistant service
  */
-async function callService(service, entityId, target, config) {
+async function callService(service: string, entityId: string | undefined, target: { entity_id?: string } | undefined, config: HAConfig): Promise<void> {
   try {
     const [domain, serviceName] = service.split('.');
     if (!domain || !serviceName) {

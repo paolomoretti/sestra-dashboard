@@ -27,9 +27,9 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
-import { useLocalStorage } from '../composables/useLocalStorage.js';
+import { useLocalStorage } from '../composables/useLocalStorage';
 
 const props = defineProps({
   modelValue: {

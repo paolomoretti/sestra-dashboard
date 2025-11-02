@@ -18,12 +18,12 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useUIStore } from './stores/ui';
-import { initDashboard } from './dashboard.js';
-import { haConfig } from '../config.js';
+import { initDashboard } from './dashboard';
+import { haConfig } from '../config';
 import Sidebar from './components/Sidebar.vue';
 import ZoomControls from './components/ZoomControls.vue';
 import EntityInfoPanel from './components/EntityInfoPanel.vue';

@@ -1,10 +1,15 @@
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+import { ref, watch, type Ref } from 'vue';
 import { useThrottleFn } from '@vueuse/core';
+
+interface ScrollPosition {
+  x: number;
+  y: number;
+}
 
 export const useUIStore = defineStore('ui', () => {
   // Labels visibility
-  const getLabelsVisibilityStoredValue = () => {
+  const getLabelsVisibilityStoredValue = (): boolean => {
     try {
       const item = window.localStorage.getItem('ha_dashboard_labels_visible');
       return item !== null ? JSON.parse(item) : true;
@@ -14,9 +19,9 @@ export const useUIStore = defineStore('ui', () => {
     }
   };
 
-  const labelsVisible = ref(getLabelsVisibilityStoredValue());
+  const labelsVisible: Ref<boolean> = ref<boolean>(getLabelsVisibilityStoredValue());
 
-  watch(labelsVisible, (newValue) => {
+  watch(labelsVisible, (newValue: boolean) => {
     try {
       window.localStorage.setItem('ha_dashboard_labels_visible', JSON.stringify(newValue));
     } catch (error) {
@@ -24,16 +29,16 @@ export const useUIStore = defineStore('ui', () => {
     }
   }, { immediate: false });
 
-  function toggleLabels() {
+  function toggleLabels(): void {
     labelsVisible.value = !labelsVisible.value;
   }
 
-  function setLabelsVisible(value) {
+  function setLabelsVisible(value: boolean): void {
     labelsVisible.value = value;
   }
 
   // Sidebar visibility
-  const getSidebarVisibilityStoredValue = () => {
+  const getSidebarVisibilityStoredValue = (): boolean => {
     try {
       const item = window.localStorage.getItem('ha_dashboard_sidebar_visible');
       return item !== null ? JSON.parse(item) : true;
@@ -43,9 +48,9 @@ export const useUIStore = defineStore('ui', () => {
     }
   };
 
-  const sidebarVisible = ref(getSidebarVisibilityStoredValue());
+  const sidebarVisible: Ref<boolean> = ref<boolean>(getSidebarVisibilityStoredValue());
 
-  watch(sidebarVisible, (newValue) => {
+  watch(sidebarVisible, (newValue: boolean) => {
     try {
       window.localStorage.setItem('ha_dashboard_sidebar_visible', JSON.stringify(newValue));
     } catch (error) {
@@ -53,16 +58,16 @@ export const useUIStore = defineStore('ui', () => {
     }
   }, { immediate: false });
 
-  function toggleSidebar() {
+  function toggleSidebar(): void {
     sidebarVisible.value = !sidebarVisible.value;
   }
 
-  function setSidebarVisible(value) {
+  function setSidebarVisible(value: boolean): void {
     sidebarVisible.value = value;
   }
 
   // Scroll position (viewport center point)
-  const getScrollPositionStoredValue = () => {
+  const getScrollPositionStoredValue = (): ScrollPosition => {
     try {
       const item = window.localStorage.getItem('ha_dashboard_scroll_position');
       if (item) {
@@ -78,10 +83,10 @@ export const useUIStore = defineStore('ui', () => {
     }
   };
 
-  const scrollPosition = ref(getScrollPositionStoredValue());
+  const scrollPosition: Ref<ScrollPosition> = ref<ScrollPosition>(getScrollPositionStoredValue());
 
   // Throttled function to save scroll position (every 500ms)
-  const saveScrollPosition = useThrottleFn((position) => {
+  const saveScrollPosition = useThrottleFn((position: ScrollPosition) => {
     try {
       window.localStorage.setItem('ha_dashboard_scroll_position', JSON.stringify(position));
     } catch (error) {
@@ -89,11 +94,11 @@ export const useUIStore = defineStore('ui', () => {
     }
   }, 500);
 
-  watch(scrollPosition, (newValue) => {
+  watch(scrollPosition, (newValue: ScrollPosition) => {
     saveScrollPosition(newValue);
   }, { deep: true });
 
-  function setScrollPosition(x, y) {
+  function setScrollPosition(x: number, y: number): void {
     scrollPosition.value = { x, y };
   }
 

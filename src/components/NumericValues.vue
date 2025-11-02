@@ -11,7 +11,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import * as go from 'gojs';
 
@@ -104,7 +104,7 @@ function updateNumericEntities() {
   const newEntities = [];
   diagram.nodes.each(node => {
     const data = node.data;
-    if (data && data.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
+    if (data?.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
       // Only include entities with numeric states
       if (isNumeric(data.state)) {
         newEntities.push({

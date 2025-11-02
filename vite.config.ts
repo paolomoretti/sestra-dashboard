@@ -1,18 +1,18 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type ConfigEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { readFileSync } from 'fs';
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode }: ConfigEnv) => {
   // Load env file based on `mode` in the current working directory.
   const env = loadEnv(mode, process.cwd(), '');
   
-  // Try to get HA address from env, or read from config.js, or use default
+      // Try to get HA address from env, or read from config.ts, or use default
   let haAddress = env.VITE_HA_ADDRESS;
   
   if (!haAddress) {
     try {
-      // Try to extract address from config.js
-      const configContent = readFileSync('config.js', 'utf-8');
+      // Try to extract address from config.ts
+      const configContent = readFileSync('config.ts', 'utf-8');
       const addressMatch = configContent.match(/address:\s*import\.meta\.env\.VITE_HA_ADDRESS\s*\|\|\s*['"]([^'"]+)['"]/);
       if (addressMatch) {
         haAddress = addressMatch[1];
@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
           target: haAddress,
           changeOrigin: true,
           secure: false,
-          rewrite: (path) => path, // Keep /api in the path
+          rewrite: (path: string) => path, // Keep /api in the path
         }
       }
     },

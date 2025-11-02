@@ -1,8 +1,13 @@
+export interface MDIIconOption {
+  value: string;
+  label: string;
+}
+
 /**
  * Common MDI icons for entity selection
  * These are commonly used icons from Material Design Icons
  */
-export const COMMON_MDI_ICONS = [
+export const COMMON_MDI_ICONS: MDIIconOption[] = [
   { value: 'camera', label: 'Camera' },
   { value: 'camera-outline', label: 'Camera Outline' },
   { value: 'lightbulb', label: 'Light Bulb' },

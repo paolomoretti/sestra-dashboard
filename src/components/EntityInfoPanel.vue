@@ -91,12 +91,12 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import * as go from 'gojs';
 import { selectedEntity, selectedEntityPosition } from '../composables/useEntitySelection';
-import { changeEntityIcon, ICON_OPTIONS } from '../dashboard.js';
-import { extractIconFromHA, getDefaultIcon } from '../utils/iconUtils.js';
+import { changeEntityIcon, ICON_OPTIONS } from '../dashboard';
+import { extractIconFromHA, getDefaultIcon } from '../utils/iconUtils';
 
 const panelRef = ref(null);
 const viewportUpdateTrigger = ref(0); // Trigger to force position recalculation
@@ -157,7 +157,7 @@ function handleIconChange(event) {
       const entityInfo = window.allEntities?.find(e => e.entityId === entityId);
       let haIcon = 'radar'; // Default fallback
       
-      if (entityInfo && entityInfo.state) {
+      if (entityInfo?.state) {
         haIcon = extractIconFromHA(entityInfo.state) || 
                  getDefaultIcon(entityInfo.domain, entityInfo.state.attributes?.device_class);
       }
@@ -216,7 +216,7 @@ function handleTapActionChange(event) {
   const actions = {};
   window.diagramInstance.nodes.each(node => {
     const data = node.data;
-    if (data && data.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
+    if (data?.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
       if (data.tapAction || data.holdAction) {
         actions[data.key] = {
           tapAction: data.tapAction || null,
@@ -251,7 +251,7 @@ function handleNavigationPathChange(event) {
   const actions = {};
   window.diagramInstance.nodes.each(node => {
     const data = node.data;
-    if (data && data.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
+    if (data?.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
       if (data.tapAction || data.holdAction) {
         actions[data.key] = {
           tapAction: data.tapAction || null,

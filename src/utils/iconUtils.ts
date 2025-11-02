@@ -1,49 +1,60 @@
 import * as mdiIcons from '@mdi/js';
 
+export interface HAEntityState {
+  entity_id?: string;
+  state?: string;
+  attributes?: {
+    icon?: string;
+    friendly_name?: string;
+    device_class?: string;
+    [key: string]: any;
+  };
+}
+
 /**
  * Get SVG path data for an MDI icon name
- * @param {string} iconName - MDI icon name (e.g., 'camera', 'thermometer', 'lightbulb')
- * @returns {string|null} SVG path data or null if not found
+ * @param iconName - MDI icon name (e.g., 'camera', 'thermometer', 'lightbulb')
+ * @returns SVG path data or null if not found
  */
-export function getMDIIconPath(iconName) {
+export function getMDIIconPath(iconName: string | null | undefined): string | null {
   if (!iconName) return null;
   
   // Remove 'mdi:' prefix if present
   const cleanName = iconName.replace(/^mdi:/, '');
   
   // Convert kebab-case to PascalCase (e.g., 'light-bulb' -> 'mdiLightBulb')
-  const pascalName = 'mdi' + cleanName
+  const pascalName = `mdi${  cleanName
     .split('-')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('');
+    .join('')}`;
   
   // Look up in MDI icons
-  return mdiIcons[pascalName] || null;
+  return (mdiIcons as any)[pascalName] || null;
 }
 
 /**
  * Create SVG data URI from MDI icon path
- * @param {string} path - SVG path data
- * @param {string} fill - Fill color (default: '#ffffff')
- * @param {number} size - Icon size in pixels (default: 24)
- * @returns {string} SVG data URI
+ * @param path - SVG path data
+ * @param fill - Fill color (default: '#ffffff')
+ * @param size - Icon size in pixels (default: 24)
+ * @returns SVG data URI
  */
-export function createIconSVG(path, fill = '#ffffff', size = 24) {
+export function createIconSVG(path: string | null, fill: string = '#ffffff', size: number = 24): string | null {
   if (!path) return null;
   
   // Create clean SVG without stroke - just the path fill
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}"><path fill="${fill}" stroke="none" d="${path}"/></svg>`;
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  return `data:image/svg+xml;charset=utf-8,${  encodeURIComponent(svg)}`;
 }
 
 /**
  * Get icon color based on entity domain, state, and icon name
- * @param {string} entityId - Entity ID (e.g., 'light.living_room')
- * @param {string} state - Entity state (e.g., 'on', 'off', 'unavailable')
- * @param {string} iconName - Optional icon name (e.g., 'thermometer', 'lightbulb')
- * @returns {string} Color hex code
+ * @param entityId - Entity ID (e.g., 'light.living_room')
+ * @param state - Entity state (e.g., 'on', 'off', 'unavailable')
+ * @param iconName - Optional icon name (e.g., 'thermometer', 'lightbulb')
+ * @returns Color hex code
  */
-export function getIconColor(entityId, state, iconName = null) {
+export function getIconColor(entityId: string | null | undefined, state: string | null | undefined, iconName: string | null = null): string {
   if (!entityId || !state) return '#888888'; // Default gray
   
   const domain = entityId.split('.')[0];
@@ -101,11 +112,11 @@ export function getIconColor(entityId, state, iconName = null) {
 
 /**
  * Extract icon from Home Assistant state
- * @param {Object} state - HA entity state object
- * @returns {string|null} MDI icon name (without mdi: prefix) or null
+ * @param state - HA entity state object
+ * @returns MDI icon name (without mdi: prefix) or null
  */
-export function extractIconFromHA(state) {
-  if (!state || !state.attributes) return null;
+export function extractIconFromHA(state: HAEntityState | null | undefined): string | null {
+  if (!state?.attributes) return null;
   
   const icon = state.attributes.icon;
   if (!icon) return null;
@@ -116,13 +127,13 @@ export function extractIconFromHA(state) {
 
 /**
  * Get default icon based on entity domain and device class
- * @param {string} domain - Entity domain (sensor, light, camera, etc.)
- * @param {string} deviceClass - Device class (temperature, humidity, etc.)
- * @returns {string} MDI icon name
+ * @param domain - Entity domain (sensor, light, camera, etc.)
+ * @param deviceClass - Device class (temperature, humidity, etc.)
+ * @returns MDI icon name
  */
-export function getDefaultIcon(domain, deviceClass) {
+export function getDefaultIcon(domain: string | null | undefined, deviceClass: string | null | undefined): string {
   // Map device classes to icons
-  const deviceClassIcons = {
+  const deviceClassIcons: Record<string, string> = {
     temperature: 'thermometer',
     humidity: 'water-percent',
     pressure: 'gauge',
@@ -144,7 +155,7 @@ export function getDefaultIcon(domain, deviceClass) {
   }
   
   // Map domains to icons
-  const domainIcons = {
+  const domainIcons: Record<string, string> = {
     camera: 'camera',
     light: 'lightbulb',
     switch: 'toggle-switch',
@@ -160,6 +171,6 @@ export function getDefaultIcon(domain, deviceClass) {
     weather: 'weather-cloudy',
   };
   
-  return domainIcons[domain] || 'circle-outline';
+  return domainIcons[domain || ''] || 'circle-outline';
 }
 

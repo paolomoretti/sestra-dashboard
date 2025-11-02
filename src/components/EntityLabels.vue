@@ -18,7 +18,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import * as go from 'gojs';
@@ -149,7 +149,7 @@ function updateEntities() {
   const newEntities = [];
   diagram.nodes.each(node => {
     const data = node.data;
-    if (data && data.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
+    if (data?.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
       newEntities.push({
         key: data.key,
         name: data.name || data.key,
