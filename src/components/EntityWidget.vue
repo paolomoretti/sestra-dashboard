@@ -19,7 +19,11 @@
         :style="iconStyle"
         draggable="false"
         @click.stop="handleIconClick"
-      /> <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
+      /> <!-- Temperature display for temperature sensors -->
+      <div v-if="temperatureDisplay" class="temperature-display"> {{ temperatureDisplay }} </div>
+       <!-- Humidity display for humidity sensors -->
+      <div v-if="humidityDisplay" class="temperature-display"> {{ humidityDisplay }} </div>
+       <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
         >
         <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
 
@@ -68,9 +72,9 @@
           <div class="panel-content">
 
             <div class="detail-row">
-               <span class="detail-label">Entity ID:</span> <span class="detail-value">{{
-                entity.key || 'N/A'
-              }}</span
+               <span class="detail-label">Entity ID:</span> <span
+                class="detail-value entity-id-value"
+                >{{ entity.key || 'N/A' }}</span
               >
             </div>
 
@@ -89,21 +93,84 @@
             </div>
              <!-- Icon selection -->
             <div class="detail-row">
-               <span class="detail-label">Icon:</span> <select
-                :value="currentIcon"
-                @change="handleIconChange"
-                @mousedown.stop
-                @click.stop
-                class="icon-select"
-              >
+               <span class="detail-label">Icon:</span>
+              <div class="icon-selector-wrapper">
 
-                <option value="">(Use HA default)</option>
+                <div class="icon-search-wrapper">
+                   <input
+                    type="text"
+                    v-model="iconSearchQuery"
+                    @mousedown.stop
+                    @click.stop
+                    @input.stop
+                    @keydown="handleIconSearchKeydown"
+                    @focus="handleIconSearchFocus"
+                    placeholder="Search icons..."
+                    class="icon-search-input"
+                    ref="iconSearchInputRef"
+                  />
+                </div>
 
-                <option v-for="icon in iconOptions" :key="icon.value" :value="icon.value">
-                   {{ icon.label }}
-                </option>
-                 </select
-              >
+                <div
+                  class="icon-dropdown"
+                  @mousedown.stop
+                  @click.stop
+                  @keydown="handleIconDropdownKeydown"
+                  @focus="handleIconDropdownFocus"
+                  tabindex="0"
+                  ref="iconDropdownRef"
+                >
+                   <!-- Only show options if search has at least 1 character --> <template
+                    v-if="iconSearchQuery.trim().length > 0"
+                    >
+                    <div
+                      class="icon-option"
+                      :class="{
+                        'icon-option-selected': currentIcon === '',
+                        'icon-option-highlighted': highlightedIndex === 0,
+                      }"
+                      @click="selectIcon('')"
+                      @mouseenter="highlightedIndex = 0"
+                    >
+                       <span class="icon-option-label">(Use HA default)</span>
+                    </div>
+
+                    <div v-if="isLoadingIcons" class="icon-loading"> Loading icons... </div>
+
+                    <div
+                      v-for="(icon, index) in filteredIconOptions"
+                      :key="icon.value"
+                      class="icon-option"
+                      :class="{
+                        'icon-option-selected': currentIcon === icon.value,
+                        'icon-option-highlighted': highlightedIndex === index + 1,
+                      }"
+                      :ref="
+                        el => {
+                          if (el) iconOptionRefs[index] = el as HTMLElement;
+                        }
+                      "
+                      @click="selectIcon(icon.value)"
+                      @mouseenter="highlightedIndex = index + 1"
+                    >
+                       <img
+                        v-if="getIconPreview(icon.value)"
+                        :src="getIconPreview(icon.value) ?? ''"
+                        class="icon-preview"
+                        alt=""
+                      /> <span class="icon-option-label">{{ icon.label }}</span
+                      >
+                    </div>
+                     </template
+                  >
+                  <div v-else class="icon-search-hint">
+                     Type at least 1 character to search icons...
+                  </div>
+
+                </div>
+
+              </div>
+
             </div>
              <!-- Tap Action -->
             <div class="detail-row">
@@ -150,7 +217,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import {
@@ -168,8 +235,7 @@ import {
 } from '../utils/iconUtils';
 import { executeTapAction, type TapAction } from '../utils/actionHandler';
 import { useUIStore } from '../stores/ui';
-import { changeEntityIcon } from '../utils/entityUtils';
-import { ICON_OPTIONS } from '../utils/mdiIconList';
+import { getAllMDIIcons, COMMON_MDI_ICONS } from '../utils/mdiIconList';
 import { haConfig } from '../../config';
 
 interface Props {
@@ -217,7 +283,7 @@ const iconUrl = computed(() => {
   const path = getMDIIconPath(iconName);
   if (!path) return null;
 
-  const color = getIconColor(props.entity.key, props.entity.state, iconName);
+  const color = getIconColor(props.entity.key, props.entity.state);
   const iconSize = Math.max(24, Math.min(width.value, height.value) * 0.6);
   return createIconSVG(path, color, iconSize);
 });
@@ -250,6 +316,105 @@ const iconStyle = computed(() => ({
   height: '100%',
   objectFit: 'contain' as const,
 }));
+
+// Temperature display for temperature sensors
+const isTemperatureSensor = computed(() => {
+  const deviceClass = props.entity.deviceClass?.toLowerCase();
+  const iconName = props.entity.icon?.toLowerCase() ?? '';
+  const entityId = props.entity.key?.toLowerCase() ?? '';
+
+  return (
+    deviceClass === 'temperature' ||
+    iconName.includes('thermometer') ||
+    iconName.includes('temperature') ||
+    entityId.includes('temperature') ||
+    entityId.includes('thermometer')
+  );
+});
+
+const temperatureDisplay = computed(() => {
+  if (!isTemperatureSensor.value || !props.entity.state) {
+    return null;
+  }
+
+  const state = props.entity.state.trim();
+  if (!state || state === 'unknown' || state === 'unavailable') {
+    return null;
+  }
+
+  // Try to parse temperature value and unit
+  // State might be: "21.5", "21.5°C", "21.5 °C", "70.5°F", etc.
+  const tempMatch = state.match(/^(-?\d+\.?\d*)\s*°?([CF])?/i);
+  if (!tempMatch?.[1]) {
+    // If no match, try to parse just the number
+    const numMatch = state.match(/^(-?\d+\.?\d*)/);
+    if (numMatch?.[1]) {
+      const value = parseFloat(numMatch[1]);
+      if (!isNaN(value)) {
+        // Infer unit: if > 50, likely Fahrenheit, else Celsius
+        const unit = value > 50 ? 'F' : 'C';
+        return `${value.toFixed(1)}°${unit}`;
+      }
+    }
+    return null;
+  }
+
+  const value = parseFloat(tempMatch[1]);
+  if (isNaN(value)) {
+    return null;
+  }
+
+  // Get unit from match or infer
+  const matchedUnit = tempMatch[2];
+  let unit = matchedUnit ? matchedUnit.toUpperCase() : null;
+  if (!unit) {
+    // Infer unit: if > 50, likely Fahrenheit, else Celsius
+    unit = value > 50 ? 'F' : 'C';
+  }
+
+  return `${value.toFixed(1)}°${unit}`;
+});
+
+// Humidity display for humidity sensors
+const isHumiditySensor = computed(() => {
+  const deviceClass = props.entity.deviceClass?.toLowerCase();
+  const iconName = props.entity.icon?.toLowerCase() ?? '';
+  const entityId = props.entity.key?.toLowerCase() ?? '';
+
+  return (
+    deviceClass === 'humidity' ||
+    iconName.includes('water-percent') ||
+    iconName.includes('humidity') ||
+    entityId.includes('humidity')
+  );
+});
+
+const humidityDisplay = computed(() => {
+  if (!isHumiditySensor.value || !props.entity.state) {
+    return null;
+  }
+
+  const state = props.entity.state.trim();
+  if (!state || state === 'unknown' || state === 'unavailable') {
+    return null;
+  }
+
+  // Try to parse humidity value (usually just a number, sometimes with %)
+  const humidityMatch = state.match(/^(\d+\.?\d*)\s*%?/);
+  if (!humidityMatch?.[1]) {
+    return null;
+  }
+
+  const value = parseFloat(humidityMatch[1]);
+  if (isNaN(value)) {
+    return null;
+  }
+
+  // Clamp value between 0 and 100
+  const clampedValue = Math.max(0, Math.min(100, value));
+
+  return `${clampedValue.toFixed(0)}%`;
+});
 
 // Resize
 let resizeStartDiagramX = 0;
@@ -431,8 +596,177 @@ function toggleExpanded() {
   isExpanded.value = !isExpanded.value;
 }
 
-// Icon options
-const iconOptions = ICON_OPTIONS;
+// Icon options - only load when panel is expanded
+const iconSearchQuery = ref('');
+const highlightedIndex = ref(-1);
+const iconDropdownRef = ref<HTMLElement>();
+const iconSearchInputRef = ref<HTMLInputElement>();
+const iconOptionRefs = ref<(HTMLElement | null)[]>([]);
+
+// Icon options - load asynchronously to avoid blocking UI
+const iconOptions = ref<typeof COMMON_MDI_ICONS | ReturnType<typeof getAllMDIIcons>>(
+  COMMON_MDI_ICONS
+);
+const isLoadingIcons = ref(false);
+
+// Only compute icon options when panel is expanded, and load asynchronously
+watch(isExpanded, expanded => {
+  if (expanded && iconOptions.value.length <= COMMON_MDI_ICONS.length) {
+    // Start with common icons, then load all asynchronously
+    isLoadingIcons.value = true;
+    // Use setTimeout to defer to next event loop to avoid blocking UI
+    setTimeout(() => {
+      try {
+        iconOptions.value = getAllMDIIcons();
+      } catch (error) {
+        console.error('Error loading all icons:', error);
+        // Fallback to common icons on error
+      } finally {
+        isLoadingIcons.value = false;
+      }
+    }, 0);
+  }
+});
+
+// Filter icons based on search query
+const filteredIconOptions = computed(() => {
+  // Only show if search has at least 1 character
+  if (iconSearchQuery.value.trim().length === 0) {
+    return [];
+  }
+  // Don't filter if panel is not expanded
+  if (!isExpanded.value || iconOptions.value.length === 0) {
+    return [];
+  }
+  const query = iconSearchQuery.value.toLowerCase();
+  return iconOptions.value.filter(
+    icon => icon.label.toLowerCase().includes(query) || icon.value.toLowerCase().includes(query)
+  );
+});
+
+// Get all visible options for keyboard navigation (includes "Use HA default")
+const allVisibleOptions = computed(() => {
+  const options: Array<{ value: string; label: string }> = [];
+  // Only include options if search has at least 1 character
+  if (iconSearchQuery.value.trim().length > 0 && isExpanded.value) {
+    options.push({ value: '', label: '(Use HA default)' });
+    options.push(...filteredIconOptions.value);
+  }
+  return options;
+});
+
+// Handle keyboard navigation in icon dropdown
+function handleIconDropdownKeydown(e: KeyboardEvent) {
+  if (!isExpanded.value) return;
+
+  const options = allVisibleOptions.value;
+  const totalOptions = options.length;
+  if (totalOptions === 0) return;
+
+  // Initialize highlighted index if not set and user presses Enter
+  if (e.key === 'Enter' && highlightedIndex.value < 0 && totalOptions > 0) {
+    // If no item is highlighted, select the first one (index 0)
+    highlightedIndex.value = 0;
+  }
+
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault();
+      highlightedIndex.value =
+        highlightedIndex.value < totalOptions - 1 ? highlightedIndex.value + 1 : 0;
+      scrollToHighlighted();
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      highlightedIndex.value =
+        highlightedIndex.value <= 0 ? totalOptions - 1 : highlightedIndex.value - 1;
+      scrollToHighlighted();
+      break;
+    case 'Enter':
+      e.preventDefault();
+      if (highlightedIndex.value >= 0 && highlightedIndex.value < totalOptions) {
+        const option = options[highlightedIndex.value];
+        if (option) {
+          selectIcon(option.value);
+        }
+      }
+      break;
+    case 'Escape':
+      e.preventDefault();
+      isExpanded.value = false;
+      isPanelOpen.value = false;
+      break;
+  }
+}
+
+// Scroll to highlighted option
+function scrollToHighlighted() {
+  void nextTick(() => {
+    if (highlightedIndex.value === 0) {
+      // Scroll to "Use HA default" option
+      const defaultOption = iconDropdownRef.value?.querySelector(
+        '.icon-option:first-child'
+      ) as HTMLElement;
+      defaultOption?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else if (highlightedIndex.value > 0) {
+      // Scroll to filtered icon option (index is 1-based in allVisibleOptions, but 0-based in iconOptionRefs)
+      const optionIndex = highlightedIndex.value - 1;
+      if (iconOptionRefs.value[optionIndex]) {
+        iconOptionRefs.value[optionIndex]?.scrollIntoView({
+          block: 'nearest',
+          behavior: 'smooth',
+        });
+      }
+    }
+  });
+}
+
+// Handle keyboard navigation in search input
+function handleIconSearchKeydown(e: KeyboardEvent) {
+  // If user types ArrowDown/ArrowUp in search, focus dropdown and navigate
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (allVisibleOptions.value.length > 0) {
+      // Initialize highlighted index when transitioning from search to dropdown
+      if (highlightedIndex.value < 0) {
+        highlightedIndex.value = e.key === 'ArrowDown' ? 0 : allVisibleOptions.value.length - 1;
+      }
+      iconDropdownRef.value?.focus();
+    }
+  }
+  // If Escape, close panel
+  if (e.key === 'Escape') {
+    isExpanded.value = false;
+    isPanelOpen.value = false;
+  }
+}
+
+// Handle focus on search input
+function handleIconSearchFocus() {
+  // Reset highlighted when focusing search
+  highlightedIndex.value = -1;
+}
+
+// Handle focus on dropdown
+function handleIconDropdownFocus() {
+  // Initialize highlighted index to first option when dropdown gets focus
+  if (highlightedIndex.value < 0 && allVisibleOptions.value.length > 0) {
+    highlightedIndex.value = 0;
+  }
+}
+
+// Reset highlighted index when search changes
+watch(iconSearchQuery, () => {
+  highlightedIndex.value = -1;
+});
+
+// Get icon preview for display
+function getIconPreview(iconName: string): string | null {
+  if (!iconName) return null;
+  const path = getMDIIconPath(iconName);
+  if (!path) return null;
+  return createIconSVG(path, '#ffffff', 20);
+}
 
 // Current icon value
 const currentIcon = computed(() => {
@@ -457,11 +791,13 @@ const currentNavigationPath = computed(() => {
   return props.entity.tapAction?.navigation_path ?? '';
 });
 
-// Handle icon change
-function handleIconChange(event: Event) {
-  const target = event.target as HTMLSelectElement;
-  const newIcon = target.value;
+// Handle icon selection
+function selectIcon(iconValue: string) {
+  handleIconChangeDirect(iconValue);
+}
 
+// Handle icon change directly (for new selector)
+function handleIconChangeDirect(newIcon: string) {
   if (newIcon === '') {
     // Clear custom icon to use HA default
     const entityInfo = window.allEntities?.find(e => e.entityId === props.entity.key);
@@ -473,15 +809,10 @@ function handleIconChange(event: Event) {
         getDefaultIcon(entityInfo.domain, entityInfo.state.attributes?.device_class);
     }
 
-    // Update entity
+    // Update entity - this will trigger reactive update via handleEntityUpdate
     emit('update', props.entity.key, { icon: haIcon });
-
-    // Remove from saved icons
-    const savedIcons = JSON.parse(localStorage.getItem('ha_dashboard_icons') ?? '{}');
-    delete savedIcons[props.entity.key];
-    localStorage.setItem('ha_dashboard_icons', JSON.stringify(savedIcons));
   } else {
-    changeEntityIcon(props.entity.key, newIcon);
+    // Update entity - this will trigger reactive update via handleEntityUpdate
     emit('update', props.entity.key, { icon: newIcon });
   }
 }
@@ -834,6 +1165,24 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   pointer-events: auto;
 }
 
+.temperature-display {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 2rem;
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.95) 0%, rgba(21, 101, 192, 0.95) 100%);
+  padding: 6px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  margin-left: 8px;
+  letter-spacing: 0.5px;
+}
+
 .resize-handle {
   position: absolute;
   width: 12px;
@@ -1029,6 +1378,12 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   color: #4CAF50;
 }
 
+.detail-value.entity-id-value {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 10px;
+  color: #cccccc;
+}
+
 .icon-select {
   flex: 1;
   background-color: #333333;
@@ -1049,6 +1404,103 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 
 .icon-select:focus {
   border-color: #2196F3;
+}
+
+/* Icon selector with search and preview */
+.icon-selector-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.icon-search-wrapper {
+  margin-bottom: 6px;
+}
+
+.icon-search-input {
+  width: 100%;
+  background-color: #333333;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 11px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.icon-search-input:focus {
+  border-color: #2196F3;
+}
+
+.icon-dropdown {
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: #2a2a2a;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  z-index: 10002;
+  position: relative;
+}
+
+.icon-option {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #3a3a3a;
+  transition: background-color 0.15s;
+}
+
+.icon-option:last-child {
+  border-bottom: none;
+}
+
+.icon-option:hover {
+  background-color: #3a3a3a;
+}
+
+.icon-option-selected {
+  background-color: #2196f3;
+}
+
+.icon-option-selected:hover {
+  background-color: #2196f3;
+}
+
+.icon-option-highlighted {
+  background-color: #3a3a3a;
+}
+
+.icon-option-highlighted.icon-option-selected {
+  background-color: #2196f3;
+}
+
+.icon-search-hint {
+  padding: 12px;
+  text-align: center;
+  color: #888888;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.icon-preview {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.icon-option-label {
+  font-size: 11px;
+  color: #ffffff;
+  flex: 1;
+}
+
+.icon-loading {
+  padding: 12px;
+  text-align: center;
+  color: #888888;
+  font-size: 11px;
+  font-style: italic;
 }
 
 .text-input {

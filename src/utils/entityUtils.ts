@@ -12,11 +12,4 @@ export function changeEntityIcon(entityId: string, iconValue: string): void {
   }
 
   localStorage.setItem('ha_dashboard_icons', JSON.stringify(icons));
-
-  // Trigger update by dispatching custom event
-  window.dispatchEvent(
-    new CustomEvent('entity-icon-changed', {
-      detail: { entityId, icon: iconValue },
-    })
-  );
 }

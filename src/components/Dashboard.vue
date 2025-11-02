@@ -68,8 +68,14 @@ const [placedEntityIds, setPlacedEntityIds] = useLocalStorage<string[]>(
   []
 );
 
+// Reactive trigger for localStorage updates
+const localStorageUpdateTrigger = ref(0);
+
 // Computed: Get full entity data for placed entities
 const placedEntities = computed(() => {
+  // Read trigger to make this reactive to localStorage changes
+  void localStorageUpdateTrigger.value;
+
   return placedEntityIds.value
     .map(entityId => {
       // Find entity in store
@@ -127,6 +133,12 @@ onMounted(() => {
 
   // Handle Escape key to deselect
   escapeHandler = (event: KeyboardEvent) => {
+    // Don't trigger if user is typing in input fields
+    const target = event.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return;
+    }
+
     if (event.key === 'Escape') {
       clearSelection();
     }
@@ -292,10 +304,16 @@ function handleEntityUpdate(entityId: string, updates: Partial<EntityData>) {
     localStorage.setItem('ha_dashboard_sizes', JSON.stringify(sizes));
   }
 
-  if (updates.icon) {
+  if (updates.icon !== undefined) {
     const icons = JSON.parse(localStorage.getItem('ha_dashboard_icons') ?? '{}');
-    icons[entityId] = updates.icon;
+    if (updates.icon) {
+      icons[entityId] = updates.icon;
+    } else {
+      delete icons[entityId];
+    }
     localStorage.setItem('ha_dashboard_icons', JSON.stringify(icons));
+    // Trigger reactive update
+    localStorageUpdateTrigger.value++;
   }
 
   if (updates.tapAction !== undefined || updates.holdAction !== undefined) {
@@ -304,6 +322,8 @@ function handleEntityUpdate(entityId: string, updates: Partial<EntityData>) {
     if (updates.tapAction !== undefined) actions[entityId].tapAction = updates.tapAction;
     if (updates.holdAction !== undefined) actions[entityId].holdAction = updates.holdAction;
     localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+    // Trigger reactive update
+    localStorageUpdateTrigger.value++;
   }
 }
 
@@ -418,6 +438,19 @@ defineExpose({
     setScale(initialScale);
     setPanX((wrapperWidth - scaledWidth) / 2);
     setPanY((wrapperHeight - scaledHeight) / 2);
+  },
+  zoomFitToWidth: () => {
+    if (!dashboardWrapperRef.value) return;
+    const rect = dashboardWrapperRef.value.getBoundingClientRect();
+    const wrapperWidth = rect.width;
+
+    // Calculate scale to fit width exactly
+    const scaleToFitWidth = wrapperWidth / FLOORPLAN_WIDTH;
+
+    // Align to top
+    setScale(scaleToFitWidth);
+    setPanX(0); // No horizontal pan needed, image fills width
+    setPanY(0); // Align to top
   },
   zoomToEntity: (x: number, y: number) => {
     if (!dashboardWrapperRef.value) return;
