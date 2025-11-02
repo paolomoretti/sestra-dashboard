@@ -47,3 +47,8 @@
 *::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Pointer cursor for GoJS nodes with tap actions */
+#diagramDiv {
+  cursor: default;
+}

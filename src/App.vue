@@ -10,6 +10,7 @@
     <div class="flex flex-1 overflow-hidden relative">
       <div id="diagramDiv" class="flex-1 bg-[#1a1a1a] overflow-hidden"></div>
       <EntityLabels />
+      <NumericValues />
       <EntityInfoPanel />
       <Sidebar v-if="sidebarVisible" />
       <ZoomControls />
@@ -27,6 +28,7 @@ import Sidebar from './components/Sidebar.vue';
 import ZoomControls from './components/ZoomControls.vue';
 import EntityInfoPanel from './components/EntityInfoPanel.vue';
 import EntityLabels from './components/EntityLabels.vue';
+import NumericValues from './components/NumericValues.vue';
 import LabelToggleButton from './components/LabelToggleButton.vue';
 import SidebarToggleButton from './components/SidebarToggleButton.vue';
 import './style.css';

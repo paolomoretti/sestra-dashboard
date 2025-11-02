@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
+import { useThrottleFn } from '@vueuse/core';
 
 export const useUIStore = defineStore('ui', () => {
   // Labels visibility
@@ -60,6 +61,42 @@ export const useUIStore = defineStore('ui', () => {
     sidebarVisible.value = value;
   }
 
+  // Scroll position (viewport center point)
+  const getScrollPositionStoredValue = () => {
+    try {
+      const item = window.localStorage.getItem('ha_dashboard_scroll_position');
+      if (item) {
+        const parsed = JSON.parse(item);
+        return parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number' 
+          ? parsed 
+          : { x: 0, y: 0 };
+      }
+      return { x: 0, y: 0 };
+    } catch (error) {
+      console.warn('Error reading scroll position from localStorage:', error);
+      return { x: 0, y: 0 };
+    }
+  };
+
+  const scrollPosition = ref(getScrollPositionStoredValue());
+
+  // Throttled function to save scroll position (every 500ms)
+  const saveScrollPosition = useThrottleFn((position) => {
+    try {
+      window.localStorage.setItem('ha_dashboard_scroll_position', JSON.stringify(position));
+    } catch (error) {
+      console.warn('Error saving scroll position to localStorage:', error);
+    }
+  }, 500);
+
+  watch(scrollPosition, (newValue) => {
+    saveScrollPosition(newValue);
+  }, { deep: true });
+
+  function setScrollPosition(x, y) {
+    scrollPosition.value = { x, y };
+  }
+
   return {
     // Labels visibility
     labelsVisible,
@@ -68,7 +105,10 @@ export const useUIStore = defineStore('ui', () => {
     // Sidebar visibility
     sidebarVisible,
     toggleSidebar,
-    setSidebarVisible
+    setSidebarVisible,
+    // Scroll position
+    scrollPosition,
+    setScrollPosition
   };
 });
 

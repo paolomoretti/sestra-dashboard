@@ -1,6 +1,6 @@
 import * as go from 'gojs';
 import { setSelectedEntity, clearSelection } from './composables/useEntitySelection.js';
-import { extractIconFromHA, getDefaultIcon, getMDIIconPath, createIconSVG } from './utils/iconUtils.js';
+import { extractIconFromHA, getDefaultIcon, getMDIIconPath, createIconSVG, getIconColor } from './utils/iconUtils.js';
 // Edit mode is accessed via window.__editMode (set by Vue component) to avoid reactivity issues in non-Vue context
 
 let diagram;
@@ -101,6 +101,21 @@ export function initDashboard(config) {
     setTimeout(() => {
       saveScale();
     }, 300);
+    
+    // Save scroll position (viewport center) to UI store
+    if (window.pinia && window.pinia._s) {
+      try {
+        const uiStore = window.pinia._s.get('ui');
+        if (uiStore) {
+          const viewportBounds = diagram.viewportBounds;
+          const centerX = viewportBounds.center.x;
+          const centerY = viewportBounds.center.y;
+          uiStore.setScrollPosition(centerX, centerY);
+        }
+      } catch (e) {
+        // Store not available yet, ignore
+      }
+    }
   });
 
   // Define node templates for different entity types
@@ -153,6 +168,34 @@ export function initDashboard(config) {
     // Clicking on label (Vue component handles it) or no tap action - allow normal selection
     return originalDoMouseUp.call(this);
   };
+  
+  // Show pointer cursor when hovering over nodes with tap actions
+  // Use DOM mouse events since GoJS doesn't have MouseMove diagram event
+  if (diagram.div) {
+    let currentCursor = 'default';
+    diagram.div.addEventListener('mousemove', (e) => {
+      if (!diagram) return;
+      
+      const point = diagram.transformViewToDoc(new go.Point(e.offsetX, e.offsetY));
+      const obj = diagram.findObjectAt(point, null, null);
+      
+      if (obj && obj.part && obj.part instanceof go.Node && obj.part.data) {
+        // Check if hovering over the icon specifically
+        if (obj.name === 'ICON' && obj.part.data.tapAction && obj.part.data.tapAction.action) {
+          if (currentCursor !== 'pointer') {
+            diagram.div.style.cursor = 'pointer';
+            currentCursor = 'pointer';
+          }
+          return;
+        }
+      }
+      // Reset cursor if not over an icon with tap action
+      if (currentCursor !== 'default') {
+        diagram.div.style.cursor = 'default';
+        currentCursor = 'default';
+      }
+    });
+  }
   
   // Listen for selection changes and update Vue state
   diagram.addDiagramListener('ChangedSelection', (e) => {
@@ -368,9 +411,15 @@ export function initDashboard(config) {
         loadEntities(config).then(() => {
           // Load entities that were previously placed on the floor plan
           loadPlacedEntities(config).then(() => {
+            // After entities are loaded, try one more time to restore scroll position
+            // This ensures we have the latest position even if store wasn't ready earlier
+            if (!hasRestoredScrollPosition) {
+              setTimeout(() => {
+                restoreScrollPosition();
+              }, 100);
+            }
             // After loading completes, allow saves
             isLoadingEntities = false;
-            console.log('✓ Initial load complete, saving enabled. Diagram has', diagram.nodes.count, 'nodes');
           }).catch((error) => {
             console.error('Error in loadPlacedEntities:', error);
             isLoadingEntities = false;
@@ -778,12 +827,39 @@ function defineTemplates() {
       source: '', // Empty string instead of null
       imageStretch: go.GraphObject.Uniform
     })
-    .bind('source', 'icon', (iconName) => {
-      if (!iconName) return '';
-      const path = getMDIIconPath(iconName);
-      if (!path) return '';
-      return createIconSVG(path, '#ffffff', 24);
-    })
+    .bind(new go.Binding('source', 'icon', function(iconName, pictureObj) {
+      try {
+        // In GoJS binding: pictureObj is the Picture itself
+        // To get the Node's data, we need to go up: pictureObj.part.data
+        const node = pictureObj ? pictureObj.part : null;
+        if (!node || !node.data) {
+          return '';
+        }
+        
+        const data = node.data;
+        
+        // Get icon name from parameter (binding value)
+        const icon = iconName || data.icon || '';
+        if (!icon) {
+          return '';
+        }
+        
+        const path = getMDIIconPath(icon);
+        if (!path) {
+          return '';
+        }
+        
+        // Get color based on entity state - read from data
+        const entityId = data.key || '';
+        const entityState = data.state || '';
+        const color = getIconColor(entityId, entityState, icon);
+        const svgUri = createIconSVG(path, color, 24);
+        
+        return svgUri || '';
+      } catch (error) {
+        return '';
+      }
+    }))
     .bind('width', 'size', (size) => {
       if (!size) return 50;
       const nodeWidth = parseFloat(size.split(' ')[0]);
@@ -797,14 +873,15 @@ function defineTemplates() {
     .bind('visible', 'source', (source) => source && source !== '');
   }
 
-  // Template for sensors - shows name and value (resizable)
+  // Template for sensors - shows icon (numeric values displayed via Vue overlay)
   diagram.nodeTemplateMap.add('sensor',
     new go.Node('Vertical', {
       resizable: true,
       selectable: true,
       minSize: new go.Size(60, 80),
       maxSize: new go.Size(1000, 1000),
-      padding: new go.Margin(4, 4, 4, 4)
+      padding: new go.Margin(4, 4, 4, 4),
+      defaultAlignment: go.Spot.Center
     }).set({ 
       toolTip: tooltipTemplate,
       selectionAdornmentTemplate: selectionAdornmentTemplate
@@ -1591,6 +1668,17 @@ async function updateSensorStates(config) {
           model.setDataProperty(nodeData, 'status', state.attributes.status);
         }
         model.setDataProperty(nodeData, 'lastUpdated', state.last_updated);
+        
+        // Force icon refresh by re-setting the icon property
+        // This triggers the binding to re-evaluate with the new state
+        if (nodeData.icon) {
+          const currentIcon = nodeData.icon;
+          // Temporarily set to empty to force refresh
+          model.setDataProperty(nodeData, 'icon', '');
+          setTimeout(() => {
+            model.setDataProperty(nodeData, 'icon', currentIcon);
+          }, 0);
+        }
       }
     });
     diagram.commitTransaction('updateStates');
@@ -1672,16 +1760,25 @@ function setBackgroundImage(imageUrl, width, height) {
   // Set diagram bounds to match floor plan dimensions
   diagram.contentBounds = new go.Rect(0, 0, width, height);
 
-  // Load saved scale or fit to viewport
+  // Load saved scale first (zoom level must be restored before position)
   const savedScale = loadSavedScale();
   if (savedScale) {
     diagram.scale = savedScale;
-    // Center the diagram
-    diagram.centerRect(new go.Rect(0, 0, width, height));
-  } else {
-    // Set initial scale to fit viewport width
-    setTimeout(() => fitDiagramToViewport(width, height), 100);
   }
+  
+  // Wait a bit for scale to apply, then restore scroll position or center
+  setTimeout(() => {
+    // Try to restore scroll position
+    const restored = restoreScrollPosition();
+    if (!restored) {
+      // If no saved position, center the diagram or fit to viewport
+      if (savedScale) {
+        diagram.centerRect(new go.Rect(0, 0, width, height));
+      } else {
+        fitDiagramToViewport(width, height);
+      }
+    }
+  }, 50);
 
   hasBackground = true;
   addEvent('Floor plan loaded', 'success');
@@ -2008,6 +2105,42 @@ function saveScale() {
   } catch (e) {
     console.error('Failed to save scale:', e);
   }
+}
+
+/**
+ * Restore scroll position from UI store
+ */
+let hasRestoredScrollPosition = false;
+function restoreScrollPosition() {
+  if (!diagram || hasRestoredScrollPosition) return false;
+  
+  try {
+    if (window.pinia && window.pinia._s) {
+      const uiStore = window.pinia._s.get('ui');
+      if (uiStore && uiStore.scrollPosition) {
+        const pos = uiStore.scrollPosition;
+        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' && (pos.x !== 0 || pos.y !== 0)) {
+          // Center the viewport at the saved position
+          // First, ensure the point is visible by scrolling to it
+          const centerPoint = new go.Point(pos.x, pos.y);
+          
+          // Use scrollToRect to bring the area into view, then center on it
+          diagram.scrollToRect(new go.Rect(pos.x - 50, pos.y - 50, 100, 100));
+          
+          // Then center the viewport on the exact point
+          setTimeout(() => {
+            diagram.centerRect(new go.Rect(centerPoint.x, centerPoint.y, 0, 0));
+          }, 50);
+          
+          hasRestoredScrollPosition = true;
+          return true;
+        }
+      }
+    }
+  } catch (e) {
+    // Store not available yet or error, ignore
+  }
+  return false;
 }
 
 /**

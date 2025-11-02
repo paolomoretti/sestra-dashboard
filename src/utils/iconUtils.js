@@ -37,6 +37,69 @@ export function createIconSVG(path, fill = '#ffffff', size = 24) {
 }
 
 /**
+ * Get icon color based on entity domain, state, and icon name
+ * @param {string} entityId - Entity ID (e.g., 'light.living_room')
+ * @param {string} state - Entity state (e.g., 'on', 'off', 'unavailable')
+ * @param {string} iconName - Optional icon name (e.g., 'thermometer', 'lightbulb')
+ * @returns {string} Color hex code
+ */
+export function getIconColor(entityId, state, iconName = null) {
+  if (!entityId || !state) return '#888888'; // Default gray
+  
+  const domain = entityId.split('.')[0];
+  const normalizedState = (state || '').toLowerCase();
+  
+  // Handle unavailable/unknown states
+  if (normalizedState === 'unavailable' || normalizedState === 'unknown') {
+    return '#555555'; // Dark gray for unavailable
+  }
+  
+  // Check if it's a thermometer icon - always use gray like off lights
+  if (iconName && (iconName.toLowerCase().includes('thermometer') || iconName.toLowerCase().includes('temperature'))) {
+    return '#888888'; // Same gray as off lights
+  }
+  
+  // Check if it's a power/lightning icon (power sockets, energy meters) - always use gray
+  if (iconName && (iconName.toLowerCase().includes('lightning') || iconName.toLowerCase().includes('power') || iconName.toLowerCase().includes('bolt'))) {
+    return '#888888'; // Same gray as off lights
+  }
+  
+  // Check entity ID for temperature sensors (fallback if icon name not provided)
+  if (entityId.toLowerCase().includes('temperature') || entityId.toLowerCase().includes('thermometer')) {
+    return '#888888'; // Same gray as off lights
+  }
+  
+  // Check entity ID for power/energy sensors (fallback if icon name not provided)
+  if (entityId.toLowerCase().includes('power') || entityId.toLowerCase().includes('energy') || entityId.toLowerCase().includes('watt')) {
+    return '#888888'; // Same gray as off lights
+  }
+  
+  // Domain-specific color logic
+  switch (domain) {
+    case 'light':
+      return normalizedState === 'on' ? '#FFC107' : '#888888'; // Yellow when on, gray when off
+    
+    case 'switch':
+      return normalizedState === 'on' ? '#4CAF50' : '#888888'; // Green when on, gray when off
+    
+    case 'binary_sensor':
+      // Binary sensors: 'on' typically means active/detected
+      if (normalizedState === 'on') {
+        // Check device class for more specific colors
+        // This would require access to attributes, but we can use a general green
+        return '#4CAF50'; // Green for active
+      }
+      return '#888888'; // Gray for inactive
+    
+    case 'sensor':
+    case 'camera':
+    default:
+      // For other entities, use white/gray based on availability
+      return normalizedState === 'unavailable' ? '#555555' : '#CCCCCC';
+  }
+}
+
+/**
  * Extract icon from Home Assistant state
  * @param {Object} state - HA entity state object
  * @returns {string|null} MDI icon name (without mdi: prefix) or null
