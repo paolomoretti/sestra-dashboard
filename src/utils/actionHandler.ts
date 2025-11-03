@@ -46,14 +46,12 @@ export async function executeTapAction(action: TapAction | null | undefined, ent
       return toggleEntity(entityId, config);
     
     case 'more-info':
-      return showMoreInfo(entityData);
+      return showMoreInfo(entityData, config);
     
     case 'navigate':
-      if (action.navigation_path) {
-        return navigateTo(action.navigation_path);
-      }
-      console.warn('Navigate action requires navigation_path');
-      break;
+      // If navigation_path is provided, use it; otherwise default to entity's detail page
+      const navigationPath = action.navigation_path || `/config/entities/${entityId}`;
+      return navigateTo(navigationPath, config);
     
     case 'call-service':
       if (action.service) {
@@ -113,33 +111,46 @@ async function toggleEntity(entityId: string, config: HAConfig): Promise<void> {
 }
 
 /**
- * Show more info dialog (for now, just log - can be enhanced later)
+ * Show more info - opens the entity's detail page in Home Assistant
+ * @param entityData - Entity data
+ * @param config - HA configuration with address
  */
-function showMoreInfo(entityData: EntityData): void {
-  console.log('More info for:', entityData);
-  // TODO: Could open a modal or navigate to entity detail page
-  // For now, we'll just select it (which shows the EntityInfoPanel)
-  if (window.diagramInstance) {
-    const node = window.diagramInstance.findNodeForKey(entityData.key || entityData.entityId);
-    if (node) {
-      window.diagramInstance.select(node);
-    }
+function showMoreInfo(entityData: EntityData, config: HAConfig): void {
+  const entityId = entityData.entityId || entityData.key;
+  if (!entityId) {
+    console.warn('No entity ID found for more-info action');
+    return;
   }
+  
+  // Open entity's detail page in Home Assistant
+  // This opens the entity configuration page where you can see all details, history, etc.
+  const entityDetailPath = `/config/entities/${entityId}`;
+  navigateTo(entityDetailPath, config);
 }
 
 /**
- * Navigate to a path (for now, just log - can be enhanced with Vue Router)
+ * Navigate to a path in Home Assistant
+ * @param navigationPath - Relative path (e.g., '/lovelace/dashboard1') or full URL
+ * @param config - HA configuration with address
  */
-function navigateTo(navigationPath: string): void {
+function navigateTo(navigationPath: string, config: HAConfig): void {
   console.log('Navigate to:', navigationPath);
-  // TODO: Implement navigation if using Vue Router
-  // For now, we can use window.location or a router if added later
-  if (navigationPath.startsWith('http')) {
-    window.open(navigationPath, '_blank');
+  
+  let fullUrl: string;
+  
+  // If it's already a full URL, use it as-is
+  if (navigationPath.startsWith('http://') || navigationPath.startsWith('https://')) {
+    fullUrl = navigationPath;
   } else {
-    // Relative path - could use router
-    console.warn('Relative navigation not implemented yet');
+    // Construct full Home Assistant URL
+    // Ensure navigation path starts with /
+    const path = navigationPath.startsWith('/') ? navigationPath : `/${navigationPath}`;
+    fullUrl = `${config.address}${path}`;
   }
+  
+  console.log('Opening Home Assistant URL:', fullUrl);
+  // Open in a new tab
+  window.open(fullUrl, '_blank');
 }
 
 /**

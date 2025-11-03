@@ -11,6 +11,9 @@
     <div
       class="entity-widget"
       :class="{ selected: isSelected, resizing: isResizing, dragging: isDragging }"
+      @touchstart.prevent.stop="handleTouchStart"
+      @touchmove.prevent.stop="handleTouchMove"
+      @touchend.prevent.stop="handleTouchEnd"
     >
        <!-- Icon --> <img
         v-if="iconUrl"
@@ -19,6 +22,8 @@
         :style="iconStyle"
         draggable="false"
         @click.stop="handleIconClick"
+        @mousedown.stop="handleIconMouseDown"
+        @contextmenu.stop="handleIconRightClick"
       /> <!-- Temperature display for temperature sensors -->
       <div v-if="temperatureDisplay" class="temperature-display"> {{ temperatureDisplay }} </div>
        <!-- Humidity display for humidity sensors -->
@@ -37,10 +42,11 @@
     </div>
      <!-- Entity Label - positioned relative to wrapper -->
     <div
-      v-show="labelsVisible && !isSelected && !isPanelOpen"
+      v-show="showLabel && !isSelected && !isPanelOpen"
       class="entity-label"
       :title="entity.name || entity.key"
       @click.stop="handleLabelClick"
+      @contextmenu.stop="handleLabelRightClick"
     >
        <span class="label-text">{{ entity.name || entity.key }}</span
       >
@@ -68,141 +74,245 @@
         <div v-if="isExpanded">
            <!-- Divider -->
           <div class="panel-divider"></div>
+           <!-- Tabs -->
+          <div class="panel-tabs">
+             <button
+              class="panel-tab"
+              :class="{ active: activeTab === 'general' }"
+              @click.stop="activeTab = 'general'"
+              @mousedown.stop
+            >
+               General </button
+            > <button
+              class="panel-tab"
+              :class="{ active: activeTab === 'style' }"
+              @click.stop="activeTab = 'style'"
+              @mousedown.stop
+            >
+               Style </button
+            >
+          </div>
            <!-- Entity details -->
           <div class="panel-content">
+             <!-- General Tab -->
+            <div v-show="activeTab === 'general'" class="tab-content">
 
-            <div class="detail-row">
-               <span class="detail-label">Entity ID:</span> <span
-                class="detail-value entity-id-value"
-                >{{ entity.key || 'N/A' }}</span
-              >
-            </div>
+              <div class="detail-row">
+                 <span class="detail-label">Entity ID:</span> <span
+                  class="detail-value entity-id-value"
+                  >{{ entity.key || 'N/A' }}</span
+                >
+              </div>
 
-            <div class="detail-row">
-               <span class="detail-label">State:</span> <span class="detail-value state-value">{{
-                entity.state || 'unknown'
-              }}</span
-              >
-            </div>
+              <div class="detail-row">
+                 <span class="detail-label">State:</span> <span class="detail-value state-value">{{
+                  entity.state || 'unknown'
+                }}</span
+                >
+              </div>
 
-            <div class="detail-row">
-               <span class="detail-label">Category:</span> <span class="detail-value">{{
-                entity.category || 'sensor'
-              }}</span
-              >
-            </div>
-             <!-- Icon selection -->
-            <div class="detail-row">
-               <span class="detail-label">Icon:</span>
-              <div class="icon-selector-wrapper">
-
-                <div class="icon-search-wrapper">
-                   <input
-                    type="text"
-                    v-model="iconSearchQuery"
-                    @mousedown.stop
-                    @click.stop
-                    @input.stop
-                    @keydown="handleIconSearchKeydown"
-                    @focus="handleIconSearchFocus"
-                    placeholder="Search icons..."
-                    class="icon-search-input"
-                    ref="iconSearchInputRef"
-                  />
-                </div>
-
-                <div
-                  class="icon-dropdown"
+              <div class="detail-row">
+                 <span class="detail-label">Category:</span> <span class="detail-value">{{
+                  entity.category || 'sensor'
+                }}</span
+                >
+              </div>
+               <!-- Tap Action -->
+              <div class="detail-row">
+                 <span class="detail-label">Tap Action:</span> <select
+                  :value="currentTapAction"
+                  @change="handleTapActionChange"
                   @mousedown.stop
                   @click.stop
-                  @keydown="handleIconDropdownKeydown"
-                  @focus="handleIconDropdownFocus"
-                  tabindex="0"
-                  ref="iconDropdownRef"
+                  class="icon-select"
                 >
-                   <!-- Only show options if search has at least 1 character --> <template
-                    v-if="iconSearchQuery.trim().length > 0"
-                    >
-                    <div
-                      class="icon-option"
-                      :class="{
-                        'icon-option-selected': currentIcon === '',
-                        'icon-option-highlighted': highlightedIndex === 0,
-                      }"
-                      @click="selectIcon('')"
-                      @mouseenter="highlightedIndex = 0"
-                    >
-                       <span class="icon-option-label">(Use HA default)</span>
-                    </div>
 
-                    <div v-if="isLoadingIcons" class="icon-loading"> Loading icons... </div>
+                  <option value="">None</option>
 
-                    <div
-                      v-for="(icon, index) in filteredIconOptions"
-                      :key="icon.value"
-                      class="icon-option"
-                      :class="{
-                        'icon-option-selected': currentIcon === icon.value,
-                        'icon-option-highlighted': highlightedIndex === index + 1,
-                      }"
-                      :ref="
-                        el => {
-                          if (el) iconOptionRefs[index] = el as HTMLElement;
-                        }
-                      "
-                      @click="selectIcon(icon.value)"
-                      @mouseenter="highlightedIndex = index + 1"
-                    >
-                       <img
-                        v-if="getIconPreview(icon.value)"
-                        :src="getIconPreview(icon.value) ?? ''"
-                        class="icon-preview"
-                        alt=""
-                      /> <span class="icon-option-label">{{ icon.label }}</span
-                      >
-                    </div>
-                     </template
+                  <option value="toggle">Toggle</option>
+
+                  <option value="more-info">More Info</option>
+
+                  <option value="navigate">Navigate</option>
+                   </select
+                >
+              </div>
+               <!-- Navigation Path (only show if navigate is selected) -->
+              <div v-if="currentTapAction === 'navigate'" class="detail-row">
+                 <span class="detail-label">Navigation Path:</span> <input
+                  type="text"
+                  :value="currentNavigationPath"
+                  @input="handleNavigationPathChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input"
+                  placeholder="/dashboard/living-room"
+                />
+              </div>
+               <!-- Delete Button -->
+              <div class="detail-row delete-row">
+                 <button
+                  @click.stop="handleDelete"
+                  @mousedown.stop
+                  class="delete-button"
+                  title="Delete widget (or press Backspace)"
+                >
+                   🗑️ Delete Widget </button
+                >
+              </div>
+
+            </div>
+             <!-- Style Tab -->
+            <div v-show="activeTab === 'style'" class="tab-content">
+               <!-- Label Visibility -->
+              <div class="detail-row">
+                 <span class="detail-label">Show Label:</span> <label class="toggle-switch"
+                  > <input
+                    type="checkbox"
+                    :checked="widgetLabelVisible"
+                    @change="handleLabelVisibilityChange"
+                    @mousedown.stop
+                    @click.stop
+                  /> <span class="toggle-slider"></span> </label
+                >
+              </div>
+               <!-- Icon selection -->
+              <div class="detail-row">
+                 <span class="detail-label">Icon:</span>
+                <div class="icon-selector-wrapper">
+
+                  <div class="icon-search-wrapper">
+                     <input
+                      type="text"
+                      v-model="iconSearchQuery"
+                      @mousedown.stop
+                      @click.stop
+                      @input.stop
+                      @keydown="handleIconSearchKeydown"
+                      @focus="handleIconSearchFocus"
+                      placeholder="Search icons..."
+                      class="icon-search-input"
+                      ref="iconSearchInputRef"
+                    />
+                  </div>
+
+                  <div
+                    class="icon-dropdown"
+                    @mousedown.stop
+                    @click.stop
+                    @keydown="handleIconDropdownKeydown"
+                    @focus="handleIconDropdownFocus"
+                    tabindex="0"
+                    ref="iconDropdownRef"
                   >
-                  <div v-else class="icon-search-hint">
-                     Type at least 1 character to search icons...
+                     <!-- Only show options if debounced search has at least 1 character -->
+                    <template v-if="debouncedIconSearchQuery.trim().length > 0"
+                      >
+                      <div
+                        class="icon-option"
+                        :class="{
+                          'icon-option-selected': currentIcon === '',
+                          'icon-option-highlighted': highlightedIndex === 0,
+                        }"
+                        @click="selectIcon('')"
+                        @mouseenter="highlightedIndex = 0"
+                      >
+                         <span class="icon-option-label">(Use HA default)</span>
+                      </div>
+
+                      <div v-if="isLoadingIcons" class="icon-loading"> Loading icons... </div>
+
+                      <div
+                        v-for="(icon, index) in filteredIconOptions"
+                        :key="icon.value"
+                        class="icon-option"
+                        :class="{
+                          'icon-option-selected': currentIcon === icon.value,
+                          'icon-option-highlighted': highlightedIndex === index + 1,
+                        }"
+                        :ref="
+                          el => {
+                            if (el) iconOptionRefs[index] = el as HTMLElement;
+                          }
+                        "
+                        @click="selectIcon(icon.value)"
+                        @mouseenter="highlightedIndex = index + 1"
+                      >
+                         <img
+                          v-if="getIconPreview(icon.value)"
+                          :src="getIconPreview(icon.value) ?? ''"
+                          class="icon-preview"
+                          alt=""
+                        /> <span class="icon-option-label">{{ icon.label }}</span
+                        >
+                      </div>
+                       </template
+                    >
+                    <div
+                      v-if="
+                        iconSearchQuery.trim().length > 0 &&
+                        debouncedIconSearchQuery.trim().length === 0
+                      "
+                      class="icon-search-hint"
+                    >
+                       Searching...
+                    </div>
+
+                    <div
+                      v-else-if="
+                        debouncedIconSearchQuery.trim().length > 0 &&
+                        filteredIconOptions.length === 0 &&
+                        !isLoadingIcons
+                      "
+                      class="icon-search-hint"
+                    >
+                       No icons found
+                    </div>
+
                   </div>
 
                 </div>
 
               </div>
+               <!-- State Condition -->
+              <div class="detail-row" v-if="isNumericEntity">
+                 <span class="detail-label">Show State If:</span>
+                <div class="condition-controls">
+                   <select
+                    :value="stateConditionOperator"
+                    @change="handleStateConditionOperatorChange"
+                    @mousedown.stop
+                    @click.stop
+                    class="icon-select condition-operator"
+                  >
 
-            </div>
-             <!-- Tap Action -->
-            <div class="detail-row">
-               <span class="detail-label">Tap Action:</span> <select
-                :value="currentTapAction"
-                @change="handleTapActionChange"
-                @mousedown.stop
-                @click.stop
-                class="icon-select"
-              >
+                    <option value="">Always</option>
 
-                <option value="">None</option>
+                    <option value="equal">Equal (=)</option>
 
-                <option value="toggle">Toggle</option>
+                    <option value="greater">Greater (>)</option>
 
-                <option value="more-info">More Info</option>
+                    <option value="lower">Lower (<)</option>
 
-                <option value="navigate">Navigate</option>
-                 </select
-              >
-            </div>
-             <!-- Navigation Path (only show if navigate is selected) -->
-            <div v-if="currentTapAction === 'navigate'" class="detail-row">
-               <span class="detail-label">Navigation Path:</span> <input
-                type="text"
-                :value="currentNavigationPath"
-                @input="handleNavigationPathChange"
-                @mousedown.stop
-                @click.stop
-                class="text-input"
-                placeholder="/dashboard/living-room"
-              />
+                    <option value="greaterEqual">Greater or Equal (≥)</option>
+
+                    <option value="lowerEqual">Lower or Equal (≤)</option>
+                     </select
+                  > <input
+                    v-if="stateConditionOperator"
+                    type="number"
+                    step="any"
+                    :value="stateConditionValue"
+                    @input="handleStateConditionValueChange"
+                    @mousedown.stop
+                    @click.stop
+                    class="text-input condition-value"
+                    placeholder="Value"
+                  />
+                </div>
+
+              </div>
+
             </div>
 
           </div>
@@ -218,6 +328,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { debouncedRef } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import {
@@ -258,6 +369,7 @@ const hasDragged = ref(false);
 const hasDraggedFromLabel = ref(false);
 const isPanelOpen = ref(false);
 const isExpanded = ref(false);
+const activeTab = ref<'general' | 'style'>('general');
 
 // Position in diagram coordinates (not screen coordinates)
 const initialPos = parsePosition(props.entity.loc);
@@ -342,6 +454,11 @@ const temperatureDisplay = computed(() => {
     return null;
   }
 
+  // Check condition before displaying
+  if (!stateConditionMet.value) {
+    return null;
+  }
+
   // Try to parse temperature value and unit
   // State might be: "21.5", "21.5°C", "21.5 °C", "70.5°F", etc.
   const tempMatch = state.match(/^(-?\d+\.?\d*)\s*°?([CF])?/i);
@@ -396,6 +513,11 @@ const humidityDisplay = computed(() => {
 
   const state = props.entity.state.trim();
   if (!state || state === 'unknown' || state === 'unavailable') {
+    return null;
+  }
+
+  // Check condition before displaying
+  if (!stateConditionMet.value) {
     return null;
   }
 
@@ -539,6 +661,82 @@ function handleResizeEnd() {
 const uiStore = useUIStore();
 const { labelsVisible } = storeToRefs(uiStore);
 
+// Widget-specific label visibility (stored per entity)
+const widgetLabelsVisibleKey = `ha_dashboard_widget_label_visible_${props.entity.key}`;
+const [widgetLabelVisible, setWidgetLabelVisible] = useLocalStorage<boolean>(
+  widgetLabelsVisibleKey,
+  true
+);
+
+// Combined label visibility: show only when both global AND widget are true
+const showLabel = computed(() => labelsVisible.value && widgetLabelVisible.value);
+
+// State condition settings (stored per entity)
+const stateConditionOperatorKey = `ha_dashboard_state_condition_operator_${props.entity.key}`;
+const stateConditionValueKey = `ha_dashboard_state_condition_value_${props.entity.key}`;
+const [stateConditionOperator, setStateConditionOperator] = useLocalStorage<string>(
+  stateConditionOperatorKey,
+  ''
+);
+const [stateConditionValue, setStateConditionValue] = useLocalStorage<number | null>(
+  stateConditionValueKey,
+  null
+);
+
+// Check if entity has numeric state
+const isNumericEntity = computed(() => {
+  const state = props.entity.state;
+  if (!state) return false;
+  const trimmedState = state.trim();
+  if (!trimmedState || trimmedState === 'unknown' || trimmedState === 'unavailable') return false;
+
+  // Try to parse as number (handles temperature, humidity, power, etc.)
+  const numericMatch = trimmedState.match(/^(-?\d+\.?\d*)/);
+  if (!numericMatch?.[1]) return false;
+  return !isNaN(parseFloat(numericMatch[1]));
+});
+
+// Parse numeric value from state (handles temperature, humidity, power, etc.)
+function parseNumericState(state: string | undefined): number | null {
+  if (!state) return null;
+  const trimmedState = state.trim();
+  if (!trimmedState || trimmedState === 'unknown' || trimmedState === 'unavailable') return null;
+
+  // Try to extract numeric value (handles "21.5°C", "45%", "120W", etc.)
+  const numericMatch = trimmedState.match(/^(-?\d+\.?\d*)/);
+  if (!numericMatch?.[1]) return null;
+
+  const value = parseFloat(numericMatch[1]);
+  return isNaN(value) ? null : value;
+}
+
+// Check if state condition is met
+const stateConditionMet = computed(() => {
+  if (!stateConditionOperator.value || stateConditionValue.value === null) {
+    return true; // No condition set, always show
+  }
+
+  const numericValue = parseNumericState(props.entity.state);
+  if (numericValue === null) return false;
+
+  const threshold = stateConditionValue.value;
+
+  switch (stateConditionOperator.value) {
+    case 'equal':
+      return Math.abs(numericValue - threshold) < 0.001; // Use small epsilon for float comparison
+    case 'greater':
+      return numericValue > threshold;
+    case 'lower':
+      return numericValue < threshold;
+    case 'greaterEqual':
+      return numericValue >= threshold;
+    case 'lowerEqual':
+      return numericValue <= threshold;
+    default:
+      return true;
+  }
+});
+
 // Click handlers
 function handleClick() {
   // Don't handle click if we just finished dragging
@@ -557,6 +755,11 @@ async function handleIconClick(e: MouseEvent) {
   // Prevent event from bubbling to widget wrapper
   e.stopPropagation();
 
+  // If widget is selected, don't execute action - allow dragging instead
+  if (isSelected.value) {
+    return;
+  }
+
   // Execute tap action if exists
   if (props.entity.tapAction?.action) {
     await executeTapAction(props.entity.tapAction, props.entity, haConfig);
@@ -570,6 +773,34 @@ async function handleIconClick(e: MouseEvent) {
 
   // Otherwise, select entity and zoom
   emit('select', props.entity);
+  if (window.zoomToEntity) {
+    window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
+  }
+}
+
+// Handle mousedown on icon - allows dragging when selected
+function handleIconMouseDown(e: MouseEvent) {
+  // If widget is selected, allow dragging from icon
+  if (isSelected.value) {
+    // Start drag by calling handleMouseDown
+    // handleMouseDown will check if icon is selected and allow drag
+    handleMouseDown(e);
+  }
+  // If not selected, let the click handler execute the action (don't start drag)
+}
+
+// Handle right-click on icon - always show info panel
+function handleIconRightClick(e: MouseEvent) {
+  // Prevent default browser context menu
+  e.preventDefault();
+  e.stopPropagation();
+
+  // Always select the entity and open the panel, regardless of any conditions
+  emit('select', props.entity);
+  isPanelOpen.value = true;
+  isExpanded.value = true;
+
+  // Zoom to entity position (center of widget)
   if (window.zoomToEntity) {
     window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
   }
@@ -592,12 +823,31 @@ function handleLabelClick() {
   }
 }
 
+// Handle right-click on label - always show info panel
+function handleLabelRightClick(e: MouseEvent) {
+  // Prevent default browser context menu
+  e.preventDefault();
+  e.stopPropagation();
+
+  // Always select the entity and open the panel, regardless of any conditions
+  emit('select', props.entity);
+  isPanelOpen.value = true;
+  isExpanded.value = true;
+
+  // Zoom to entity position (center of widget)
+  if (window.zoomToEntity) {
+    window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
+  }
+}
+
 function toggleExpanded() {
   isExpanded.value = !isExpanded.value;
 }
 
 // Icon options - only load when panel is expanded
 const iconSearchQuery = ref('');
+// Debounced search query - only updates after 500ms of no typing
+const debouncedIconSearchQuery = debouncedRef(iconSearchQuery, 500);
 const highlightedIndex = ref(-1);
 const iconDropdownRef = ref<HTMLElement>();
 const iconSearchInputRef = ref<HTMLInputElement>();
@@ -628,17 +878,17 @@ watch(isExpanded, expanded => {
   }
 });
 
-// Filter icons based on search query
+// Filter icons based on debounced search query
 const filteredIconOptions = computed(() => {
-  // Only show if search has at least 1 character
-  if (iconSearchQuery.value.trim().length === 0) {
+  // Only show if debounced search has at least 1 character
+  if (debouncedIconSearchQuery.value.trim().length === 0) {
     return [];
   }
   // Don't filter if panel is not expanded
   if (!isExpanded.value || iconOptions.value.length === 0) {
     return [];
   }
-  const query = iconSearchQuery.value.toLowerCase();
+  const query = debouncedIconSearchQuery.value.toLowerCase();
   return iconOptions.value.filter(
     icon => icon.label.toLowerCase().includes(query) || icon.value.toLowerCase().includes(query)
   );
@@ -647,8 +897,8 @@ const filteredIconOptions = computed(() => {
 // Get all visible options for keyboard navigation (includes "Use HA default")
 const allVisibleOptions = computed(() => {
   const options: Array<{ value: string; label: string }> = [];
-  // Only include options if search has at least 1 character
-  if (iconSearchQuery.value.trim().length > 0 && isExpanded.value) {
+  // Only include options if debounced search has at least 1 character
+  if (debouncedIconSearchQuery.value.trim().length > 0 && isExpanded.value) {
     options.push({ value: '', label: '(Use HA default)' });
     options.push(...filteredIconOptions.value);
   }
@@ -853,6 +1103,28 @@ function handleTapActionChange(event: Event) {
 }
 
 // Handle navigation path change
+function handleLabelVisibilityChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  setWidgetLabelVisible(target.checked);
+}
+
+function handleStateConditionOperatorChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  const operator = target.value;
+  setStateConditionOperator(operator);
+
+  // Clear value if operator is removed
+  if (!operator) {
+    setStateConditionValue(null);
+  }
+}
+
+function handleStateConditionValueChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const value = target.value ? parseFloat(target.value) : null;
+  setStateConditionValue(value);
+}
+
 function handleNavigationPathChange(event: Event) {
   const target = event.target as HTMLInputElement;
   const path = target.value;
@@ -869,6 +1141,18 @@ function handleNavigationPathChange(event: Event) {
     holdAction: props.entity.holdAction ?? null,
   };
   localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+}
+
+// Handle delete button click
+function handleDelete() {
+  if (confirm('Are you sure you want to delete this widget?')) {
+    emit('delete', props.entity.key);
+    // Clear selection after deletion
+    clearSelection();
+    // Close panel
+    isPanelOpen.value = false;
+    isExpanded.value = false;
+  }
 }
 
 // Click outside handler
@@ -902,9 +1186,20 @@ function saveSize() {
 
 // Drag handling
 function handleMouseDown(e: MouseEvent) {
-  // Don't drag if clicking on resize handle or icon (for tap action)
+  // Don't drag on right-click (button 2) - allow context menu handlers to work
+  if (e.button === 2) {
+    return;
+  }
+
+  // Don't drag if clicking on resize handle
   const target = e.target as HTMLElement;
-  if (target.classList.contains('resize-handle') || target.classList.contains('entity-icon')) {
+  if (target.classList.contains('resize-handle')) {
+    return;
+  }
+
+  // Don't drag if clicking on icon AND widget is not selected
+  // (when selected, icon should be draggable)
+  if (target.classList.contains('entity-icon') && !isSelected.value) {
     return;
   }
 
@@ -1036,6 +1331,158 @@ function handleMouseUp() {
 
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);
+    document.removeEventListener('touchmove', handleTouchMove);
+    document.removeEventListener('touchend', handleTouchEnd);
+  }
+}
+
+// Touch handlers for mobile widget dragging
+function handleTouchStart(e: TouchEvent) {
+  // Only handle single touch
+  if (e.touches.length !== 1) return;
+
+  const touch = e.touches[0];
+  if (!touch) return;
+  const target = touch.target as HTMLElement;
+
+  // Don't drag if clicking on resize handle
+  if (target.classList.contains('resize-handle')) {
+    return;
+  }
+
+  // Don't drag if clicking on icon AND widget is not selected
+  if (target.classList.contains('entity-icon') && !isSelected.value) {
+    return;
+  }
+
+  // Check if touching label
+  const clickedOnLabel = target.closest('.entity-label') !== null;
+  if (clickedOnLabel) {
+    hasDraggedFromLabel.value = false;
+    (window as any).__entityDragStartPos = { x: touch.clientX, y: touch.clientY };
+    (window as any).__entityDragStartTarget = target;
+  } else {
+    hasDraggedFromLabel.value = false;
+    delete (window as any).__entityDragStartPos;
+    delete (window as any).__entityDragStartTarget;
+  }
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  isDragging.value = true;
+  hasDragged.value = false;
+
+  // Get dashboard wrapper for coordinate conversion
+  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
+  if (!dashboardWrapper) return;
+
+  const wrapperRect = dashboardWrapper.getBoundingClientRect();
+
+  // Get current pan and scale
+  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
+  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
+  const scale = props.scale ?? 1;
+
+  // Touch position in wrapper coordinates
+  const touchX = touch.clientX - wrapperRect.left;
+  const touchY = touch.clientY - wrapperRect.top;
+
+  // Convert touch position to diagram coordinates
+  const diagramTouchX = (touchX - panX) / scale;
+  const diagramTouchY = (touchY - panY) / scale;
+
+  // Current entity position in diagram coordinates
+  const entityX = x.value;
+  const entityY = y.value;
+
+  // Calculate offset from touch point to entity origin
+  const offsetX = diagramTouchX - entityX;
+  const offsetY = diagramTouchY - entityY;
+
+  // Store offset for later use
+  (window as any).__entityDragOffsetX = offsetX;
+  (window as any).__entityDragOffsetY = offsetY;
+
+  document.addEventListener('touchmove', handleTouchMove);
+  document.addEventListener('touchend', handleTouchEnd);
+}
+
+function handleTouchMove(e: TouchEvent) {
+  if (!isDragging.value || e.touches.length !== 1) return;
+
+  const touch = e.touches[0];
+  if (!touch) return;
+  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
+  if (!dashboardWrapper) return;
+
+  const wrapperRect = dashboardWrapper.getBoundingClientRect();
+
+  // Get current pan and scale
+  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
+  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
+  const scale = props.scale ?? 1;
+
+  // Current touch position in wrapper coordinates
+  const currentTouchX = touch.clientX - wrapperRect.left;
+  const currentTouchY = touch.clientY - wrapperRect.top;
+
+  // Convert touch position to diagram coordinates
+  const diagramTouchX = (currentTouchX - panX) / scale;
+  const diagramTouchY = (currentTouchY - panY) / scale;
+
+  // Get stored offset
+  const offsetX = (window as any).__entityDragOffsetX ?? 0;
+  const offsetY = (window as any).__entityDragOffsetY ?? 0;
+
+  // Calculate new entity position
+  const newX = diagramTouchX - offsetX;
+  const newY = diagramTouchY - offsetY;
+
+  // Update position in diagram coordinates
+  setX(newX);
+  setY(newY);
+
+  // Mark that we've dragged
+  hasDragged.value = true;
+
+  // Mark if we dragged from label
+  const dragStartPos = (window as any).__entityDragStartPos;
+  if (dragStartPos) {
+    const dx = Math.abs(touch.clientX - dragStartPos.x);
+    const dy = Math.abs(touch.clientY - dragStartPos.y);
+    if (dx > 5 || dy > 5) {
+      const startTarget = (window as any).__entityDragStartTarget;
+      if (startTarget?.closest('.entity-label')) {
+        hasDraggedFromLabel.value = true;
+      }
+    }
+  }
+
+  // Update selectedEntityPosition if this entity is selected
+  if (isSelected.value && selectedEntity.value?.key === props.entity.key) {
+    selectedEntityPosition.value = { x: newX, y: newY };
+  }
+}
+
+function handleTouchEnd() {
+  if (isDragging.value) {
+    isDragging.value = false;
+
+    // Clean up offset and drag start info
+    delete (window as any).__entityDragOffsetX;
+    delete (window as any).__entityDragOffsetY;
+    delete (window as any).__entityDragStartPos;
+    delete (window as any).__entityDragStartTarget;
+
+    // Save position
+    const newLoc = `${x.value} ${y.value}`;
+    emit('update', props.entity.key, { loc: newLoc });
+    savePosition();
+
+    // Remove event listeners
+    document.removeEventListener('touchmove', handleTouchMove);
+    document.removeEventListener('touchend', handleTouchEnd);
   }
 }
 
@@ -1075,9 +1522,7 @@ watch(
 // Click outside detection
 onMounted(() => {
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Delete' && isSelected.value) {
-      emit('delete', props.entity.key);
-    }
+    // Delete key is now handled in Dashboard.vue
     if (e.key === 'Escape') {
       if (isPanelOpen.value) {
         isPanelOpen.value = false;
@@ -1343,6 +1788,42 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   margin: 4px 0;
 }
 
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid #4a4a4a;
+  margin: 0;
+  padding: 0;
+}
+
+.panel-tab {
+  flex: 1;
+  padding: 6px 8px;
+  background-color: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #aaaaaa;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.panel-tab:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+.panel-tab.active {
+  color: #ffffff;
+  border-bottom-color: #2d5aa0;
+  background-color: rgba(45, 90, 160, 0.1);
+}
+
+.tab-content {
+  min-height: 50px;
+}
+
 .panel-content {
   padding: 8px 14px 10px;
   overflow: visible;
@@ -1356,6 +1837,33 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 
 .detail-row:last-child {
   margin-bottom: 0;
+}
+
+.delete-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #3a3a3a;
+}
+
+.delete-button {
+  width: 100%;
+  background-color: #d32f2f;
+  border: 1px solid #b71c1c;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 11px;
+  padding: 6px 12px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.2s ease;
+}
+
+.delete-button:hover {
+  background-color: #c62828;
+}
+
+.delete-button:active {
+  background-color: #b71c1c;
 }
 
 .detail-label {
@@ -1522,6 +2030,24 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   border-color: #2196F3;
 }
 
+/* Condition controls */
+.condition-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1;
+}
+
+.condition-operator {
+  flex: 0 0 auto;
+  min-width: 120px;
+}
+
+.condition-value {
+  flex: 0 0 auto;
+  width: 80px;
+}
+
 /* Expand/collapse animation */
 .expand-enter-active,
 .expand-leave-active {
@@ -1539,6 +2065,56 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 .expand-leave-from {
   opacity: 1;
   max-height: 500px;
+}
+
+/* Toggle switch for label visibility */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #555;
+  transition: 0.3s;
+  border-radius: 20px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: '';
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #2d5aa0;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(16px);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 1px #2d5aa0;
 }
 </style>
 

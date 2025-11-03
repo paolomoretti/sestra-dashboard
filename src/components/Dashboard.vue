@@ -1,6 +1,13 @@
 <template>
 
-  <div ref="dashboardWrapperRef" class="dashboard-wrapper" @wheel="handleWheel">
+  <div
+    ref="dashboardWrapperRef"
+    class="dashboard-wrapper"
+    @wheel="handleWheel"
+    @touchstart.prevent="handleTouchStart"
+    @touchmove.prevent="handleTouchMove"
+    @touchend.prevent="handleTouchEnd"
+  >
 
     <div
       ref="dashboardRef"
@@ -47,6 +54,7 @@ import EntityWidget from './EntityWidget.vue';
 import {
   setSelectedEntity,
   clearSelection,
+  selectedEntity,
   type EntityData,
 } from '../composables/useEntitySelection';
 import { useEntitiesStore } from '../stores/entities';
@@ -119,7 +127,7 @@ const [panX, setPanX] = useLocalStorage<number>('ha_dashboard_pan_x', 0);
 const [panY, setPanY] = useLocalStorage<number>('ha_dashboard_pan_y', 0);
 
 // Handle Escape key to deselect
-let escapeHandler: ((event: KeyboardEvent) => void) | null = null;
+let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 
 // Initialize scale on mount if not set
 onMounted(() => {
@@ -131,16 +139,23 @@ onMounted(() => {
     isDraggingFromPalette.value = false;
   });
 
-  // Handle Escape key to deselect
-  escapeHandler = (event: KeyboardEvent) => {
+  // Handle Escape key to deselect and Backspace/Delete to remove selected entity
+  escapeHandler = (e: KeyboardEvent) => {
     // Don't trigger if user is typing in input fields
-    const target = event.target as HTMLElement;
+    const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
       return;
     }
 
-    if (event.key === 'Escape') {
+    if (e.key === 'Escape') {
       clearSelection();
+    } else if ((e.key === 'Backspace' || e.key === 'Delete') && selectedEntity.value) {
+      // Delete selected entity when Backspace or Delete is pressed
+      e.preventDefault();
+      if (confirm('Are you sure you want to delete this widget?')) {
+        handleEntityDelete(selectedEntity.value.key);
+        clearSelection();
+      }
     }
   };
   document.addEventListener('keydown', escapeHandler);
@@ -226,6 +241,15 @@ let isPanning = false;
 let panStartX = 0;
 let panStartY = 0;
 
+// Touch handling for mobile
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartPanX = 0;
+let touchStartPanY = 0;
+let touchStartScale = 1;
+let initialTouchDistance = 0;
+let isPinching = false;
+
 function handleMouseDown(e: MouseEvent) {
   // Only pan if clicking on background or container (not on entity)
   const target = e.target as HTMLElement;
@@ -279,6 +303,132 @@ function handleMouseUp(e: MouseEvent) {
     target.classList.contains('dashboard-wrapper')
   ) {
     clearSelection();
+  }
+}
+
+// Touch handlers for mobile panning and pinch-to-zoom
+function handleTouchStart(e: TouchEvent) {
+  if (!dashboardWrapperRef.value) return;
+
+  if (e.touches.length === 1) {
+    // Single touch - prepare for panning
+    const touch = e.touches[0];
+    if (!touch) return;
+    const rect = dashboardWrapperRef.value.getBoundingClientRect();
+    touchStartX = touch.clientX - rect.left;
+    touchStartY = touch.clientY - rect.top;
+    touchStartPanX = panX.value;
+    touchStartPanY = panY.value;
+
+    // Check if touching background
+    const target = e.target as HTMLElement;
+    if (
+      target.classList.contains('dashboard-container') ||
+      target.classList.contains('dashboard-background') ||
+      target.classList.contains('dashboard-wrapper')
+    ) {
+      isPanning = true;
+      clearSelection();
+    }
+  } else if (e.touches.length === 2) {
+    // Two touches - prepare for pinch-to-zoom
+    isPinching = true;
+    isPanning = false;
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+    if (!touch1 || !touch2) return;
+
+    // Calculate initial distance between touches
+    initialTouchDistance = Math.hypot(
+      touch2.clientX - touch1.clientX,
+      touch2.clientY - touch1.clientY
+    );
+    touchStartScale = scale.value || 1;
+
+    // Get center point for zoom
+    const rect = dashboardWrapperRef.value.getBoundingClientRect();
+    const centerX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+    const centerY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
+    touchStartX = centerX;
+    touchStartY = centerY;
+    touchStartPanX = panX.value;
+    touchStartPanY = panY.value;
+  }
+}
+
+function handleTouchMove(e: TouchEvent) {
+  if (!dashboardWrapperRef.value) return;
+
+  if (e.touches.length === 1 && isPanning) {
+    // Single touch panning
+    const touch = e.touches[0];
+    if (!touch) return;
+    const rect = dashboardWrapperRef.value.getBoundingClientRect();
+    const currentX = touch.clientX - rect.left;
+    const currentY = touch.clientY - rect.top;
+
+    // Calculate pan delta
+    const deltaX = currentX - touchStartX;
+    const deltaY = currentY - touchStartY;
+
+    // Apply pan
+    setPanX(touchStartPanX + deltaX);
+    setPanY(touchStartPanY + deltaY);
+  } else if (e.touches.length === 2 && isPinching) {
+    // Pinch-to-zoom
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+    if (!touch1 || !touch2) return;
+
+    // Calculate current distance between touches
+    const currentDistance = Math.hypot(
+      touch2.clientX - touch1.clientX,
+      touch2.clientY - touch1.clientY
+    );
+
+    // Calculate scale change
+    const scaleChange = currentDistance / initialTouchDistance;
+    const newScale = Math.max(minScale, Math.min(maxScale, touchStartScale * scaleChange));
+
+    if (newScale !== scale.value) {
+      // Get center point in wrapper coordinates
+      const rect = dashboardWrapperRef.value.getBoundingClientRect();
+      const centerX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+      const centerY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
+
+      // Calculate the point in diagram coordinates before zoom
+      const diagramX = (centerX - touchStartPanX) / touchStartScale;
+      const diagramY = (centerY - touchStartPanY) / touchStartScale;
+
+      // Adjust pan to keep the center point in the same diagram position
+      const newPanX = centerX - diagramX * newScale;
+      const newPanY = centerY - diagramY * newScale;
+
+      setScale(newScale);
+      setPanX(newPanX);
+      setPanY(newPanY);
+    }
+  }
+}
+
+function handleTouchEnd(e: TouchEvent) {
+  if (e.touches.length === 0) {
+    // All touches ended
+    isPanning = false;
+    isPinching = false;
+    initialTouchDistance = 0;
+  } else if (e.touches.length === 1) {
+    // One touch remaining - switch to panning
+    isPinching = false;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const rect = dashboardWrapperRef.value?.getBoundingClientRect();
+    if (rect) {
+      touchStartX = touch.clientX - rect.left;
+      touchStartY = touch.clientY - rect.top;
+      touchStartPanX = panX.value;
+      touchStartPanY = panY.value;
+    }
   }
 }
 
