@@ -3,9 +3,16 @@
     <button
       @click="zoomReset"
       class="bg-[#2a2a2a] hover:bg-[#3a3a3a] border border-[#3a3a3a] rounded px-3 py-2 text-white text-xs transition-colors duration-200 shadow-lg"
-      title="Fit to Screen"
+      title="Fit to Screen (Z)"
     >
       ↺
+    </button>
+    <button
+      @click="zoomFitToWidth"
+      class="bg-[#2a2a2a] hover:bg-[#3a3a3a] border border-[#3a3a3a] rounded px-3 py-2 text-white text-xs transition-colors duration-200 shadow-lg"
+      title="Fit to Width (W)"
+    >
+      ⇄
     </button>
   </div>
 </template>
@@ -14,6 +21,12 @@
 function zoomReset() {
   if (window.zoomReset) {
     window.zoomReset();
+  }
+}
+
+function zoomFitToWidth() {
+  if ((window as any).zoomFitToWidth) {
+    (window as any).zoomFitToWidth();
   }
 }
 </script>

@@ -18,8 +18,11 @@ declare global {
     zoomIn?: () => void;
     zoomOut?: () => void;
     zoomReset?: () => void;
+    zoomFitToWidth?: () => void;
     zoomToEntity?: (x: number, y: number) => void;
     getZoomLevel?: () => number;
+    __entityDragOffsetX?: number; // For EntityWidget custom drag
+    __entityDragOffsetY?: number; // For EntityWidget custom drag
   }
 }
 

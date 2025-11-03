@@ -26,7 +26,7 @@
         <div class="panel-content">
           <div class="detail-row">
             <span class="detail-label">Entity ID:</span>
-            <span class="detail-value">{{ selectedEntity.key || 'N/A' }}</span>
+            <span class="detail-value entity-id-value">{{ selectedEntity.key || 'N/A' }}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">State:</span>
@@ -523,6 +523,12 @@ onUnmounted(() => {
   color: #ffffff;
   flex: 1;
   word-break: break-word;
+}
+
+.detail-value.entity-id-value {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 10px;
+  color: #cccccc;
 }
 
 .detail-value.state-value {

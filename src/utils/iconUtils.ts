@@ -18,16 +18,16 @@ export interface HAEntityState {
  */
 export function getMDIIconPath(iconName: string | null | undefined): string | null {
   if (!iconName) return null;
-  
+
   // Remove 'mdi:' prefix if present
   const cleanName = iconName.replace(/^mdi:/, '');
-  
+
   // Convert kebab-case to PascalCase (e.g., 'light-bulb' -> 'mdiLightBulb')
-  const pascalName = `mdi${  cleanName
+  const pascalName = `mdi${cleanName
     .split('-')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join('')}`;
-  
+
   // Look up in MDI icons
   return (mdiIcons as any)[pascalName] || null;
 }
@@ -39,74 +39,53 @@ export function getMDIIconPath(iconName: string | null | undefined): string | nu
  * @param size - Icon size in pixels (default: 24)
  * @returns SVG data URI
  */
-export function createIconSVG(path: string | null, fill: string = '#ffffff', size: number = 24): string | null {
+export function createIconSVG(
+  path: string | null,
+  fill: string = '#ffffff',
+  size: number = 24
+): string | null {
   if (!path) return null;
-  
+
   // Create clean SVG without stroke - just the path fill
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}"><path fill="${fill}" stroke="none" d="${path}"/></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${  encodeURIComponent(svg)}`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 /**
- * Get icon color based on entity domain, state, and icon name
+ * Get icon color based on entity domain and state
  * @param entityId - Entity ID (e.g., 'light.living_room')
  * @param state - Entity state (e.g., 'on', 'off', 'unavailable')
- * @param iconName - Optional icon name (e.g., 'thermometer', 'lightbulb')
  * @returns Color hex code
  */
-export function getIconColor(entityId: string | null | undefined, state: string | null | undefined, iconName: string | null = null): string {
+export function getIconColor(
+  entityId: string | null | undefined,
+  state: string | null | undefined
+): string {
   if (!entityId || !state) return '#888888'; // Default gray
-  
+
   const domain = entityId.split('.')[0];
   const normalizedState = (state || '').toLowerCase();
-  
+
   // Handle unavailable/unknown states
   if (normalizedState === 'unavailable' || normalizedState === 'unknown') {
     return '#555555'; // Dark gray for unavailable
   }
-  
-  // Check if it's a thermometer icon - always use gray like off lights
-  if (iconName && (iconName.toLowerCase().includes('thermometer') || iconName.toLowerCase().includes('temperature'))) {
-    return '#888888'; // Same gray as off lights
-  }
-  
-  // Check if it's a power/lightning icon (power sockets, energy meters) - always use gray
-  if (iconName && (iconName.toLowerCase().includes('lightning') || iconName.toLowerCase().includes('power') || iconName.toLowerCase().includes('bolt'))) {
-    return '#888888'; // Same gray as off lights
-  }
-  
-  // Check entity ID for temperature sensors (fallback if icon name not provided)
-  if (entityId.toLowerCase().includes('temperature') || entityId.toLowerCase().includes('thermometer')) {
-    return '#888888'; // Same gray as off lights
-  }
-  
-  // Check entity ID for power/energy sensors (fallback if icon name not provided)
-  if (entityId.toLowerCase().includes('power') || entityId.toLowerCase().includes('energy') || entityId.toLowerCase().includes('watt')) {
-    return '#888888'; // Same gray as off lights
-  }
-  
-  // Domain-specific color logic
+
+  // Domain-specific color logic - only for entities with state-based colors
   switch (domain) {
     case 'light':
       return normalizedState === 'on' ? '#FFC107' : '#888888'; // Yellow when on, gray when off
-    
+
     case 'switch':
       return normalizedState === 'on' ? '#4CAF50' : '#888888'; // Green when on, gray when off
-    
+
     case 'binary_sensor':
       // Binary sensors: 'on' typically means active/detected
-      if (normalizedState === 'on') {
-        // Check device class for more specific colors
-        // This would require access to attributes, but we can use a general green
-        return '#4CAF50'; // Green for active
-      }
-      return '#888888'; // Gray for inactive
-    
-    case 'sensor':
-    case 'camera':
+      return normalizedState === 'on' ? '#4CAF50' : '#888888'; // Green for active, gray for inactive
+
     default:
-      // For other entities, use white/gray based on availability
-      return normalizedState === 'unavailable' ? '#555555' : '#CCCCCC';
+      // For all other entities (sensors, cameras, etc.), use default gray
+      return '#888888';
   }
 }
 
@@ -117,10 +96,10 @@ export function getIconColor(entityId: string | null | undefined, state: string 
  */
 export function extractIconFromHA(state: HAEntityState | null | undefined): string | null {
   if (!state?.attributes) return null;
-  
+
   const icon = state.attributes.icon;
   if (!icon) return null;
-  
+
   // Return icon name without 'mdi:' prefix
   return icon.replace(/^mdi:/, '');
 }
@@ -131,7 +110,10 @@ export function extractIconFromHA(state: HAEntityState | null | undefined): stri
  * @param deviceClass - Device class (temperature, humidity, etc.)
  * @returns MDI icon name
  */
-export function getDefaultIcon(domain: string | null | undefined, deviceClass: string | null | undefined): string {
+export function getDefaultIcon(
+  domain: string | null | undefined,
+  deviceClass: string | null | undefined
+): string {
   // Map device classes to icons
   const deviceClassIcons: Record<string, string> = {
     temperature: 'thermometer',
@@ -149,11 +131,11 @@ export function getDefaultIcon(domain: string | null | undefined, deviceClass: s
     co: 'smoke-detector-variant',
     tamper: 'security',
   };
-  
+
   if (deviceClass && deviceClassIcons[deviceClass]) {
     return deviceClassIcons[deviceClass];
   }
-  
+
   // Map domains to icons
   const domainIcons: Record<string, string> = {
     camera: 'camera',
@@ -170,7 +152,6 @@ export function getDefaultIcon(domain: string | null | undefined, deviceClass: s
     sun: 'weather-sunny',
     weather: 'weather-cloudy',
   };
-  
+
   return domainIcons[domain || ''] || 'circle-outline';
 }
-
