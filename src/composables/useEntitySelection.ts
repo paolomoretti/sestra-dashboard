@@ -14,6 +14,13 @@ export interface EntityData {
   size?: string | null;
   tapAction?: TapAction | null;
   holdAction?: any;
+  // For action buttons
+  isActionButton?: boolean;
+  labelOverride?: string;
+  haAction?: {
+    service: string;
+    serviceData?: Record<string, any>;
+  };
 }
 
 export interface Position {

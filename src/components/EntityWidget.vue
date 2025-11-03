@@ -44,11 +44,11 @@
     <div
       v-show="showLabel && !isSelected && !isPanelOpen"
       class="entity-label"
-      :title="entity.name || entity.key"
+      :title="displayLabel"
       @click.stop="handleLabelClick"
       @contextmenu.stop="handleLabelRightClick"
     >
-       <span class="label-text">{{ entity.name || entity.key }}</span
+       <span class="label-text">{{ displayLabel }}</span
       >
     </div>
      <!-- Entity Info Panel - positioned at label location -->
@@ -66,7 +66,7 @@
         :class="{ collapsed: !isExpanded, expanded: isExpanded }"
         @click="toggleExpanded"
       >
-         <span class="panel-title">{{ entity.name || 'Unknown Entity' }}</span
+         <span class="panel-title">{{ displayLabel }}</span
         > <span class="expand-indicator" v-if="isExpanded">▲</span>
       </div>
        <!-- Expandable content --> <transition name="expand"
@@ -96,6 +96,18 @@
           <div class="panel-content">
              <!-- General Tab -->
             <div v-show="activeTab === 'general'" class="tab-content">
+               <!-- Label Override (only for action buttons) -->
+              <div v-if="entity.isActionButton" class="detail-row">
+                 <span class="detail-label">Label:</span> <input
+                  type="text"
+                  :value="labelOverride"
+                  @input="handleLabelOverrideChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input"
+                  placeholder="Button label"
+                />
+              </div>
 
               <div class="detail-row">
                  <span class="detail-label">Entity ID:</span> <span
@@ -117,8 +129,98 @@
                 }}</span
                 >
               </div>
-               <!-- Tap Action -->
-              <div class="detail-row">
+               <!-- HA Action (for action buttons) -->
+              <div v-if="entity.isActionButton" class="detail-row">
+                 <span class="detail-label">HA Action:</span>
+                <div class="ha-action-selector-wrapper">
+                   <input
+                    type="text"
+                    :value="haActionSearchQuery || (currentHAAction ? currentHAActionLabel : '')"
+                    @input="
+                      e => {
+                        haActionSearchQuery = (e.target as HTMLInputElement).value;
+                      }
+                    "
+                    @mousedown.stop
+                    @click.stop
+                    @focus="
+                      () => {
+                        if (currentHAAction) haActionSearchQuery = '';
+                      }
+                    "
+                    @keydown="handleHAActionSearchKeydown"
+                    :placeholder="currentHAAction ? currentHAActionLabel : 'Search actions...'"
+                    class="icon-search-input"
+                  />
+                  <div
+                    class="icon-dropdown ha-action-dropdown"
+                    @mousedown.stop
+                    @click.stop
+                    v-show="haActionSearchQuery.trim().length > 0"
+                  >
+
+                    <div
+                      v-for="service in filteredHAActions"
+                      :key="service.service"
+                      class="icon-option"
+                      :class="{ 'icon-option-selected': currentHAAction === service.service }"
+                      @click="selectHAAction(service.service)"
+                    >
+                       <span class="icon-option-label">{{ service.label }}</span
+                      >
+                    </div>
+
+                    <div
+                      v-if="filteredHAActions.length === 0 && !isLoadingHAActions"
+                      class="icon-search-hint"
+                    >
+                       No actions found
+                    </div>
+
+                    <div v-if="isLoadingHAActions" class="icon-loading"> Loading actions... </div>
+
+                  </div>
+
+                  <div
+                    v-if="currentHAActionLabel && !haActionSearchQuery.trim()"
+                    class="ha-action-selected"
+                  >
+                     Selected: {{ currentHAActionLabel }}
+                  </div>
+                   <!-- Automation selector (shown when automation.trigger is selected) -->
+                  <div v-if="currentHAAction === 'automation.trigger'" class="automation-selector">
+
+                    <div class="detail-label" style="margin-bottom: 6px">Automation:</div>
+                     <select
+                      :value="selectedAutomation"
+                      @change="handleAutomationChange"
+                      @mousedown.stop
+                      @click.stop
+                      class="icon-select"
+                    >
+
+                      <option value="">Select automation...</option>
+
+                      <option
+                        v-for="automation in automations"
+                        :key="automation.entity_id"
+                        :value="automation.entity_id"
+                      >
+                         {{ automation.name }}
+                      </option>
+                       </select
+                    >
+                    <div v-if="isLoadingAutomations" class="icon-loading">
+                       Loading automations...
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </div>
+               <!-- Tap Action (for regular entities) -->
+              <div v-if="!entity.isActionButton" class="detail-row">
                  <span class="detail-label">Tap Action:</span> <select
                   :value="currentTapAction"
                   @change="handleTapActionChange"
@@ -138,7 +240,10 @@
                 >
               </div>
                <!-- Navigation Path (only show if navigate is selected) -->
-              <div v-if="currentTapAction === 'navigate'" class="detail-row">
+              <div
+                v-if="!entity.isActionButton && currentTapAction === 'navigate'"
+                class="detail-row"
+              >
                  <span class="detail-label">Navigation Path:</span> <input
                   type="text"
                   :value="currentNavigationPath"
@@ -348,6 +453,13 @@ import { executeTapAction, type TapAction } from '../utils/actionHandler';
 import { useUIStore } from '../stores/ui';
 import { getAllMDIIcons, COMMON_MDI_ICONS } from '../utils/mdiIconList';
 import { haConfig } from '../../config';
+import {
+  fetchHAServices,
+  getAllServices,
+  fetchAutomations,
+  getApiBaseUrl,
+  type HAService,
+} from '../utils/haServices';
 
 interface Props {
   entity: EntityData;
@@ -671,6 +783,14 @@ const [widgetLabelVisible, setWidgetLabelVisible] = useLocalStorage<boolean>(
 // Combined label visibility: show only when both global AND widget are true
 const showLabel = computed(() => labelsVisible.value && widgetLabelVisible.value);
 
+// Display label: use override for action buttons, otherwise use entity name
+const displayLabel = computed(() => {
+  if (props.entity.isActionButton && props.entity.labelOverride) {
+    return props.entity.labelOverride;
+  }
+  return props.entity.name || props.entity.key;
+});
+
 // State condition settings (stored per entity)
 const stateConditionOperatorKey = `ha_dashboard_state_condition_operator_${props.entity.key}`;
 const stateConditionValueKey = `ha_dashboard_state_condition_value_${props.entity.key}`;
@@ -757,6 +877,33 @@ async function handleIconClick(e: MouseEvent) {
 
   // If widget is selected, don't execute action - allow dragging instead
   if (isSelected.value) {
+    return;
+  }
+
+  // For action buttons, execute HA action if set
+  if (props.entity.isActionButton && props.entity.haAction?.service) {
+    const service = props.entity.haAction.service;
+    const [domain, serviceName] = service.split('.');
+    if (domain && serviceName) {
+      try {
+        // Use proxy in dev, direct URL in production
+        const apiBaseUrl = getApiBaseUrl(haConfig);
+        const url = `${apiBaseUrl}/services/${domain}/${serviceName}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${haConfig.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(props.entity.haAction.serviceData || {}),
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to call service: ${response.statusText}`);
+        }
+      } catch (error) {
+        console.error('Error executing HA action:', error);
+      }
+    }
     return;
   }
 
@@ -1041,6 +1188,84 @@ const currentNavigationPath = computed(() => {
   return props.entity.tapAction?.navigation_path ?? '';
 });
 
+// Label override for action buttons
+const labelOverride = computed(() => {
+  return props.entity.labelOverride ?? props.entity.name ?? '';
+});
+
+// HA Action for action buttons
+const currentHAAction = computed(() => {
+  return props.entity.haAction?.service ?? '';
+});
+
+// Get the label for the current HA action
+const currentHAActionLabel = computed(() => {
+  if (!currentHAAction.value) return '';
+  const allServices = getAllServices(haServices.value);
+  const service = allServices.find(s => s.service === currentHAAction.value);
+  return service?.label ?? currentHAAction.value;
+});
+
+// HA Services state
+const haServices = ref<HAService[]>([]);
+const haActionSearchQuery = ref('');
+const isLoadingHAActions = ref(false);
+const debouncedHAActionSearchQuery = debouncedRef(haActionSearchQuery, 500);
+
+// Automations state (for automation.trigger service)
+const automations = ref<Array<{ entity_id: string; name: string }>>([]);
+const isLoadingAutomations = ref(false);
+const selectedAutomation = computed(() => {
+  return (
+    (props.entity.haAction?.serviceData as { entity_id?: string } | undefined)?.entity_id ?? ''
+  );
+});
+
+// Filtered HA actions
+const filteredHAActions = computed(() => {
+  if (debouncedHAActionSearchQuery.value.trim().length === 0) {
+    return [];
+  }
+  const allServices = getAllServices(haServices.value);
+  const query = debouncedHAActionSearchQuery.value.toLowerCase();
+  return allServices.filter(
+    service =>
+      service.service.toLowerCase().includes(query) || service.label.toLowerCase().includes(query)
+  );
+});
+
+// Load HA services when panel is expanded for action button
+watch(isExpanded, async expanded => {
+  if (expanded && props.entity.isActionButton && haServices.value.length === 0) {
+    isLoadingHAActions.value = true;
+    try {
+      haServices.value = await fetchHAServices(haConfig);
+    } catch (error) {
+      console.error('Error loading HA services:', error);
+    } finally {
+      isLoadingHAActions.value = false;
+    }
+  }
+});
+
+// Load automations when automation.trigger service is selected
+watch(
+  currentHAAction,
+  async service => {
+    if (service === 'automation.trigger' && automations.value.length === 0) {
+      isLoadingAutomations.value = true;
+      try {
+        automations.value = await fetchAutomations(haConfig);
+      } catch (error) {
+        console.error('Error loading automations:', error);
+      } finally {
+        isLoadingAutomations.value = false;
+      }
+    }
+  },
+  { immediate: true }
+);
+
 // Handle icon selection
 function selectIcon(iconValue: string) {
   handleIconChangeDirect(iconValue);
@@ -1100,6 +1325,84 @@ function handleTapActionChange(event: Event) {
     delete actions[props.entity.key];
   }
   localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+}
+
+// Handle label override change (for action buttons)
+function handleLabelOverrideChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const newLabel = target.value;
+
+  emit('update', props.entity.key, { labelOverride: newLabel });
+
+  // Save label override to localStorage
+  const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
+  if (newLabel) {
+    labelOverrides[props.entity.key] = newLabel;
+  } else {
+    delete labelOverrides[props.entity.key];
+  }
+  localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
+}
+
+// Handle HA action selection (for action buttons)
+function selectHAAction(service: string) {
+  // Preserve existing serviceData if it exists and service is the same
+  const existingServiceData =
+    props.entity.haAction?.service === service ? props.entity.haAction.serviceData : undefined;
+
+  const haAction = {
+    service,
+    ...(existingServiceData ? { serviceData: existingServiceData } : {}),
+  };
+
+  emit('update', props.entity.key, { haAction });
+
+  // Update tapAction to call-service
+  const tapAction = {
+    action: 'call-service' as const,
+    service,
+  };
+  emit('update', props.entity.key, { tapAction });
+
+  // Save HA action to localStorage
+  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+  haActions[props.entity.key] = haAction;
+  localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+
+  // Save tap action
+  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+  if (!actions[props.entity.key]) actions[props.entity.key] = {};
+  actions[props.entity.key].tapAction = tapAction;
+  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+
+  // Clear search query to show selected action in the input
+  haActionSearchQuery.value = '';
+}
+
+// Handle automation selection change
+function handleAutomationChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  const automationEntityId = target.value;
+
+  // Update haAction with the automation entity_id
+  const haAction = {
+    service: 'automation.trigger',
+    serviceData: {
+      entity_id: automationEntityId,
+    },
+  };
+
+  emit('update', props.entity.key, { haAction });
+
+  // Save to localStorage
+  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+  haActions[props.entity.key] = haAction;
+  localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+}
+
+// Handle HA action search keydown
+function handleHAActionSearchKeydown() {
+  // Could implement keyboard navigation for HA actions if needed
 }
 
 // Handle navigation path change
@@ -1988,6 +2291,27 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   color: #888888;
   font-size: 11px;
   font-style: italic;
+}
+
+.ha-action-selector-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.ha-action-selected {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background-color: rgba(45, 90, 160, 0.2);
+  border: 1px solid rgba(45, 90, 160, 0.4);
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.automation-selector {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #4a4a4a;
 }
 
 .icon-preview {

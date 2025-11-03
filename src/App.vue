@@ -16,7 +16,9 @@
 
     <div class="flex flex-1 overflow-hidden relative">
        <Dashboard ref="dashboardRef" class="flex-1 bg-[#1a1a1a] overflow-hidden" /> <NumericValues />
-      <Sidebar v-if="sidebarVisible" /> <ZoomControls />
+      <Sidebar v-if="sidebarVisible" /> <ZoomControls /> <AddButton
+        @add-action-button="handleAddActionButton"
+      />
     </div>
 
   </div>
@@ -35,6 +37,7 @@ import NumericValues from './components/NumericValues.vue';
 import LabelToggleButton from './components/LabelToggleButton.vue';
 import SidebarToggleButton from './components/SidebarToggleButton.vue';
 import BackupButton from './components/BackupButton.vue';
+import AddButton from './components/AddButton.vue';
 import { createDailyBackup } from './utils/backupUtils';
 import './style.css';
 
@@ -76,5 +79,9 @@ onMounted(() => {
   // Create daily backup if needed
   void createDailyBackup();
 });
+
+function handleAddActionButton() {
+  dashboardRef.value?.createActionButton();
+}
 </script>
 

@@ -84,25 +84,51 @@ const placedEntities = computed(() => {
   // Read trigger to make this reactive to localStorage changes
   void localStorageUpdateTrigger.value;
 
+  // Load persisted data
+  const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') || '{}');
+  const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') || '{}');
+  const icons = JSON.parse(localStorage.getItem('ha_dashboard_icons') || '{}');
+  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') || '{}');
+  const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
+  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+
   return placedEntityIds.value
     .map(entityId => {
-      // Find entity in store
-      const entity = entitiesStore.allEntities.find(e => e.key === entityId);
-      if (!entity) return null;
+      // Check if this is an action button
+      const isActionButton = entityId.startsWith('action_button_');
 
-      // Load persisted data
-      const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') || '{}');
-      const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') || '{}');
-      const icons = JSON.parse(localStorage.getItem('ha_dashboard_icons') || '{}');
-      const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') || '{}');
+      // Find entity in store (or create synthetic entity for action buttons)
+      let entity: EntityData | null =
+        entitiesStore.allEntities.find(e => e.key === entityId) ?? null;
+
+      // If not found and it's an action button, create a synthetic entity
+      if (!entity && isActionButton) {
+        entity = {
+          key: entityId,
+          isActionButton: true,
+          category: 'action_button',
+          name: labelOverrides[entityId] || 'Action Button',
+          state: 'idle',
+          icon: icons[entityId] || 'gesture-tap-button',
+          loc: positions[entityId] || '0 0',
+          size: sizes[entityId] || '80 40',
+          tapAction: actions[entityId]?.tapAction || { action: 'call-service', service: '' },
+          labelOverride: labelOverrides[entityId] || 'Action Button',
+          haAction: haActions[entityId] || { service: '' },
+        };
+      }
+
+      if (!entity) return null;
 
       return {
         ...entity,
         loc: positions[entityId] || entity.loc,
         size: sizes[entityId] || entity.size,
         icon: icons[entityId] || entity.icon,
-        tapAction: actions[entityId]?.tapAction || entity.tapAction,
-        holdAction: actions[entityId]?.holdAction || entity.holdAction,
+        tapAction: actions[entityId]?.tapAction ?? entity.tapAction,
+        holdAction: actions[entityId]?.holdAction ?? entity.holdAction,
+        labelOverride: labelOverrides[entityId] ?? entity.labelOverride,
+        haAction: haActions[entityId] ?? entity.haAction,
       } as EntityData;
     })
     .filter((e): e is EntityData => e !== null);
@@ -127,7 +153,7 @@ const [panX, setPanX] = useLocalStorage<number>('ha_dashboard_pan_x', 0);
 const [panY, setPanY] = useLocalStorage<number>('ha_dashboard_pan_y', 0);
 
 // Handle Escape key to deselect
-let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+let escapeHandler: ((_e: KeyboardEvent) => void) | null = null;
 
 // Initialize scale on mount if not set
 onMounted(() => {
@@ -475,6 +501,30 @@ function handleEntityUpdate(entityId: string, updates: Partial<EntityData>) {
     // Trigger reactive update
     localStorageUpdateTrigger.value++;
   }
+
+  if (updates.labelOverride !== undefined) {
+    const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
+    if (updates.labelOverride) {
+      labelOverrides[entityId] = updates.labelOverride;
+    } else {
+      delete labelOverrides[entityId];
+    }
+    localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
+    // Trigger reactive update
+    localStorageUpdateTrigger.value++;
+  }
+
+  if (updates.haAction !== undefined) {
+    const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+    if (updates.haAction) {
+      haActions[entityId] = updates.haAction;
+    } else {
+      delete haActions[entityId];
+    }
+    localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+    // Trigger reactive update
+    localStorageUpdateTrigger.value++;
+  }
 }
 
 function handleEntityDelete(entityId: string) {
@@ -534,8 +584,85 @@ function handleDrop(e: DragEvent) {
   }
 }
 
+// Create action button
+function createActionButton() {
+  if (!dashboardWrapperRef.value) {
+    return;
+  }
+
+  // Calculate center position in diagram coordinates
+  const rect = dashboardWrapperRef.value.getBoundingClientRect();
+  const wrapperWidth = rect.width;
+  const wrapperHeight = rect.height;
+
+  // Center of viewport in wrapper coordinates
+  const centerX = wrapperWidth / 2;
+  const centerY = wrapperHeight / 2;
+
+  // Convert to diagram coordinates
+  const currentScale = scale.value || 1;
+  const diagramX = (centerX - panX.value) / currentScale;
+  const diagramY = (centerY - panY.value) / currentScale;
+
+  // Generate unique key for action button
+  const actionButtonKey = `action_button_${Date.now()}`;
+
+  // Create action button entity
+  const actionButton: EntityData = {
+    key: actionButtonKey,
+    isActionButton: true,
+    category: 'action_button',
+    name: 'Action Button',
+    labelOverride: 'Action Button',
+    state: 'idle',
+    icon: 'gesture-tap-button',
+    loc: `${diagramX} ${diagramY}`,
+    size: '80 40',
+    tapAction: {
+      action: 'call-service',
+      service: '',
+    },
+    haAction: {
+      service: '',
+    },
+  };
+
+  // Add to placed entities
+  if (!placedEntityIds.value.includes(actionButtonKey)) {
+    setPlacedEntityIds([...placedEntityIds.value, actionButtonKey]);
+  }
+
+  // Save position and size
+  const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}');
+  positions[actionButtonKey] = `${diagramX} ${diagramY}`;
+  localStorage.setItem('ha_dashboard_positions', JSON.stringify(positions));
+
+  const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}');
+  sizes[actionButtonKey] = '80 40';
+  localStorage.setItem('ha_dashboard_sizes', JSON.stringify(sizes));
+
+  // Save label override
+  const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
+  labelOverrides[actionButtonKey] = 'Action Button';
+  localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
+
+  // Save HA action
+  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+  haActions[actionButtonKey] = { service: '' };
+  localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+
+  // Trigger reactive update so the button appears
+  localStorageUpdateTrigger.value++;
+
+  // Select the newly created button
+  setTimeout(() => {
+    setSelectedEntity(actionButton, { x: diagramX, y: diagramY });
+  }, 100);
+}
+
 // Expose functions for external use
 defineExpose({
+  createActionButton,
   zoomIn: () => {
     if (!dashboardWrapperRef.value) return;
     const rect = dashboardWrapperRef.value.getBoundingClientRect();
