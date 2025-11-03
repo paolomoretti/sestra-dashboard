@@ -49,8 +49,8 @@ export async function executeTapAction(action: TapAction | null | undefined, ent
       return showMoreInfo(entityData, config);
     
     case 'navigate':
-      // If navigation_path is provided, use it; otherwise default to entity's detail page
-      const navigationPath = action.navigation_path || `/config/entities/${entityId}`;
+      // If navigation_path is provided, use it; otherwise default to entity's history page
+      const navigationPath = action.navigation_path || `/history?entity_id=${entityId}`;
       return navigateTo(navigationPath, config);
     
     case 'call-service':

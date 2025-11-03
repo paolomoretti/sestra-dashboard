@@ -48,7 +48,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { useDebounceFn } from '@vueuse/core';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import EntityWidget from './EntityWidget.vue';
 import {
@@ -64,10 +65,51 @@ const FLOORPLAN_WIDTH = 2190;
 const FLOORPLAN_HEIGHT = 6501;
 const floorplanImage = '/floorplan.png';
 
+// Predefined zoom levels (using percentages relative to floorplan dimensions)
+interface ZoomLevel {
+  scalePercent: number; // Scale as percentage (e.g., 96.7 means 0.967 scale)
+  panXPercent: number; // Pan X as percentage of floorplan width
+  panYPercent: number; // Pan Y as percentage of floorplan height
+}
+
+const PREDEFINED_ZOOM_LEVELS: Record<string, ZoomLevel> = {
+  kitchen: {
+    scalePercent: 96.7,
+    panXPercent: 13.53,
+    panYPercent: -21.82,
+  },
+  cellar: {
+    scalePercent: 66.7,
+    panXPercent: -7.67,
+    panYPercent: -21.77,
+  },
+  sara: {
+    scalePercent: 76.7,
+    panXPercent: 20.98,
+    panYPercent: -63.35,
+  },
+  paolo: {
+    scalePercent: 76.7,
+    panXPercent: 28.62,
+    panYPercent: -31.37,
+  },
+  bedroom: {
+    scalePercent: 76.7,
+    panXPercent: 26.15,
+    panYPercent: -43.44,
+  },
+  garden: {
+    scalePercent: 56.7,
+    panXPercent: 47.01,
+    panYPercent: -35.41,
+  },
+};
+
 // Refs
 const dashboardWrapperRef = ref<HTMLElement>();
 const dashboardRef = ref<HTMLElement>();
 const isDraggingFromPalette = ref(false);
+const isAnimatingZoom = ref(false);
 const entitiesStore = useEntitiesStore();
 
 // State
@@ -111,7 +153,7 @@ const placedEntities = computed(() => {
           state: 'idle',
           icon: icons[entityId] || 'gesture-tap-button',
           loc: positions[entityId] || '0 0',
-          size: sizes[entityId] || '80 40',
+          size: sizes[entityId] || (isActionButton ? '120 80' : '80 40'),
           tapAction: actions[entityId]?.tapAction || { action: 'call-service', service: '' },
           labelOverride: labelOverrides[entityId] || 'Action Button',
           haAction: haActions[entityId] || { service: '' },
@@ -151,6 +193,32 @@ function calculateInitialScale(): number {
 const [scale, setScale] = useLocalStorage<number>('ha_dashboard_scale', 0);
 const [panX, setPanX] = useLocalStorage<number>('ha_dashboard_pan_x', 0);
 const [panY, setPanY] = useLocalStorage<number>('ha_dashboard_pan_y', 0);
+
+// Debounced function to log position and scale as percentages
+const logViewState = useDebounceFn(() => {
+  const currentScale = scale.value || 1;
+  const scalePercent = (currentScale * 100).toFixed(1);
+
+  // Pan as percentage of floorplan dimensions
+  // Negative pan means we're showing content to the right/bottom of origin
+  // Positive pan means we're showing content to the left/top of origin
+  const panXPercent = ((panX.value / FLOORPLAN_WIDTH) * 100).toFixed(2);
+  const panYPercent = ((panY.value / FLOORPLAN_HEIGHT) * 100).toFixed(2);
+
+  console.log(`📊 Dashboard View State:
+  Scale: ${scalePercent}%
+  Pan X: ${panXPercent}% (${panX.value.toFixed(1)}px)
+  Pan Y: ${panYPercent}% (${panY.value.toFixed(1)}px)`);
+}, 500);
+
+// Watch for changes in scale, panX, panY and log them
+watch(
+  [scale, panX, panY],
+  () => {
+    void logViewState();
+  },
+  { immediate: false }
+);
 
 // Handle Escape key to deselect
 let escapeHandler: ((_e: KeyboardEvent) => void) | null = null;
@@ -219,6 +287,8 @@ const containerStyle = computed(() => {
     transformOrigin: '0 0',
     width: `${FLOORPLAN_WIDTH}px`,
     height: `${FLOORPLAN_HEIGHT}px`,
+    // Only animate when using predefined zoom levels, not during manual panning/zooming
+    transition: isAnimatingZoom.value ? 'transform 0.4s ease-in-out' : 'none',
   };
 });
 const backgroundStyle = computed(() => ({
@@ -617,7 +687,7 @@ function createActionButton() {
     state: 'idle',
     icon: 'gesture-tap-button',
     loc: `${diagramX} ${diagramY}`,
-    size: '80 40',
+    size: '120 80',
     tapAction: {
       action: 'call-service',
       service: '',
@@ -751,6 +821,34 @@ defineExpose({
     setPanY(newPanY);
   },
   getZoomLevel: () => scale.value || 1,
+  zoomToLevel: (levelName: string) => {
+    const level = PREDEFINED_ZOOM_LEVELS[levelName];
+    if (!level) {
+      console.warn(`Zoom level "${levelName}" not found`);
+      return;
+    }
+
+    // Convert percentages to actual values
+    // Scale: percentage to decimal (96.7% -> 0.967)
+    const targetScale = level.scalePercent / 100;
+
+    // Pan: percentage of floorplan dimensions to pixels
+    // panXPercent of 13.53 means 13.53% of floorplan width
+    const targetPanX = (level.panXPercent / 100) * FLOORPLAN_WIDTH;
+    const targetPanY = (level.panYPercent / 100) * FLOORPLAN_HEIGHT;
+
+    // Enable animation for smooth transition
+    isAnimatingZoom.value = true;
+
+    setScale(targetScale);
+    setPanX(targetPanX);
+    setPanY(targetPanY);
+
+    // Disable animation after transition completes
+    setTimeout(() => {
+      isAnimatingZoom.value = false;
+    }, 400); // Match the transition duration
+  },
   addEntity: (entity: EntityData) => {
     if (!placedEntityIds.value.includes(entity.key)) {
       setPlacedEntityIds([...placedEntityIds.value, entity.key]);

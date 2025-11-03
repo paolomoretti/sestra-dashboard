@@ -19,6 +19,11 @@ export function useHotkeys(handlers: HotkeyHandler[]): void {
 
   onMounted(() => {
     handler = (event: KeyboardEvent) => {
+      // Don't trigger hotkeys if meta/ctrl keys are pressed (e.g., CMD+C, CTRL+C)
+      if (event.metaKey || event.ctrlKey) {
+        return;
+      }
+
       // Don't trigger hotkeys when user is typing in input fields
       const target = event.target as HTMLElement;
       if (

@@ -63,6 +63,54 @@ useHotkeys([
     description: 'Fit to width',
     preventDefault: true,
   },
+  {
+    key: 'k',
+    handler: () => {
+      dashboardRef.value?.zoomToLevel('kitchen');
+    },
+    description: 'Zoom to Kitchen',
+    preventDefault: true,
+  },
+  {
+    key: 'c',
+    handler: () => {
+      dashboardRef.value?.zoomToLevel('cellar');
+    },
+    description: 'Zoom to Cellar',
+    preventDefault: true,
+  },
+  {
+    key: 's',
+    handler: () => {
+      dashboardRef.value?.zoomToLevel('sara');
+    },
+    description: 'Zoom to Sara',
+    preventDefault: true,
+  },
+  {
+    key: 'p',
+    handler: () => {
+      dashboardRef.value?.zoomToLevel('paolo');
+    },
+    description: 'Zoom to Paolo',
+    preventDefault: true,
+  },
+  {
+    key: 'b',
+    handler: () => {
+      dashboardRef.value?.zoomToLevel('bedroom');
+    },
+    description: 'Zoom to Bedroom',
+    preventDefault: true,
+  },
+  {
+    key: 'g',
+    handler: () => {
+      dashboardRef.value?.zoomToLevel('garden');
+    },
+    description: 'Zoom to Garden',
+    preventDefault: true,
+  },
 ]);
 
 // Expose dashboard functions to window for backward compatibility

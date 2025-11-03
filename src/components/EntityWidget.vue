@@ -4,11 +4,45 @@
     ref="widgetRef"
     class="entity-widget-wrapper"
     :style="widgetStyle"
-    @click.stop="handleClick"
-    @mousedown.stop="handleMouseDown"
+    @click.stop="entity.isActionButton ? undefined : handleClick"
+    @mousedown.stop="entity.isActionButton ? undefined : handleMouseDown"
   >
-
+     <!-- Action Button Style -->
     <div
+      v-if="entity.isActionButton"
+      class="entity-widget action-button-widget"
+      :class="{ selected: isSelected, resizing: isResizing, dragging: isDragging }"
+      @touchstart.prevent.stop="handleActionButtonTouchStart"
+      @touchmove.prevent.stop="handleActionButtonTouchMove"
+      @touchend.prevent.stop="handleActionButtonTouchEnd"
+      @contextmenu.prevent.stop="handleActionButtonRightClick"
+    >
+       <button
+        class="action-button"
+        :class="{ selected: isSelected }"
+        @click.stop="handleActionButtonClick"
+        @mousedown.stop="handleActionButtonMouseDown"
+      >
+         <img v-if="iconUrl" :src="iconUrl" class="action-button-icon" draggable="false" /> <span
+          v-if="actionButtonLabel"
+          class="action-button-label"
+          >{{ actionButtonLabel }}</span
+        > </button
+      > <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
+        >
+        <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
+
+        <div class="resize-handle resize-handle-sw" @mousedown.stop="startResize('sw', $event)" />
+
+        <div class="resize-handle resize-handle-ne" @mousedown.stop="startResize('ne', $event)" />
+
+        <div class="resize-handle resize-handle-nw" @mousedown.stop="startResize('nw', $event)" />
+         </template
+      >
+    </div>
+     <!-- Regular Entity Widget Style -->
+    <div
+      v-else
       class="entity-widget"
       :class="{ selected: isSelected, resizing: isResizing, dragging: isDragging }"
       @touchstart.prevent.stop="handleTouchStart"
@@ -40,8 +74,9 @@
          </template
       >
     </div>
-     <!-- Entity Label - positioned relative to wrapper -->
+     <!-- Entity Label - positioned relative to wrapper (only for non-action buttons) -->
     <div
+      v-if="!entity.isActionButton"
       v-show="showLabel && !isSelected && !isPanelOpen"
       class="entity-label"
       :title="displayLabel"
@@ -96,8 +131,8 @@
           <div class="panel-content">
              <!-- General Tab -->
             <div v-show="activeTab === 'general'" class="tab-content">
-               <!-- Label Override (only for action buttons) -->
-              <div v-if="entity.isActionButton" class="detail-row">
+               <!-- Label Override -->
+              <div class="detail-row">
                  <span class="detail-label">Label:</span> <input
                   type="text"
                   :value="labelOverride"
@@ -105,7 +140,7 @@
                   @mousedown.stop
                   @click.stop
                   class="text-input"
-                  placeholder="Button label"
+                  placeholder="Custom label (leave empty for default)"
                 />
               </div>
 
@@ -518,11 +553,12 @@ const widgetStyle = computed(() => {
   // Position is in diagram coordinates, no transform needed here
   // The dashboard container will apply the transform
   // Determine z-index: dragging > selected > normal
+  // Selected widgets need very high z-index to ensure they're always on top
   let zIndex = 1;
   if (isDragging.value) {
-    zIndex = 1001; // Highest priority when dragging
+    zIndex = 20002; // Highest priority when dragging (above selected)
   } else if (isSelected.value) {
-    zIndex = 1000; // High priority when selected
+    zIndex = 20000; // Very high priority when selected (below dragging, above everything else)
   }
 
   return {
@@ -783,11 +819,26 @@ const [widgetLabelVisible, setWidgetLabelVisible] = useLocalStorage<boolean>(
 // Combined label visibility: show only when both global AND widget are true
 const showLabel = computed(() => labelsVisible.value && widgetLabelVisible.value);
 
-// Display label: use override for action buttons, otherwise use entity name
+// Display label: use override if set, otherwise use entity name
 const displayLabel = computed(() => {
-  if (props.entity.isActionButton && props.entity.labelOverride) {
+  if (props.entity.labelOverride !== undefined && props.entity.labelOverride !== '') {
     return props.entity.labelOverride;
   }
+  return props.entity.name || props.entity.key;
+});
+
+// Action button label: show label if set, hide if explicitly empty string
+const actionButtonLabel = computed(() => {
+  if (!props.entity.isActionButton) return '';
+
+  // If labelOverride is explicitly set (including empty string), use it
+  if (props.entity.labelOverride !== undefined) {
+    // If it's empty string, return empty (label won't show)
+    // If it has a value, return that value
+    return props.entity.labelOverride;
+  }
+
+  // If labelOverride is not set (undefined), show entity name as fallback
   return props.entity.name || props.entity.key;
 });
 
@@ -951,6 +1002,175 @@ function handleIconRightClick(e: MouseEvent) {
   if (window.zoomToEntity) {
     window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
   }
+}
+
+// Action button handlers
+let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+const LONG_PRESS_DURATION = 500; // ms
+
+// Handle action button click - execute action
+async function handleActionButtonClick(e: MouseEvent) {
+  e.stopPropagation();
+
+  // Don't execute if we just finished dragging
+  if (hasDragged.value) {
+    hasDragged.value = false;
+    return;
+  }
+
+  // Don't execute if widget is selected - allow dragging/resizing instead
+  if (isSelected.value) {
+    return;
+  }
+
+  // Execute HA action if set
+  if (props.entity.haAction?.service) {
+    const service = props.entity.haAction.service;
+    const [domain, serviceName] = service.split('.');
+    if (domain && serviceName) {
+      try {
+        const apiBaseUrl = getApiBaseUrl(haConfig);
+        const url = `${apiBaseUrl}/services/${domain}/${serviceName}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${haConfig.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(props.entity.haAction.serviceData || {}),
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to call service: ${response.statusText}`);
+        }
+      } catch (error) {
+        console.error('Error executing HA action:', error);
+      }
+    }
+  }
+}
+
+// Handle action button right-click - open panel
+function handleActionButtonRightClick(e: MouseEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  // Always select the entity and open the panel
+  emit('select', props.entity);
+  isPanelOpen.value = true;
+  isExpanded.value = true;
+
+  // Zoom to entity position
+  if (window.zoomToEntity) {
+    window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
+  }
+}
+
+// Handle action button mouse down - allow dragging when selected
+function handleActionButtonMouseDown(e: MouseEvent) {
+  // Don't drag on right-click
+  if (e.button === 2) {
+    return;
+  }
+
+  // If selected, allow dragging
+  if (isSelected.value) {
+    handleMouseDown(e);
+  }
+}
+
+// Touch handlers for action buttons (with long-press detection)
+let actionButtonTouchStartTime = 0;
+let actionButtonTouchMoved = false;
+
+function handleActionButtonTouchStart(e: TouchEvent) {
+  // Only handle single touch
+  if (e.touches.length !== 1) return;
+
+  const touch = e.touches[0];
+  if (!touch) return;
+  const target = touch.target as HTMLElement;
+
+  // Don't drag if clicking on resize handle
+  if (target.classList.contains('resize-handle')) {
+    return;
+  }
+
+  actionButtonTouchStartTime = Date.now();
+  actionButtonTouchMoved = false;
+
+  // Start long-press timer
+  longPressTimer = setTimeout(() => {
+    // Long press detected - open panel
+    handleActionButtonRightClick(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+    );
+  }, LONG_PRESS_DURATION);
+
+  // If selected, allow dragging (use regular touch handlers)
+  if (isSelected.value) {
+    handleTouchStart(e);
+  }
+}
+
+function handleActionButtonTouchMove(e: TouchEvent) {
+  // If we've moved, cancel long-press and allow dragging
+  if (!actionButtonTouchMoved) {
+    actionButtonTouchMoved = true;
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+
+  // If selected, continue with drag
+  if (isSelected.value && isDragging.value) {
+    handleTouchMove(e);
+  }
+}
+
+function handleActionButtonTouchEnd() {
+  // Clear long-press timer
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+
+  // If we moved, it was a drag - don't execute action
+  if (actionButtonTouchMoved || isDragging.value) {
+    if (isDragging.value) {
+      handleTouchEnd();
+    }
+    actionButtonTouchMoved = false;
+    return;
+  }
+
+  // If we didn't move and it was a quick tap, execute action
+  const touchDuration = Date.now() - actionButtonTouchStartTime;
+  if (touchDuration < LONG_PRESS_DURATION) {
+    // Quick tap - execute action
+    if (!isSelected.value && props.entity.haAction?.service) {
+      const service = props.entity.haAction.service;
+      const [domain, serviceName] = service.split('.');
+      if (domain && serviceName) {
+        try {
+          const apiBaseUrl = getApiBaseUrl(haConfig);
+          const url = `${apiBaseUrl}/services/${domain}/${serviceName}`;
+          void fetch(url, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${haConfig.accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(props.entity.haAction.serviceData || {}),
+          });
+        } catch (error) {
+          console.error('Error executing HA action:', error);
+        }
+      }
+    }
+  }
+
+  actionButtonTouchMoved = false;
 }
 
 function handleLabelClick() {
@@ -1327,7 +1547,7 @@ function handleTapActionChange(event: Event) {
   localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
 }
 
-// Handle label override change (for action buttons)
+// Handle label override change
 function handleLabelOverrideChange(event: Event) {
   const target = event.target as HTMLInputElement;
   const newLabel = target.value;
@@ -1500,9 +1720,19 @@ function handleMouseDown(e: MouseEvent) {
     return;
   }
 
+  // For action buttons, only allow drag when selected
+  if (props.entity.isActionButton && !isSelected.value) {
+    return;
+  }
+
   // Don't drag if clicking on icon AND widget is not selected
   // (when selected, icon should be draggable)
   if (target.classList.contains('entity-icon') && !isSelected.value) {
+    return;
+  }
+
+  // Don't drag if clicking on action button itself when not selected
+  if (target.closest('.action-button') && !isSelected.value) {
     return;
   }
 
@@ -1906,6 +2136,70 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   border-color: #4caf50;
 }
 
+/* Action Button Widget Styles */
+.action-button-widget {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-button {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  background: linear-gradient(135deg, #2d5aa0 0%, #1e3f73 100%);
+  border: 2px solid #3a6bc0;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 8px 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  outline: none;
+  font-family: inherit;
+}
+
+.action-button:hover {
+  background: linear-gradient(135deg, #3a6bc0 0%, #2d5aa0 100%);
+  border-color: #4a7bc0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.action-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.action-button.selected {
+  border-color: #FFC107;
+  box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.3);
+}
+
+.action-button-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  filter: brightness(0) invert(1); /* Make icon white */
+  flex-shrink: 0;
+}
+
+.action-button-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  line-height: 1.3;
+  min-width: 0;
+}
+
 .entity-icon {
   width: 100%;
   height: 100%;
@@ -2012,7 +2306,7 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   border: 1px solid #4a4a4a;
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  z-index: 10000;
+  z-index: 20001; /* Above selected widget (20000), below dragging widget (20002) */
   pointer-events: auto;
   overflow: visible;
 }

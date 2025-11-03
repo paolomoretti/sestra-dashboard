@@ -62,7 +62,7 @@ export const useEntitiesStore = defineStore('entities', () => {
             'input_select',
             'input_text',
             'input_boolean',
-            'input_datetime',
+            // Note: input_datetime removed from exclusion list to allow entities like "Coffee magic override"
           ];
           return !excludedDomains.includes(domain);
         })
