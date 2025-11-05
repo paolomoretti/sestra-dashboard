@@ -6,6 +6,8 @@ dist/
 config.local.js
 .env
 .env.local
+.env.production
+.env.production.local
 
 # OS files
 .DS_Store
@@ -23,4 +25,10 @@ npm-debug.log*
 
 # Backups
 backups/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
 
