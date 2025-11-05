@@ -62,6 +62,8 @@
       <div v-if="temperatureDisplay" class="temperature-display"> {{ temperatureDisplay }} </div>
        <!-- Humidity display for humidity sensors -->
       <div v-if="humidityDisplay" class="temperature-display"> {{ humidityDisplay }} </div>
+       <!-- Power display for power sensors -->
+      <div v-if="powerDisplay" class="temperature-display"> {{ powerDisplay }} </div>
        <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
         >
         <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
@@ -684,6 +686,54 @@ const humidityDisplay = computed(() => {
   const clampedValue = Math.max(0, Math.min(100, value));
 
   return `${clampedValue.toFixed(0)}%`;
+});
+
+// Power display for power sensors
+const isPowerSensor = computed(() => {
+  const deviceClass = props.entity.deviceClass?.toLowerCase();
+  const iconName = props.entity.icon?.toLowerCase() ?? '';
+  const entityId = props.entity.key?.toLowerCase() ?? '';
+
+  return (
+    deviceClass === 'power' ||
+    iconName.includes('power') ||
+    iconName.includes('lightning') ||
+    iconName.includes('bolt') ||
+    iconName.includes('watt') ||
+    entityId.includes('power') ||
+    entityId.includes('energy') ||
+    entityId.includes('watt')
+  );
+});
+
+const powerDisplay = computed(() => {
+  if (!isPowerSensor.value || !props.entity.state) {
+    return null;
+  }
+
+  const state = props.entity.state.trim();
+  if (!state || state === 'unknown' || state === 'unavailable') {
+    return null;
+  }
+
+  // Check condition before displaying
+  if (!stateConditionMet.value) {
+    return null;
+  }
+
+  // Try to parse power value (usually "0.0", "120.5", etc., possibly with "W" unit)
+  const powerMatch = state.match(/^(-?\d+\.?\d*)\s*W?/i);
+  if (!powerMatch?.[1]) {
+    return null;
+  }
+
+  const value = parseFloat(powerMatch[1]);
+  if (isNaN(value)) {
+    return null;
+  }
+
+  // Display with W unit
+  return `${value.toFixed(1)}W`;
 });
 
 // Resize

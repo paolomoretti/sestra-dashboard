@@ -53,10 +53,14 @@ nextTick(async () => {
     try {
       await entitiesStore.loadEntities(haConfig);
       
-      // Set up periodic state updates
+      // Connect to WebSocket for real-time state updates
+      entitiesStore.connectWebSocket(haConfig);
+      
+      // Also set up periodic polling as fallback (every 30 seconds instead of 5)
+      // This ensures we still get updates if WebSocket disconnects
       setInterval(() => {
         entitiesStore.updateEntityStates(haConfig);
-      }, 5000);
+      }, 30000);
     } catch (error) {
       console.error('Failed to load entities:', error);
     }

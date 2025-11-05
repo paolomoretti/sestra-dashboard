@@ -19,6 +19,8 @@ export const useEntitiesStore = defineStore('entities', () => {
   const allEntities: Ref<EntityData[]> = ref<EntityData[]>([]);
   const isLoading: Ref<boolean> = ref(false);
   const lastUpdated: Ref<Date | null> = ref<Date | null>(null);
+  let wsConnection: WebSocket | null = null;
+  let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
   function getApiBaseUrl(config: HAConfig): string {
     if (import.meta.env.DEV) {
@@ -149,11 +151,151 @@ export const useEntitiesStore = defineStore('entities', () => {
     }
   }
 
+  /**
+   * Connect to Home Assistant WebSocket API for real-time state updates
+   */
+  function connectWebSocket(config: HAConfig): void {
+    // Close existing connection if any
+    if (wsConnection) {
+      wsConnection.close();
+      wsConnection = null;
+    }
+
+    // Clear any pending reconnect
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+
+    // Determine WebSocket URL
+    const wsProtocol = config.address.startsWith('https') ? 'wss' : 'ws';
+    const baseUrl = config.address.replace(/^https?/, wsProtocol).replace(/\/api\/?$/, '');
+    const wsUrl = `${baseUrl}/api/websocket`;
+
+    // eslint-disable-next-line no-console
+    console.log('Connecting to Home Assistant WebSocket:', wsUrl);
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsConnection = ws;
+
+      ws.onopen = () => {
+        // eslint-disable-next-line no-console
+        console.log('WebSocket connected to Home Assistant');
+      };
+
+      ws.onmessage = event => {
+        try {
+          const message = JSON.parse(event.data);
+
+          // Handle authentication response
+          if (message.type === 'auth_required') {
+            // eslint-disable-next-line no-console
+            console.log('WebSocket authentication required');
+            ws.send(
+              JSON.stringify({
+                type: 'auth',
+                access_token: config.accessToken,
+              })
+            );
+            return;
+          }
+
+          // Handle authentication result
+          if (message.type === 'auth_ok') {
+            // eslint-disable-next-line no-console
+            console.log('WebSocket authenticated successfully');
+            // Subscribe to state_changed events
+            ws.send(
+              JSON.stringify({
+                id: 1,
+                type: 'subscribe_events',
+                event_type: 'state_changed',
+              })
+            );
+            return;
+          }
+
+          // Handle authentication error
+          if (message.type === 'auth_invalid') {
+            console.error('WebSocket authentication failed:', message.message);
+            ws.close();
+            return;
+          }
+
+          // Handle state_changed events
+          if (message.type === 'event' && message.event?.event_type === 'state_changed') {
+            const eventData = message.event.data;
+            if (eventData?.entity_id && eventData?.new_state) {
+              const entityId = eventData.entity_id;
+              const newState = eventData.new_state.state;
+
+              // Update the entity state in real-time
+              allEntities.value = allEntities.value.map(entity => {
+                if (entity.key === entityId) {
+                  return {
+                    ...entity,
+                    state: newState,
+                  };
+                }
+                return entity;
+              });
+
+              // Also update window.allEntities for backward compatibility
+              if (window.allEntities) {
+                window.allEntities = allEntities.value;
+              }
+
+              lastUpdated.value = new Date();
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+
+      ws.onerror = error => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        // eslint-disable-next-line no-console
+        console.log('WebSocket connection closed, reconnecting in 5 seconds...');
+        wsConnection = null;
+        // Reconnect after 5 seconds
+        reconnectTimeout = setTimeout(() => {
+          connectWebSocket(config);
+        }, 5000);
+      };
+    } catch (error) {
+      console.error('Error creating WebSocket connection:', error);
+      // Fallback to polling if WebSocket fails
+      // eslint-disable-next-line no-console
+      console.log('Falling back to polling for state updates');
+    }
+  }
+
+  /**
+   * Disconnect WebSocket connection
+   */
+  function disconnectWebSocket(): void {
+    if (wsConnection) {
+      wsConnection.close();
+      wsConnection = null;
+    }
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+  }
+
   return {
     allEntities,
     isLoading,
     lastUpdated,
     loadEntities,
     updateEntityStates,
+    connectWebSocket,
+    disconnectWebSocket,
   };
 });

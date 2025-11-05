@@ -1,43 +1,41 @@
 <template>
   <div id="sidebar" class="w-[300px] bg-[#2a2a2a] border-l border-[#3a3a3a] overflow-y-auto overflow-x-hidden flex flex-col min-w-[200px] transition-all duration-300">
-    <CollapsiblePanel
-      v-model="paletteCollapsed"
-      title="Entities"
-      icon="📋"
-      storage-key="paletteCollapsed"
-      :style="{ flex: paletteCollapsed ? '0 0 auto' : eventLogCollapsed ? '1 1 100%' : '1 1 auto' }"
-    >
-      <div>
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Search entities..."
-          class="w-full px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-sm text-white placeholder-[#666] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          @input="handleSearch"
-        />
+    <div class="flex flex-col h-full">
+      <!-- Header -->
+      <div class="px-4 py-3 bg-[#333] border-b border-[#3a3a3a] flex-shrink-0">
+        <h3 class="text-sm font-semibold text-white m-0 flex items-center gap-2">
+          <span>📋</span>
+          <span>Entities</span>
+        </h3>
       </div>
-      <EntityTabs 
-        :tabs="entityTabs" 
-        :active-tab="activeEntityTab"
-        @update:active-tab="activeEntityTab = $event"
-      />
-      <EntityPalette
-        :entities="allEntities"
-        :filter="activeEntityTab"
-        :search-query="searchQuery"
-        @entity-selected="handleEntitySelected"
-      />
-    </CollapsiblePanel>
-    
-    <CollapsiblePanel
-      v-model="eventLogCollapsed"
-      title="Event Log"
-      icon="📝"
-      storage-key="eventLogCollapsed"
-      :style="{ flex: eventLogCollapsed ? '0 0 auto' : '1 1 auto' }"
-    >
-      <div id="eventLog" class="max-h-[600px] overflow-y-auto"></div>
-    </CollapsiblePanel>
+      
+      <!-- Content -->
+      <div class="flex-1 flex flex-col min-h-0">
+        <div class="px-4 py-3 flex-shrink-0">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search entities..."
+            class="w-full px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-sm text-white placeholder-[#666] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            @input="handleSearch"
+          />
+        </div>
+        <EntityTabs 
+          :tabs="entityTabs" 
+          :active-tab="activeEntityTab"
+          @update:active-tab="activeEntityTab = $event"
+          class="flex-shrink-0"
+        />
+        <div class="flex-1 min-h-0 overflow-hidden">
+          <EntityPalette
+            :entities="allEntities"
+            :filter="activeEntityTab"
+            :search-query="searchQuery"
+            @entity-selected="handleEntitySelected"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -46,14 +44,9 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useEntitiesStore } from '../stores/entities';
-import CollapsiblePanel from './CollapsiblePanel.vue';
 import EntityTabs from './EntityTabs.vue';
 import EntityPalette from './EntityPalette.vue';
 import type { EntityData } from '../composables/useEntitySelection';
-
-// Manage collapsed state with localStorage
-const [paletteCollapsed, setPaletteCollapsed] = useLocalStorage<boolean>('paletteCollapsed', false);
-const [eventLogCollapsed, setEventLogCollapsed] = useLocalStorage<boolean>('eventLogCollapsed', false);
 const entitiesStore = useEntitiesStore();
 const { allEntities } = storeToRefs(entitiesStore);
 
@@ -70,24 +63,17 @@ function handleEntitySelected(entity: EntityData) {
 }
 
 // Debounce function for search
-let searchTimeout = null;
+let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 function handleSearch() {
-  clearTimeout(searchTimeout);
+  if (searchTimeout) {
+    clearTimeout(searchTimeout);
+  }
   searchTimeout = setTimeout(() => {
     if (window.updatePaletteFilter) {
       window.updatePaletteFilter(activeEntityTab.value, searchQuery.value);
     }
   }, 300); // 300ms debounce
 }
-
-// Calculate palette height/style dynamically based on sidebar space
-const paletteHeightStyle = computed(() => {
-  if (paletteCollapsed.value) return { height: '0px', flex: '0 0 auto' };
-  // When event log is collapsed, let flex-1 class handle it; otherwise use fixed height
-  return eventLogCollapsed.value 
-    ? { flex: '1 1 auto', minHeight: 0 } 
-    : { height: '400px', flex: '0 0 auto' };
-});
 
 // Entity tabs configuration
 const entityTabs = computed(() => [
