@@ -51,6 +51,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import { useLocalStorage } from '../composables/useLocalStorage';
+import { useFirestoreData } from '../composables/useFirestoreData';
 import EntityWidget from './EntityWidget.vue';
 import {
   setSelectedEntity,
@@ -59,6 +60,7 @@ import {
   type EntityData,
 } from '../composables/useEntitySelection';
 import { useEntitiesStore } from '../stores/entities';
+import { useFirestoreStore } from '../stores/firestore';
 
 // Constants
 const FLOORPLAN_WIDTH = 2190;
@@ -112,27 +114,40 @@ const isDraggingFromPalette = ref(false);
 const isAnimatingZoom = ref(false);
 const entitiesStore = useEntitiesStore();
 
-// State
-const [placedEntityIds, setPlacedEntityIds] = useLocalStorage<string[]>(
-  'ha_dashboard_entities',
-  []
-);
-
-// Reactive trigger for localStorage updates
-const localStorageUpdateTrigger = ref(0);
+// Firestore data
+const firestoreStore = useFirestoreStore();
+const {
+  entities: placedEntityIds,
+  positions,
+  sizes,
+  icons,
+  actions,
+  labelOverrides,
+  haActions,
+  scale,
+  panX,
+  panY,
+  setEntities: setPlacedEntityIds,
+  setPositions,
+  setSizes,
+  setIcons,
+  setActions,
+  setLabelOverrides,
+  setHAActions,
+  setScale,
+  setPanX,
+  setPanY,
+} = useFirestoreData();
 
 // Computed: Get full entity data for placed entities
 const placedEntities = computed(() => {
-  // Read trigger to make this reactive to localStorage changes
-  void localStorageUpdateTrigger.value;
-
-  // Load persisted data
-  const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') || '{}');
-  const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') || '{}');
-  const icons = JSON.parse(localStorage.getItem('ha_dashboard_icons') || '{}');
-  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') || '{}');
-  const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
-  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+  // Use Firestore data (reactive)
+  const positionsData = positions.value;
+  const sizesData = sizes.value;
+  const iconsData = icons.value;
+  const actionsData = actions.value;
+  const labelOverridesData = labelOverrides.value;
+  const haActionsData = haActions.value;
 
   return placedEntityIds.value
     .map(entityId => {
@@ -149,14 +164,14 @@ const placedEntities = computed(() => {
           key: entityId,
           isActionButton: true,
           category: 'action_button',
-          name: labelOverrides[entityId] || 'Action Button',
+          name: labelOverridesData[entityId] || 'Action Button',
           state: 'idle',
-          icon: icons[entityId] || 'gesture-tap-button',
-          loc: positions[entityId] || '0 0',
-          size: sizes[entityId] || (isActionButton ? '120 80' : '80 40'),
-          tapAction: actions[entityId]?.tapAction || { action: 'call-service', service: '' },
-          labelOverride: labelOverrides[entityId] || 'Action Button',
-          haAction: haActions[entityId] || { service: '' },
+          icon: iconsData[entityId] || 'gesture-tap-button',
+          loc: positionsData[entityId] || '0 0',
+          size: sizesData[entityId] || (isActionButton ? '120 80' : '80 40'),
+          tapAction: actionsData[entityId]?.tapAction || { action: 'call-service', service: '' },
+          labelOverride: labelOverridesData[entityId] || 'Action Button',
+          haAction: haActionsData[entityId] || { service: '' },
         };
       }
 
@@ -164,13 +179,13 @@ const placedEntities = computed(() => {
 
       return {
         ...entity,
-        loc: positions[entityId] || entity.loc,
-        size: sizes[entityId] || entity.size,
-        icon: icons[entityId] || entity.icon,
-        tapAction: actions[entityId]?.tapAction ?? entity.tapAction,
-        holdAction: actions[entityId]?.holdAction ?? entity.holdAction,
-        labelOverride: labelOverrides[entityId] ?? entity.labelOverride,
-        haAction: haActions[entityId] ?? entity.haAction,
+        loc: positionsData[entityId] || entity.loc,
+        size: sizesData[entityId] || entity.size,
+        icon: iconsData[entityId] || entity.icon,
+        tapAction: actionsData[entityId]?.tapAction ?? entity.tapAction,
+        holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
+        labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
+        haAction: haActionsData[entityId] ?? entity.haAction,
       } as EntityData;
     })
     .filter((e): e is EntityData => e !== null);
@@ -190,9 +205,7 @@ function calculateInitialScale(): number {
   return Math.max(0.1, initialScale); // Minimum scale
 }
 
-const [scale, setScale] = useLocalStorage<number>('ha_dashboard_scale', 0);
-const [panX, setPanX] = useLocalStorage<number>('ha_dashboard_pan_x', 0);
-const [panY, setPanY] = useLocalStorage<number>('ha_dashboard_pan_y', 0);
+// Scale and pan are now from Firestore (defined above)
 
 // Debounced function to log position and scale as percentages
 const logViewState = useDebounceFn(() => {
@@ -255,7 +268,7 @@ onMounted(() => {
   document.addEventListener('keydown', escapeHandler);
 
   // Initialize scale if not already set
-  if (scale.value === 0) {
+  if (!scale.value || scale.value === 0) {
     nextTick(() => {
       const initialScale = calculateInitialScale();
       setScale(initialScale);
@@ -536,90 +549,90 @@ function handleEntitySelect(entity: EntityData) {
   });
 }
 
-function handleEntityUpdate(entityId: string, updates: Partial<EntityData>) {
-  // Update localStorage directly
+async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>) {
+  // Update Firestore
   if (updates.loc) {
-    const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}');
-    positions[entityId] = updates.loc;
-    localStorage.setItem('ha_dashboard_positions', JSON.stringify(positions));
+    const newPositions = { ...positions.value };
+    newPositions[entityId] = updates.loc;
+    await setPositions(newPositions);
   }
 
   if (updates.size) {
-    const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}');
-    sizes[entityId] = updates.size;
-    localStorage.setItem('ha_dashboard_sizes', JSON.stringify(sizes));
+    const newSizes = { ...sizes.value };
+    newSizes[entityId] = updates.size;
+    await setSizes(newSizes);
   }
 
   if (updates.icon !== undefined) {
-    const icons = JSON.parse(localStorage.getItem('ha_dashboard_icons') ?? '{}');
+    const newIcons = { ...icons.value };
     if (updates.icon) {
-      icons[entityId] = updates.icon;
+      newIcons[entityId] = updates.icon;
     } else {
-      delete icons[entityId];
+      delete newIcons[entityId];
     }
-    localStorage.setItem('ha_dashboard_icons', JSON.stringify(icons));
-    // Trigger reactive update
-    localStorageUpdateTrigger.value++;
+    await setIcons(newIcons);
   }
 
   if (updates.tapAction !== undefined || updates.holdAction !== undefined) {
-    const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
-    if (!actions[entityId]) actions[entityId] = {};
-    if (updates.tapAction !== undefined) actions[entityId].tapAction = updates.tapAction;
-    if (updates.holdAction !== undefined) actions[entityId].holdAction = updates.holdAction;
-    localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
-    // Trigger reactive update
-    localStorageUpdateTrigger.value++;
+    const newActions = { ...actions.value };
+    if (!newActions[entityId]) newActions[entityId] = {};
+    if (updates.tapAction !== undefined) newActions[entityId].tapAction = updates.tapAction;
+    if (updates.holdAction !== undefined) newActions[entityId].holdAction = updates.holdAction;
+    await setActions(newActions);
   }
 
   if (updates.labelOverride !== undefined) {
-    const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
+    const newLabelOverrides = { ...labelOverrides.value };
     if (updates.labelOverride) {
-      labelOverrides[entityId] = updates.labelOverride;
+      newLabelOverrides[entityId] = updates.labelOverride;
     } else {
-      delete labelOverrides[entityId];
+      delete newLabelOverrides[entityId];
     }
-    localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
-    // Trigger reactive update
-    localStorageUpdateTrigger.value++;
+    await setLabelOverrides(newLabelOverrides);
   }
 
   if (updates.haAction !== undefined) {
-    const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+    const newHAActions = { ...haActions.value };
     if (updates.haAction) {
-      haActions[entityId] = updates.haAction;
+      newHAActions[entityId] = updates.haAction;
     } else {
-      delete haActions[entityId];
+      delete newHAActions[entityId];
     }
-    localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
-    // Trigger reactive update
-    localStorageUpdateTrigger.value++;
+    await setHAActions(newHAActions);
   }
 }
 
-function handleEntityDelete(entityId: string) {
-  setPlacedEntityIds(placedEntityIds.value.filter(id => id !== entityId));
+async function handleEntityDelete(entityId: string) {
+  await setPlacedEntityIds(placedEntityIds.value.filter(id => id !== entityId));
 
-  // Clean up localStorage
-  const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') || '{}');
-  delete positions[entityId];
-  localStorage.setItem('ha_dashboard_positions', JSON.stringify(positions));
+  // Clean up Firestore
+  const newPositions = { ...positions.value };
+  delete newPositions[entityId];
+  await setPositions(newPositions);
 
-  const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') || '{}');
-  delete sizes[entityId];
-  localStorage.setItem('ha_dashboard_sizes', JSON.stringify(sizes));
+  const newSizes = { ...sizes.value };
+  delete newSizes[entityId];
+  await setSizes(newSizes);
 
-  const icons = JSON.parse(localStorage.getItem('ha_dashboard_icons') || '{}');
-  delete icons[entityId];
-  localStorage.setItem('ha_dashboard_icons', JSON.stringify(icons));
+  const newIcons = { ...icons.value };
+  delete newIcons[entityId];
+  await setIcons(newIcons);
 
-  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') || '{}');
-  delete actions[entityId];
-  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+  const newActions = { ...actions.value };
+  delete newActions[entityId];
+  await setActions(newActions);
+
+  const newLabelOverrides = { ...labelOverrides.value };
+  delete newLabelOverrides[entityId];
+  await setLabelOverrides(newLabelOverrides);
+
+  const newHAActions = { ...haActions.value };
+  delete newHAActions[entityId];
+  await setHAActions(newHAActions);
 }
 
 // Drag and drop from palette
-function handleDrop(e: DragEvent) {
+async function handleDrop(e: DragEvent) {
   e.preventDefault();
   isDraggingFromPalette.value = false;
 
@@ -642,20 +655,20 @@ function handleDrop(e: DragEvent) {
     // Add entity at drop position
     // Add to placed entities list
     if (!placedEntityIds.value.includes(entity.key)) {
-      setPlacedEntityIds([...placedEntityIds.value, entity.key]);
+      await setPlacedEntityIds([...placedEntityIds.value, entity.key]);
     }
 
     // Save position
-    const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') || '{}');
-    positions[entity.key] = `${x} ${y}`;
-    localStorage.setItem('ha_dashboard_positions', JSON.stringify(positions));
+    const newPositions = { ...positions.value };
+    newPositions[entity.key] = `${x} ${y}`;
+    await setPositions(newPositions);
   } catch (error) {
     console.error('Error dropping entity:', error);
   }
 }
 
 // Create action button
-function createActionButton() {
+async function createActionButton() {
   if (!dashboardWrapperRef.value) {
     return;
   }
@@ -699,30 +712,27 @@ function createActionButton() {
 
   // Add to placed entities
   if (!placedEntityIds.value.includes(actionButtonKey)) {
-    setPlacedEntityIds([...placedEntityIds.value, actionButtonKey]);
+    await setPlacedEntityIds([...placedEntityIds.value, actionButtonKey]);
   }
 
   // Save position and size
-  const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}');
-  positions[actionButtonKey] = `${diagramX} ${diagramY}`;
-  localStorage.setItem('ha_dashboard_positions', JSON.stringify(positions));
+  const newPositions = { ...positions.value };
+  newPositions[actionButtonKey] = `${diagramX} ${diagramY}`;
+  await setPositions(newPositions);
 
-  const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}');
-  sizes[actionButtonKey] = '80 40';
-  localStorage.setItem('ha_dashboard_sizes', JSON.stringify(sizes));
+  const newSizes = { ...sizes.value };
+  newSizes[actionButtonKey] = '120 80';
+  await setSizes(newSizes);
 
   // Save label override
-  const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
-  labelOverrides[actionButtonKey] = 'Action Button';
-  localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
+  const newLabelOverrides = { ...labelOverrides.value };
+  newLabelOverrides[actionButtonKey] = 'Action Button';
+  await setLabelOverrides(newLabelOverrides);
 
   // Save HA action
-  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
-  haActions[actionButtonKey] = { service: '' };
-  localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
-
-  // Trigger reactive update so the button appears
-  localStorageUpdateTrigger.value++;
+  const newHAActions = { ...haActions.value };
+  newHAActions[actionButtonKey] = { service: '' };
+  await setHAActions(newHAActions);
 
   // Select the newly created button
   setTimeout(() => {

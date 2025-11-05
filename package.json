@@ -28,6 +28,7 @@
   "dependencies": {
     "@mdi/js": "^7.4.47",
     "@vueuse/core": "^14.0.0",
+    "firebase": "^12.5.0",
     "gojs": "^3.1.0",
     "pinia": "^3.0.3",
     "vue": "^3.5.22"
