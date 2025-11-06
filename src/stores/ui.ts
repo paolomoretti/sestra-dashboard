@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
-import { ref, watch, type Ref } from 'vue';
+import { ref, watch, computed, type Ref } from 'vue';
 import { useThrottleFn } from '@vueuse/core';
+import { useFirestoreStore } from './firestore';
 
 interface ScrollPosition {
   x: number;
@@ -8,26 +9,33 @@ interface ScrollPosition {
 }
 
 export const useUIStore = defineStore('ui', () => {
-  // Labels visibility
-  const getLabelsVisibilityStoredValue = (): boolean => {
-    try {
-      const item = window.localStorage.getItem('ha_dashboard_labels_visible');
-      return item !== null ? JSON.parse(item) : true;
-    } catch (error) {
-      console.warn('Error reading labels visibility from localStorage:', error);
-      return true;
-    }
-  };
+  const firestoreStore = useFirestoreStore();
 
-  const labelsVisible: Ref<boolean> = ref<boolean>(getLabelsVisibilityStoredValue());
+  // Flags to prevent circular updates
+  let isSyncingFromFirestore = false;
 
-  watch(labelsVisible, (newValue: boolean) => {
-    try {
-      window.localStorage.setItem('ha_dashboard_labels_visible', JSON.stringify(newValue));
-    } catch (error) {
-      console.warn('Error saving labels visibility to localStorage:', error);
+  // Labels visibility - synced with Firestore
+  const labelsVisible: Ref<boolean> = ref(true);
+
+  // Watch Firestore and sync to local ref
+  watch(
+    () => firestoreStore.uiData?.labelsVisible,
+    newValue => {
+      if (newValue !== undefined && newValue !== labelsVisible.value) {
+        isSyncingFromFirestore = true;
+        labelsVisible.value = newValue;
+        isSyncingFromFirestore = false;
+      }
+    },
+    { immediate: true }
+  );
+
+  // Watch local ref and save to Firestore (only if not syncing from Firestore)
+  watch(labelsVisible, async newValue => {
+    if (!isSyncingFromFirestore) {
+      await firestoreStore.saveUISettings({ labelsVisible: newValue });
     }
-  }, { immediate: false });
+  });
 
   function toggleLabels(): void {
     labelsVisible.value = !labelsVisible.value;
@@ -37,26 +45,28 @@ export const useUIStore = defineStore('ui', () => {
     labelsVisible.value = value;
   }
 
-  // Sidebar visibility
-  const getSidebarVisibilityStoredValue = (): boolean => {
-    try {
-      const item = window.localStorage.getItem('ha_dashboard_sidebar_visible');
-      return item !== null ? JSON.parse(item) : true;
-    } catch (error) {
-      console.warn('Error reading sidebar visibility from localStorage:', error);
-      return true;
-    }
-  };
+  // Sidebar visibility - synced with Firestore
+  const sidebarVisible: Ref<boolean> = ref(true);
 
-  const sidebarVisible: Ref<boolean> = ref<boolean>(getSidebarVisibilityStoredValue());
+  // Watch Firestore and sync to local ref
+  watch(
+    () => firestoreStore.uiData?.sidebarVisible,
+    newValue => {
+      if (newValue !== undefined && newValue !== sidebarVisible.value) {
+        isSyncingFromFirestore = true;
+        sidebarVisible.value = newValue;
+        isSyncingFromFirestore = false;
+      }
+    },
+    { immediate: true }
+  );
 
-  watch(sidebarVisible, (newValue: boolean) => {
-    try {
-      window.localStorage.setItem('ha_dashboard_sidebar_visible', JSON.stringify(newValue));
-    } catch (error) {
-      console.warn('Error saving sidebar visibility to localStorage:', error);
+  // Watch local ref and save to Firestore (only if not syncing from Firestore)
+  watch(sidebarVisible, async newValue => {
+    if (!isSyncingFromFirestore) {
+      await firestoreStore.saveUISettings({ sidebarVisible: newValue });
     }
-  }, { immediate: false });
+  });
 
   function toggleSidebar(): void {
     sidebarVisible.value = !sidebarVisible.value;
@@ -66,37 +76,36 @@ export const useUIStore = defineStore('ui', () => {
     sidebarVisible.value = value;
   }
 
-  // Scroll position (viewport center point)
-  const getScrollPositionStoredValue = (): ScrollPosition => {
-    try {
-      const item = window.localStorage.getItem('ha_dashboard_scroll_position');
-      if (item) {
-        const parsed = JSON.parse(item);
-        return parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number' 
-          ? parsed 
-          : { x: 0, y: 0 };
-      }
-      return { x: 0, y: 0 };
-    } catch (error) {
-      console.warn('Error reading scroll position from localStorage:', error);
-      return { x: 0, y: 0 };
-    }
-  };
+  // Scroll position (viewport center point) - synced with Firestore
+  const scrollPosition: Ref<ScrollPosition> = ref({ x: 0, y: 0 });
 
-  const scrollPosition: Ref<ScrollPosition> = ref<ScrollPosition>(getScrollPositionStoredValue());
+  // Watch Firestore and sync to local ref
+  watch(
+    () => firestoreStore.uiData?.scrollPosition,
+    newValue => {
+      if (newValue && JSON.stringify(newValue) !== JSON.stringify(scrollPosition.value)) {
+        isSyncingFromFirestore = true;
+        scrollPosition.value = newValue;
+        isSyncingFromFirestore = false;
+      }
+    },
+    { immediate: true, deep: true }
+  );
 
   // Throttled function to save scroll position (every 500ms)
-  const saveScrollPosition = useThrottleFn((position: ScrollPosition) => {
-    try {
-      window.localStorage.setItem('ha_dashboard_scroll_position', JSON.stringify(position));
-    } catch (error) {
-      console.warn('Error saving scroll position to localStorage:', error);
+  const saveScrollPosition = useThrottleFn(async (position: ScrollPosition) => {
+    if (!isSyncingFromFirestore) {
+      await firestoreStore.saveUISettings({ scrollPosition: position });
     }
   }, 500);
 
-  watch(scrollPosition, (newValue: ScrollPosition) => {
-    saveScrollPosition(newValue);
-  }, { deep: true });
+  watch(
+    scrollPosition,
+    (newValue: ScrollPosition) => {
+      saveScrollPosition(newValue);
+    },
+    { deep: true }
+  );
 
   function setScrollPosition(x: number, y: number): void {
     scrollPosition.value = { x, y };
@@ -113,7 +122,6 @@ export const useUIStore = defineStore('ui', () => {
     setSidebarVisible,
     // Scroll position
     scrollPosition,
-    setScrollPosition
+    setScrollPosition,
   };
 });
-

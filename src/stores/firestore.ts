@@ -8,38 +8,50 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
+  collection,
+  getDocs,
+  query,
   onSnapshot,
   type DocumentData,
   type Unsubscribe,
+  type QuerySnapshot,
 } from 'firebase/firestore';
 import { initFirebase } from '../utils/firebase';
 import { signInAnonymously, type User } from 'firebase/auth';
 
-export interface DashboardData {
-  entities: string[];
-  positions: Record<string, string>;
-  sizes: Record<string, string>;
-  icons: Record<string, string>;
-  actions: Record<string, { tapAction?: any; holdAction?: any }>;
-  labelOverrides: Record<string, string>;
-  haActions: Record<string, { service: string; serviceData?: Record<string, any> }>;
-  scale: number;
-  panX: number;
-  panY: number;
+export interface WidgetData {
+  entityName: string; // The entity key/id
+  labelName?: string; // Label override
+  labelVisible?: boolean; // Whether to show the label for this widget (default: true)
+  icon?: string;
+  position: string; // Format: "x y"
+  size: string; // Format: "width height"
+  action?: { tapAction?: any; holdAction?: any };
+  haAction?: { service: string; serviceData?: Record<string, any> };
 }
 
-const COLLECTION_NAME = 'dashboards';
-const DOCUMENT_ID = 'default'; // For now, using a single shared dashboard
+export interface UIData {
+  labelsVisible?: boolean; // Global labels visibility (default: true)
+  sidebarVisible?: boolean; // Sidebar visibility (default: true)
+  scrollPosition?: { x: number; y: number }; // Scroll position
+}
+
+const COLLECTION_NAME = 'widgets';
+const UI_COLLECTION_NAME = 'ui';
+const UI_DOCUMENT_ID = 'settings';
 
 export const useFirestoreStore = defineStore('firestore', () => {
   const isInitialized: Ref<boolean> = ref(false);
   const isAuthenticated: Ref<boolean> = ref(false);
   const user: Ref<User | null> = ref(null);
-  const dashboardData: Ref<DashboardData | null> = ref(null);
+  const widgets: Ref<Record<string, WidgetData>> = ref({}); // widgetId -> WidgetData
+  const uiData: Ref<UIData> = ref({}); // UI settings
   const isLoading: Ref<boolean> = ref(false);
   const error: Ref<string | null> = ref(null);
   const useFirestore: Ref<boolean> = ref(false); // Whether to use Firestore or localStorage
   let unsubscribe: Unsubscribe | null = null;
+  let uiUnsubscribe: Unsubscribe | null = null;
   let db: Firestore | null = null;
   let auth: Auth | null = null;
 
@@ -90,11 +102,15 @@ export const useFirestoreStore = defineStore('firestore', () => {
         isAuthenticated.value = true;
       }
 
-      // Load dashboard data
-      await loadDashboardData();
+      // Load widgets
+      await loadWidgets();
 
-      // Set up real-time listener
+      // Load UI settings
+      await loadUISettings();
+
+      // Set up real-time listeners
       setupRealtimeListener();
+      setupUIRealtimeListener();
 
       isInitialized.value = true;
       console.log('✅ Firestore initialized and connected');
@@ -113,77 +129,93 @@ export const useFirestoreStore = defineStore('firestore', () => {
   }
 
   /**
-   * Load dashboard data from localStorage (fallback)
+   * Load widgets from localStorage (fallback)
    */
   function loadFromLocalStorage(): void {
-    dashboardData.value = {
-      entities: JSON.parse(localStorage.getItem('ha_dashboard_entities') ?? '[]'),
-      positions: JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}'),
-      sizes: JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}'),
-      icons: JSON.parse(localStorage.getItem('ha_dashboard_icons') ?? '{}'),
-      actions: JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}'),
-      labelOverrides: JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}'),
-      haActions: JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}'),
-      scale: parseFloat(localStorage.getItem('ha_dashboard_scale') ?? '1'),
-      panX: parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0'),
-      panY: parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0'),
-    };
+    const widgetsData: Record<string, WidgetData> = {};
+    
+    // Load from old localStorage format and convert
+    const entities = JSON.parse(localStorage.getItem('ha_dashboard_entities') ?? '[]');
+    const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}');
+    const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}');
+    const icons = JSON.parse(localStorage.getItem('ha_dashboard_icons') ?? '{}');
+    const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+    const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
+    const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+
+    // Convert old format to new format
+    for (const entityId of entities) {
+      // Try to load label visibility from old localStorage key
+      const oldLabelVisibleKey = `ha_dashboard_widget_label_visible_${entityId}`;
+      const oldLabelVisible = localStorage.getItem(oldLabelVisibleKey);
+      let labelVisible: boolean | undefined = undefined;
+      if (oldLabelVisible !== null) {
+        try {
+          labelVisible = JSON.parse(oldLabelVisible);
+        } catch {
+          // Ignore parse errors, use undefined (defaults to true)
+        }
+      }
+
+      widgetsData[entityId] = {
+        entityName: entityId,
+        labelName: labelOverrides[entityId],
+        labelVisible: labelVisible,
+        icon: icons[entityId],
+        position: positions[entityId] || '0 0',
+        size: sizes[entityId] || '80 40',
+        action: actions[entityId],
+        haAction: haActions[entityId],
+      };
+    }
+
+    widgets.value = widgetsData;
   }
 
   /**
-   * Load dashboard data from Firestore
+   * Load widgets from Firestore
    */
-  async function loadDashboardData(): Promise<void> {
+  async function loadWidgets(): Promise<void> {
     if (!useFirestore.value || !db) {
       loadFromLocalStorage();
       return;
     }
 
     try {
-      const docRef = doc(db, COLLECTION_NAME, DOCUMENT_ID);
-      const docSnap = await getDoc(docRef);
+      const widgetsCollection = collection(db, COLLECTION_NAME);
+      const querySnapshot = await getDocs(widgetsCollection);
+      
+      const widgetsData: Record<string, WidgetData> = {};
+      
+      querySnapshot.forEach((docSnap) => {
+        const widgetId = docSnap.id;
+        const data = docSnap.data() as WidgetData;
+        widgetsData[widgetId] = data;
+      });
 
-      if (docSnap.exists()) {
-        const data = docSnap.data() as DashboardData;
-        dashboardData.value = {
-          entities: data.entities || [],
-          positions: data.positions || {},
-          sizes: data.sizes || {},
-          icons: data.icons || {},
-          actions: data.actions || {},
-          labelOverrides: data.labelOverrides || {},
-          haActions: data.haActions || {},
-          scale: data.scale ?? 1,
-          panX: data.panX ?? 0,
-          panY: data.panY ?? 0,
-        };
-        console.log('✅ Dashboard data loaded from Firestore');
-      } else {
-        // No data yet, use defaults
-        dashboardData.value = {
-          entities: [],
-          positions: {},
-          sizes: {},
-          icons: {},
-          actions: {},
-          labelOverrides: {},
-          haActions: {},
-          scale: 1,
-          panX: 0,
-          panY: 0,
-        };
-        console.log('ℹ️ No dashboard data found in Firestore, using defaults');
+      widgets.value = widgetsData;
+      console.log(`✅ Loaded ${Object.keys(widgetsData).length} widgets from Firestore`);
+    } catch (err: any) {
+      // Check if it's a permission error
+      if (err?.code === 'permission-denied' || err?.message?.includes('permissions')) {
+        console.warn('⚠️ Permission denied for Firestore. Falling back to localStorage.');
+        console.warn('   Please deploy Firestore rules: firebase deploy --only firestore:rules');
+        useFirestore.value = false;
+        loadFromLocalStorage();
+        return;
       }
-    } catch (err) {
+      
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       error.value = errorMessage;
-      console.error('❌ Failed to load dashboard data:', err);
-      throw err;
+      console.error('❌ Failed to load widgets:', err);
+      // Fall back to localStorage on error
+      useFirestore.value = false;
+      loadFromLocalStorage();
     }
   }
 
   /**
-   * Set up real-time listener for dashboard changes
+   * Set up real-time listener for widget changes
    */
   function setupRealtimeListener(): void {
     if (!useFirestore.value || !db) {
@@ -194,27 +226,21 @@ export const useFirestoreStore = defineStore('firestore', () => {
       unsubscribe();
     }
 
-    const docRef = doc(db, COLLECTION_NAME, DOCUMENT_ID);
+    const widgetsCollection = collection(db, COLLECTION_NAME);
     
     unsubscribe = onSnapshot(
-      docRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data() as DashboardData;
-          dashboardData.value = {
-            entities: data.entities || [],
-            positions: data.positions || {},
-            sizes: data.sizes || {},
-            icons: data.icons || {},
-            actions: data.actions || {},
-            labelOverrides: data.labelOverrides || {},
-            haActions: data.haActions || {},
-            scale: data.scale ?? 1,
-            panX: data.panX ?? 0,
-            panY: data.panY ?? 0,
-          };
-          console.log('🔄 Dashboard data updated from Firestore');
-        }
+      widgetsCollection,
+      (querySnapshot: QuerySnapshot) => {
+        const widgetsData: Record<string, WidgetData> = {};
+        
+        querySnapshot.forEach((docSnap) => {
+          const widgetId = docSnap.id;
+          const data = docSnap.data() as WidgetData;
+          widgetsData[widgetId] = data;
+        });
+
+        widgets.value = widgetsData;
+        console.log('🔄 Widgets updated from Firestore');
       },
       (err) => {
         error.value = err.message;
@@ -224,103 +250,360 @@ export const useFirestoreStore = defineStore('firestore', () => {
   }
 
   /**
-   * Save dashboard data to Firestore or localStorage
+   * Remove undefined fields from an object (Firestore doesn't allow undefined)
    */
-  async function saveDashboardData(data: Partial<DashboardData>): Promise<void> {
-    if (!dashboardData.value) {
-      if (useFirestore.value) {
-        await loadDashboardData();
-      } else {
-        loadFromLocalStorage();
+  function removeUndefinedFields(obj: any): any {
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = value;
       }
     }
+    return cleaned;
+  }
 
-    const currentData = dashboardData.value || {
-      entities: [],
-      positions: {},
-      sizes: {},
-      icons: {},
-      actions: {},
-      labelOverrides: {},
-      haActions: {},
-      scale: 1,
-      panX: 0,
-      panY: 0,
-    };
-
-    const updatedData: DashboardData = {
-      ...currentData,
-      ...data,
+  /**
+   * Save or update a widget
+   */
+  async function saveWidget(widgetId: string, widgetData: WidgetData): Promise<void> {
+    // Update local state immediately
+    widgets.value = {
+      ...widgets.value,
+      [widgetId]: widgetData,
     };
 
     if (useFirestore.value && db) {
       try {
-        const docRef = doc(db, COLLECTION_NAME, DOCUMENT_ID);
-        await setDoc(docRef, updatedData, { merge: true });
-        dashboardData.value = updatedData;
-        console.log('✅ Dashboard data saved to Firestore');
+        const docRef = doc(db, COLLECTION_NAME, widgetId);
+        // Remove undefined fields before saving (Firestore doesn't allow undefined)
+        const cleanedData = removeUndefinedFields(widgetData);
+        await setDoc(docRef, cleanedData, { merge: true });
+        console.log(`✅ Widget ${widgetId} saved to Firestore`);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         error.value = errorMessage;
-        console.error('❌ Failed to save dashboard data to Firestore:', err);
+        console.error(`❌ Failed to save widget ${widgetId} to Firestore:`, err);
         // Fall back to localStorage
-        saveToLocalStorage(updatedData);
+        saveWidgetToLocalStorage(widgetId, widgetData);
       }
     } else {
       // Save to localStorage
-      saveToLocalStorage(updatedData);
+      saveWidgetToLocalStorage(widgetId, widgetData);
     }
   }
 
   /**
-   * Save dashboard data to localStorage
+   * Update a widget field
    */
-  function saveToLocalStorage(data: DashboardData): void {
-    localStorage.setItem('ha_dashboard_entities', JSON.stringify(data.entities));
-    localStorage.setItem('ha_dashboard_positions', JSON.stringify(data.positions));
-    localStorage.setItem('ha_dashboard_sizes', JSON.stringify(data.sizes));
-    localStorage.setItem('ha_dashboard_icons', JSON.stringify(data.icons));
-    localStorage.setItem('ha_dashboard_actions', JSON.stringify(data.actions));
-    localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(data.labelOverrides));
-    localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(data.haActions));
-    localStorage.setItem('ha_dashboard_scale', JSON.stringify(data.scale));
-    localStorage.setItem('ha_dashboard_pan_x', JSON.stringify(data.panX));
-    localStorage.setItem('ha_dashboard_pan_y', JSON.stringify(data.panY));
-    dashboardData.value = data;
-    console.log('✅ Dashboard data saved to localStorage');
+  async function updateWidget(widgetId: string, updates: Partial<WidgetData>): Promise<void> {
+    const currentWidget = widgets.value[widgetId];
+    if (!currentWidget) {
+      console.warn(`⚠️ Widget ${widgetId} not found, cannot update`);
+      return;
+    }
+
+    // Remove undefined values from updates
+    const cleanedUpdates = removeUndefinedFields(updates);
+    
+    const updatedWidget: WidgetData = {
+      ...currentWidget,
+      ...cleanedUpdates,
+    };
+
+    await saveWidget(widgetId, updatedWidget);
   }
 
   /**
-   * Migrate localStorage data to Firestore
+   * Delete a widget
    */
-  async function migrateFromLocalStorage(): Promise<void> {
+  async function deleteWidget(widgetId: string): Promise<void> {
+    // Update local state
+    const newWidgets = { ...widgets.value };
+    delete newWidgets[widgetId];
+    widgets.value = newWidgets;
+
+    if (useFirestore.value && db) {
+      try {
+        const docRef = doc(db, COLLECTION_NAME, widgetId);
+        await deleteDoc(docRef);
+        console.log(`✅ Widget ${widgetId} deleted from Firestore`);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        error.value = errorMessage;
+        console.error(`❌ Failed to delete widget ${widgetId} from Firestore:`, err);
+        // Fall back to localStorage
+        deleteWidgetFromLocalStorage(widgetId);
+      }
+    } else {
+      // Delete from localStorage
+      deleteWidgetFromLocalStorage(widgetId);
+    }
+  }
+
+  /**
+   * Save widget to localStorage
+   */
+  function saveWidgetToLocalStorage(widgetId: string, widgetData: WidgetData): void {
+    // Convert to old format for localStorage compatibility
+    const entities = JSON.parse(localStorage.getItem('ha_dashboard_entities') ?? '[]');
+    const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}');
+    const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}');
+    const icons = JSON.parse(localStorage.getItem('ha_dashboard_icons') ?? '{}');
+    const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+    const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
+    const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+
+    // Update old format
+    if (!entities.includes(widgetId)) {
+      entities.push(widgetId);
+    }
+    positions[widgetId] = widgetData.position;
+    sizes[widgetId] = widgetData.size;
+    if (widgetData.icon) icons[widgetId] = widgetData.icon;
+    if (widgetData.action) actions[widgetId] = widgetData.action;
+    if (widgetData.labelName) labelOverrides[widgetId] = widgetData.labelName;
+    if (widgetData.haAction) haActions[widgetId] = widgetData.haAction;
+
+    // Save back
+    localStorage.setItem('ha_dashboard_entities', JSON.stringify(entities));
+    localStorage.setItem('ha_dashboard_positions', JSON.stringify(positions));
+    localStorage.setItem('ha_dashboard_sizes', JSON.stringify(sizes));
+    localStorage.setItem('ha_dashboard_icons', JSON.stringify(icons));
+    localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+    localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
+    localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+  }
+
+  /**
+   * Delete widget from localStorage
+   */
+  function deleteWidgetFromLocalStorage(widgetId: string): void {
+    const entities = JSON.parse(localStorage.getItem('ha_dashboard_entities') ?? '[]');
+    const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}');
+    const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}');
+    const icons = JSON.parse(localStorage.getItem('ha_dashboard_icons') ?? '{}');
+    const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+    const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
+    const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+
+    // Remove from arrays/objects
+    const entityIndex = entities.indexOf(widgetId);
+    if (entityIndex > -1) entities.splice(entityIndex, 1);
+    delete positions[widgetId];
+    delete sizes[widgetId];
+    delete icons[widgetId];
+    delete actions[widgetId];
+    delete labelOverrides[widgetId];
+    delete haActions[widgetId];
+
+    // Save back
+    localStorage.setItem('ha_dashboard_entities', JSON.stringify(entities));
+    localStorage.setItem('ha_dashboard_positions', JSON.stringify(positions));
+    localStorage.setItem('ha_dashboard_sizes', JSON.stringify(sizes));
+    localStorage.setItem('ha_dashboard_icons', JSON.stringify(icons));
+    localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+    localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
+    localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+  }
+
+  /**
+   * Load UI settings from Firestore
+   */
+  async function loadUISettings(): Promise<void> {
     if (!useFirestore.value || !db) {
-      console.warn('⚠️ Firestore not available, cannot migrate');
+      loadUISettingsFromLocalStorage();
       return;
     }
 
     try {
-      console.log('📦 Migrating localStorage data to Firestore...');
+      const uiDocRef = doc(db, UI_COLLECTION_NAME, UI_DOCUMENT_ID);
+      const uiDocSnap = await getDoc(uiDocRef);
+      
+      if (uiDocSnap.exists()) {
+        const data = uiDocSnap.data() as UIData;
+        uiData.value = {
+          labelsVisible: data.labelsVisible,
+          sidebarVisible: data.sidebarVisible,
+          scrollPosition: data.scrollPosition,
+        };
+        console.log('✅ UI settings loaded from Firestore');
+      } else {
+        // No UI data yet, try to migrate from localStorage
+        await migrateUISettingsFromLocalStorage();
+      }
+    } catch (err: any) {
+      // Check if it's a permission error
+      if (err?.code === 'permission-denied' || err?.message?.includes('permissions')) {
+        console.warn('⚠️ Permission denied for Firestore UI settings. Falling back to localStorage.');
+        useFirestore.value = false;
+        loadUISettingsFromLocalStorage();
+        return;
+      }
+      
+      console.error('❌ Failed to load UI settings:', err);
+      // Fall back to localStorage on error
+      loadUISettingsFromLocalStorage();
+    }
+  }
 
-      const localStorageData: DashboardData = {
-        entities: JSON.parse(localStorage.getItem('ha_dashboard_entities') ?? '[]'),
-        positions: JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}'),
-        sizes: JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}'),
-        icons: JSON.parse(localStorage.getItem('ha_dashboard_icons') ?? '{}'),
-        actions: JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}'),
-        labelOverrides: JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}'),
-        haActions: JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}'),
-        scale: parseFloat(localStorage.getItem('ha_dashboard_scale') ?? '1'),
-        panX: parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0'),
-        panY: parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0'),
+  /**
+   * Load UI settings from localStorage (fallback)
+   */
+  function loadUISettingsFromLocalStorage(): void {
+    try {
+      const labelsVisible = JSON.parse(localStorage.getItem('ha_dashboard_labels_visible') ?? 'true');
+      const sidebarVisible = JSON.parse(localStorage.getItem('ha_dashboard_sidebar_visible') ?? 'true');
+      const scrollPositionStr = localStorage.getItem('ha_dashboard_scroll_position');
+      let scrollPosition: { x: number; y: number } | undefined = undefined;
+      
+      if (scrollPositionStr) {
+        try {
+          const parsed = JSON.parse(scrollPositionStr);
+          if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+            scrollPosition = parsed;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      uiData.value = {
+        labelsVisible,
+        sidebarVisible,
+        scrollPosition,
+      };
+    } catch (err) {
+      console.warn('Error loading UI settings from localStorage:', err);
+      uiData.value = {
+        labelsVisible: true,
+        sidebarVisible: true,
+      };
+    }
+  }
+
+  /**
+   * Migrate UI settings from localStorage to Firestore
+   */
+  async function migrateUISettingsFromLocalStorage(): Promise<void> {
+    if (!useFirestore.value || !db) {
+      return;
+    }
+
+    try {
+      const labelsVisible = JSON.parse(localStorage.getItem('ha_dashboard_labels_visible') ?? 'true');
+      const sidebarVisible = JSON.parse(localStorage.getItem('ha_dashboard_sidebar_visible') ?? 'true');
+      const scrollPositionStr = localStorage.getItem('ha_dashboard_scroll_position');
+      let scrollPosition: { x: number; y: number } | undefined = undefined;
+      
+      if (scrollPositionStr) {
+        try {
+          const parsed = JSON.parse(scrollPositionStr);
+          if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+            scrollPosition = parsed;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      const uiDataToSave: UIData = {
+        labelsVisible,
+        sidebarVisible,
+        scrollPosition,
       };
 
-      await saveDashboardData(localStorageData);
-      console.log('✅ Migration complete! Dashboard data saved to Firestore.');
+      const cleanedData = removeUndefinedFields(uiDataToSave);
+      const uiDocRef = doc(db, UI_COLLECTION_NAME, UI_DOCUMENT_ID);
+      await setDoc(uiDocRef, cleanedData);
+      
+      uiData.value = uiDataToSave;
+      console.log('✅ Migrated UI settings to Firestore');
     } catch (err) {
-      console.error('❌ Migration failed:', err);
-      throw err;
+      console.error('❌ Failed to migrate UI settings:', err);
+      loadUISettingsFromLocalStorage();
     }
+  }
+
+  /**
+   * Save UI settings to Firestore
+   */
+  async function saveUISettings(updates: Partial<UIData>): Promise<void> {
+    // Update local state immediately
+    uiData.value = {
+      ...uiData.value,
+      ...updates,
+    };
+
+    if (useFirestore.value && db) {
+      try {
+        const uiDocRef = doc(db, UI_COLLECTION_NAME, UI_DOCUMENT_ID);
+        const cleanedData = removeUndefinedFields(uiData.value);
+        await setDoc(uiDocRef, cleanedData, { merge: true });
+        console.log('✅ UI settings saved to Firestore');
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        error.value = errorMessage;
+        console.error('❌ Failed to save UI settings to Firestore:', err);
+        // Fall back to localStorage
+        saveUISettingsToLocalStorage(uiData.value);
+      }
+    } else {
+      // Save to localStorage
+      saveUISettingsToLocalStorage(uiData.value);
+    }
+  }
+
+  /**
+   * Save UI settings to localStorage (fallback)
+   */
+  function saveUISettingsToLocalStorage(data: UIData): void {
+    try {
+      if (data.labelsVisible !== undefined) {
+        localStorage.setItem('ha_dashboard_labels_visible', JSON.stringify(data.labelsVisible));
+      }
+      if (data.sidebarVisible !== undefined) {
+        localStorage.setItem('ha_dashboard_sidebar_visible', JSON.stringify(data.sidebarVisible));
+      }
+      if (data.scrollPosition) {
+        localStorage.setItem('ha_dashboard_scroll_position', JSON.stringify(data.scrollPosition));
+      }
+    } catch (err) {
+      console.warn('Error saving UI settings to localStorage:', err);
+    }
+  }
+
+  /**
+   * Set up real-time listener for UI settings changes
+   */
+  function setupUIRealtimeListener(): void {
+    if (!useFirestore.value || !db) {
+      return;
+    }
+
+    if (uiUnsubscribe) {
+      uiUnsubscribe();
+    }
+
+    const uiDocRef = doc(db, UI_COLLECTION_NAME, UI_DOCUMENT_ID);
+    
+    uiUnsubscribe = onSnapshot(
+      uiDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data() as UIData;
+          uiData.value = {
+            labelsVisible: data.labelsVisible,
+            sidebarVisible: data.sidebarVisible,
+            scrollPosition: data.scrollPosition,
+          };
+          console.log('🔄 UI settings updated from Firestore');
+        }
+      },
+      (err) => {
+        error.value = err.message;
+        console.error('❌ Firestore UI listener error:', err);
+      }
+    );
   }
 
   /**
@@ -331,19 +614,35 @@ export const useFirestoreStore = defineStore('firestore', () => {
       unsubscribe();
       unsubscribe = null;
     }
+    if (uiUnsubscribe) {
+      uiUnsubscribe();
+      uiUnsubscribe = null;
+    }
+  }
+
+  /**
+   * Set user interacting flag (for preventing auto-save during interactions)
+   */
+  function setUserInteracting(value: boolean): void {
+    // This can be used for future optimizations
   }
 
   return {
     isInitialized,
     isAuthenticated,
     user,
-    dashboardData,
+    widgets,
+    uiData,
     isLoading,
     error,
     initialize,
-    loadDashboardData,
-    saveDashboardData,
-    migrateFromLocalStorage,
+    loadWidgets,
+    saveWidget,
+    updateWidget,
+    deleteWidget,
+    loadUISettings,
+    saveUISettings,
+    setUserInteracting,
     cleanup,
   };
 });

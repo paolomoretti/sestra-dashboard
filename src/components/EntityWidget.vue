@@ -83,6 +83,7 @@
       class="entity-label"
       :title="displayLabel"
       @click.stop="handleLabelClick"
+      @mousedown.stop="handleLabelMouseDown"
       @contextmenu.stop="handleLabelRightClick"
     >
        <span class="label-text">{{ displayLabel }}</span
@@ -859,12 +860,10 @@ function handleResizeEnd() {
 const uiStore = useUIStore();
 const { labelsVisible } = storeToRefs(uiStore);
 
-// Widget-specific label visibility (stored per entity)
-const widgetLabelsVisibleKey = `ha_dashboard_widget_label_visible_${props.entity.key}`;
-const [widgetLabelVisible, setWidgetLabelVisible] = useLocalStorage<boolean>(
-  widgetLabelsVisibleKey,
-  true
-);
+// Widget-specific label visibility (from Firestore, default to true)
+const widgetLabelVisible = computed(() => {
+  return props.entity.labelVisible !== undefined ? props.entity.labelVisible : true;
+});
 
 // Combined label visibility: show only when both global AND widget are true
 const showLabel = computed(() => labelsVisible.value && widgetLabelVisible.value);
@@ -976,8 +975,9 @@ async function handleIconClick(e: MouseEvent) {
   // Prevent event from bubbling to widget wrapper
   e.stopPropagation();
 
-  // If widget is selected, don't execute action - allow dragging instead
-  if (isSelected.value) {
+  // Don't handle click if we just finished dragging
+  if (hasDragged.value) {
+    hasDragged.value = false;
     return;
   }
 
@@ -1026,15 +1026,12 @@ async function handleIconClick(e: MouseEvent) {
   }
 }
 
-// Handle mousedown on icon - allows dragging when selected
+// Handle mousedown on icon - allows dragging from anywhere
 function handleIconMouseDown(e: MouseEvent) {
-  // If widget is selected, allow dragging from icon
-  if (isSelected.value) {
-    // Start drag by calling handleMouseDown
-    // handleMouseDown will check if icon is selected and allow drag
-    handleMouseDown(e);
-  }
-  // If not selected, let the click handler execute the action (don't start drag)
+  // Always allow dragging from icon
+  // If user drags, hasDragged will be set and click handler won't fire
+  // If user just clicks, hasDragged will be false and click handler will execute
+  handleMouseDown(e);
 }
 
 // Handle right-click on icon - always show info panel
@@ -1115,17 +1112,17 @@ function handleActionButtonRightClick(e: MouseEvent) {
   }
 }
 
-// Handle action button mouse down - allow dragging when selected
+// Handle action button mouse down - allow dragging from anywhere
 function handleActionButtonMouseDown(e: MouseEvent) {
   // Don't drag on right-click
   if (e.button === 2) {
     return;
   }
 
-  // If selected, allow dragging
-  if (isSelected.value) {
-    handleMouseDown(e);
-  }
+  // Always allow dragging from action button
+  // If user drags, hasDragged will be set and click handler won't fire
+  // If user just clicks, hasDragged will be false and click handler will execute action
+  handleMouseDown(e);
 }
 
 // Touch handlers for action buttons (with long-press detection)
@@ -1223,17 +1220,22 @@ function handleActionButtonTouchEnd() {
   actionButtonTouchMoved = false;
 }
 
+// Handle mousedown on label - allows dragging from label
+function handleLabelMouseDown(e: MouseEvent) {
+  // Always allow dragging from label
+  // If user drags, hasDraggedFromLabel will be set and click handler won't fire
+  // If user just clicks, hasDraggedFromLabel will be false and click handler will execute
+  handleMouseDown(e);
+}
+
 function handleLabelClick() {
-  // Don't open panel if we just finished dragging from label
-  if (hasDraggedFromLabel.value) {
-    hasDraggedFromLabel.value = false;
+  // Don't handle click if we just finished dragging
+  if (hasDragged.value) {
+    hasDragged.value = false;
     return;
   }
-  // Select the entity so it can be dragged/resized
+  // Select the entity (don't open panel on click, only on right-click)
   emit('select', props.entity);
-  // Open the panel
-  isPanelOpen.value = true;
-  isExpanded.value = true;
   // Zoom to entity position (center of widget)
   if (window.zoomToEntity) {
     window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
@@ -1678,7 +1680,8 @@ function handleHAActionSearchKeydown() {
 // Handle navigation path change
 function handleLabelVisibilityChange(event: Event) {
   const target = event.target as HTMLInputElement;
-  setWidgetLabelVisible(target.checked);
+  // Save to Firestore via emit update
+  emit('update', props.entity.key, { labelVisible: target.checked });
 }
 
 function handleStateConditionOperatorChange(event: Event) {
@@ -1770,79 +1773,56 @@ function handleMouseDown(e: MouseEvent) {
     return;
   }
 
-  // For action buttons, only allow drag when selected
-  if (props.entity.isActionButton && !isSelected.value) {
-    return;
-  }
+  // Store initial mouse position to detect if it's a drag or click
+  const startX = e.clientX;
+  const startY = e.clientY;
+  (window as any).__entityDragStartPos = { x: startX, y: startY };
 
-  // Don't drag if clicking on icon AND widget is not selected
-  // (when selected, icon should be draggable)
-  if (target.classList.contains('entity-icon') && !isSelected.value) {
-    return;
-  }
-
-  // Don't drag if clicking on action button itself when not selected
-  if (target.closest('.action-button') && !isSelected.value) {
-    return;
-  }
-
-  // Check if clicking on label - store target and position for drag detection
+  // Check if clicking on label - store target for drag detection
   const clickedOnLabel = target.closest('.entity-label') !== null;
   if (clickedOnLabel) {
     hasDraggedFromLabel.value = false;
-    // Store drag start info to detect if it becomes a drag
-    (window as any).__entityDragStartPos = { x: e.clientX, y: e.clientY };
     (window as any).__entityDragStartTarget = target;
   } else {
     // Not from label, clear flag
     hasDraggedFromLabel.value = false;
-    delete (window as any).__entityDragStartPos;
     delete (window as any).__entityDragStartTarget;
   }
 
-  e.preventDefault();
+  // Don't prevent default yet - wait to see if it's a drag
+  // This allows click events to fire if user doesn't drag
   e.stopPropagation();
 
-  isDragging.value = true;
+  isDragging.value = false; // Start as false, only set to true if we detect movement
   hasDragged.value = false;
 
-  // Get dashboard wrapper for coordinate conversion
-  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!dashboardWrapper) return;
-
-  const wrapperRect = dashboardWrapper.getBoundingClientRect();
-
-  // Get current pan and scale
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-  const scale = props.scale ?? 1;
-
-  // Mouse position in wrapper coordinates
-  const mouseX = e.clientX - wrapperRect.left;
-  const mouseY = e.clientY - wrapperRect.top;
-
-  // Convert mouse position to diagram coordinates
-  const diagramMouseX = (mouseX - panX) / scale;
-  const diagramMouseY = (mouseY - panY) / scale;
-
-  // Current entity position in diagram coordinates
-  const entityX = x.value;
-  const entityY = y.value;
-
-  // Calculate offset from click point to entity origin (so dragging feels natural)
-  const offsetX = diagramMouseX - entityX;
-  const offsetY = diagramMouseY - entityY;
-
-  // Store offset for later use (so entity follows mouse exactly where clicked)
-  (window as any).__entityDragOffsetX = offsetX;
-  (window as any).__entityDragOffsetY = offsetY;
+  // Store initial position for offset calculation (will be calculated when drag starts)
+  // We'll calculate offset in handleMouseMove after we confirm it's a drag
 
   document.addEventListener('mousemove', handleMouseMove);
   document.addEventListener('mouseup', handleMouseUp);
 }
 
 function handleMouseMove(e: MouseEvent) {
-  if (!isDragging.value) return;
+  const dragStartPos = (window as any).__entityDragStartPos;
+  if (!dragStartPos) return;
+
+  // Check if mouse moved enough to consider it a drag (threshold: 5px)
+  const dx = Math.abs(e.clientX - dragStartPos.x);
+  const dy = Math.abs(e.clientY - dragStartPos.y);
+  const moved = dx > 5 || dy > 5;
+
+  // Only start dragging if we've moved enough
+  if (!isDragging.value) {
+    if (!moved) {
+      // Haven't moved enough yet, don't start dragging
+      return;
+    }
+    // Moved enough - start dragging
+    isDragging.value = true;
+    // Now prevent default to stop text selection, etc.
+    e.preventDefault();
+  }
 
   const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
   if (!dashboardWrapper) return;
@@ -1862,9 +1842,19 @@ function handleMouseMove(e: MouseEvent) {
   const diagramMouseX = (currentMouseX - panX) / scale;
   const diagramMouseY = (currentMouseY - panY) / scale;
 
-  // Get stored offset
-  const offsetX = (window as any).__entityDragOffsetX ?? 0;
-  const offsetY = (window as any).__entityDragOffsetY ?? 0;
+  // Get stored offset (only set after we start dragging)
+  let offsetX = (window as any).__entityDragOffsetX;
+  let offsetY = (window as any).__entityDragOffsetY;
+
+  // If offset not set yet, calculate it now
+  if (offsetX === undefined || offsetY === undefined) {
+    const entityX = x.value;
+    const entityY = y.value;
+    offsetX = diagramMouseX - entityX;
+    offsetY = diagramMouseY - entityY;
+    (window as any).__entityDragOffsetX = offsetX;
+    (window as any).__entityDragOffsetY = offsetY;
+  }
 
   // Calculate new entity position (mouse position minus offset)
   const newX = diagramMouseX - offsetX;
@@ -1878,17 +1868,9 @@ function handleMouseMove(e: MouseEvent) {
   hasDragged.value = true;
 
   // Mark if we dragged from label - check if drag started from label
-  const dragStartPos = (window as any).__entityDragStartPos;
-  if (dragStartPos) {
-    const dx = Math.abs(e.clientX - dragStartPos.x);
-    const dy = Math.abs(e.clientY - dragStartPos.y);
-    if (dx > 5 || dy > 5) {
-      // Moved more than 5px - it's a drag
-      const startTarget = (window as any).__entityDragStartTarget;
-      if (startTarget?.closest('.entity-label')) {
-        hasDraggedFromLabel.value = true;
-      }
-    }
+  const startTarget = (window as any).__entityDragStartTarget;
+  if (startTarget?.closest('.entity-label')) {
+    hasDraggedFromLabel.value = true;
   }
 
   // Update selectedEntityPosition if this entity is selected (so panel follows during drag)
@@ -1898,7 +1880,14 @@ function handleMouseMove(e: MouseEvent) {
 }
 
 function handleMouseUp() {
+  // Clean up event listeners
+  document.removeEventListener('mousemove', handleMouseMove);
+  document.removeEventListener('mouseup', handleMouseUp);
+  document.removeEventListener('touchmove', handleTouchMove);
+  document.removeEventListener('touchend', handleTouchEnd);
+
   if (isDragging.value) {
+    // We were dragging - save position
     isDragging.value = false;
 
     // Clean up offset and drag start info
@@ -1912,10 +1901,16 @@ function handleMouseUp() {
     emit('update', props.entity.key, { loc: newLoc });
     savePosition();
 
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-    document.removeEventListener('touchmove', handleTouchMove);
-    document.removeEventListener('touchend', handleTouchEnd);
+    // Keep hasDragged true if we actually dragged, so click handlers can check it
+    // Click handlers will reset it after checking
+  } else {
+    // We weren't dragging - reset hasDragged so click handlers can fire
+    hasDragged.value = false;
+    // Clean up
+    delete (window as any).__entityDragOffsetX;
+    delete (window as any).__entityDragOffsetY;
+    delete (window as any).__entityDragStartPos;
+    delete (window as any).__entityDragStartTarget;
   }
 }
 
@@ -1930,11 +1925,6 @@ function handleTouchStart(e: TouchEvent) {
 
   // Don't drag if clicking on resize handle
   if (target.classList.contains('resize-handle')) {
-    return;
-  }
-
-  // Don't drag if clicking on icon AND widget is not selected
-  if (target.classList.contains('entity-icon') && !isSelected.value) {
     return;
   }
 

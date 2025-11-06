@@ -9,7 +9,7 @@
       <h1 class="m-0 text-2xl">🏠 Sestra Dashboard</h1>
 
       <div class="flex items-center gap-3">
-         <BackupButton /> <LabelToggleButton /> <SidebarToggleButton />
+         <LabelToggleButton /> <SidebarToggleButton />
       </div>
 
     </header>
@@ -36,9 +36,7 @@ import ZoomControls from './components/ZoomControls.vue';
 import NumericValues from './components/NumericValues.vue';
 import LabelToggleButton from './components/LabelToggleButton.vue';
 import SidebarToggleButton from './components/SidebarToggleButton.vue';
-import BackupButton from './components/BackupButton.vue';
 import AddButton from './components/AddButton.vue';
-import { createDailyBackup } from './utils/backupUtils';
 import './style.css';
 
 const uiStore = useUIStore();
@@ -124,8 +122,6 @@ onMounted(() => {
     window.getZoomLevel = () => dashboardRef.value?.getZoomLevel() ?? 1;
   }
 
-  // Create daily backup if needed
-  void createDailyBackup();
 });
 
 function handleAddActionButton() {

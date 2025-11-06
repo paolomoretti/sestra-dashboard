@@ -3,93 +3,224 @@
  */
 
 import { computed, watch, type Ref } from 'vue';
-import { useFirestoreStore } from '../stores/firestore';
+import { useDebounceFn } from '@vueuse/core';
+import { useFirestoreStore, type WidgetData } from '../stores/firestore';
 
 /**
  * Get reactive dashboard data from Firestore
  */
 export function useFirestoreData() {
   const firestoreStore = useFirestoreStore();
+  
+  // Expose interaction flag setter
+  const setUserInteracting = (value: boolean) => {
+    firestoreStore.setUserInteracting(value);
+  };
 
-  const entities = computed(() => firestoreStore.dashboardData?.entities ?? []);
-  const positions = computed(() => firestoreStore.dashboardData?.positions ?? {});
-  const sizes = computed(() => firestoreStore.dashboardData?.sizes ?? {});
-  const icons = computed(() => firestoreStore.dashboardData?.icons ?? {});
-  const actions = computed(() => firestoreStore.dashboardData?.actions ?? {});
-  const labelOverrides = computed(() => firestoreStore.dashboardData?.labelOverrides ?? {});
-  const haActions = computed(() => firestoreStore.dashboardData?.haActions ?? {});
-  const scale = computed(() => firestoreStore.dashboardData?.scale ?? 1);
-  const panX = computed(() => firestoreStore.dashboardData?.panX ?? 0);
-  const panY = computed(() => firestoreStore.dashboardData?.panY ?? 0);
+  // Convert widgets to the old format for backward compatibility
+  const entities = computed(() => {
+    return Object.keys(firestoreStore.widgets || {});
+  });
+
+  const positions = computed(() => {
+    const result: Record<string, string> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      result[widgetId] = widget.position;
+    });
+    return result;
+  });
+
+  const sizes = computed(() => {
+    const result: Record<string, string> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      result[widgetId] = widget.size;
+    });
+    return result;
+  });
+
+  const icons = computed(() => {
+    const result: Record<string, string> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      if (widget.icon) {
+        result[widgetId] = widget.icon;
+      }
+    });
+    return result;
+  });
+
+  const actions = computed(() => {
+    const result: Record<string, { tapAction?: any; holdAction?: any }> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      if (widget.action) {
+        result[widgetId] = widget.action;
+      }
+    });
+    return result;
+  });
+
+  const labelOverrides = computed(() => {
+    const result: Record<string, string> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      if (widget.labelName) {
+        result[widgetId] = widget.labelName;
+      }
+    });
+    return result;
+  });
+
+  const haActions = computed(() => {
+    const result: Record<string, { service: string; serviceData?: Record<string, any> }> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      if (widget.haAction) {
+        result[widgetId] = widget.haAction;
+      }
+    });
+    return result;
+  });
+
+  const labelVisible = computed(() => {
+    const result: Record<string, boolean> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      // Default to true if not set
+      result[widgetId] = widget.labelVisible !== undefined ? widget.labelVisible : true;
+    });
+    return result;
+  });
 
   /**
-   * Save entities to Firestore
+   * Save entities list (creates/updates widgets)
    */
   async function setEntities(value: string[]): Promise<void> {
-    await firestoreStore.saveDashboardData({ entities: value });
+    const currentWidgets = firestoreStore.widgets || {};
+    const currentEntityIds = Object.keys(currentWidgets);
+    
+    // Delete widgets that are no longer in the list
+    for (const widgetId of currentEntityIds) {
+      if (!value.includes(widgetId)) {
+        await firestoreStore.deleteWidget(widgetId);
+      }
+    }
+
+    // Create/update widgets for new entities
+    for (const entityId of value) {
+      if (!currentWidgets[entityId]) {
+        // Create new widget
+        await firestoreStore.saveWidget(entityId, {
+          entityName: entityId,
+          position: '0 0',
+          size: '80 40',
+        });
+      }
+    }
   }
 
   /**
    * Save positions to Firestore
+   * Only updates widgets whose positions have actually changed
    */
   async function setPositions(value: Record<string, string>): Promise<void> {
-    await firestoreStore.saveDashboardData({ positions: value });
+    const currentPositions = positions.value;
+    for (const [widgetId, position] of Object.entries(value)) {
+      // Only update if position actually changed
+      if (currentPositions[widgetId] !== position) {
+        await firestoreStore.updateWidget(widgetId, { position });
+      }
+    }
+  }
+
+  /**
+   * Update a single widget's position (more efficient than setPositions for single updates)
+   */
+  async function updateWidgetPosition(widgetId: string, position: string): Promise<void> {
+    await firestoreStore.updateWidget(widgetId, { position });
   }
 
   /**
    * Save sizes to Firestore
+   * Only updates widgets whose sizes have actually changed
    */
   async function setSizes(value: Record<string, string>): Promise<void> {
-    await firestoreStore.saveDashboardData({ sizes: value });
+    const currentSizes = sizes.value;
+    for (const [widgetId, size] of Object.entries(value)) {
+      // Only update if size actually changed
+      if (currentSizes[widgetId] !== size) {
+        await firestoreStore.updateWidget(widgetId, { size });
+      }
+    }
+  }
+
+  /**
+   * Update a single widget's size (more efficient than setSizes for single updates)
+   */
+  async function updateWidgetSize(widgetId: string, size: string): Promise<void> {
+    await firestoreStore.updateWidget(widgetId, { size });
   }
 
   /**
    * Save icons to Firestore
    */
   async function setIcons(value: Record<string, string>): Promise<void> {
-    await firestoreStore.saveDashboardData({ icons: value });
+    const currentWidgets = firestoreStore.widgets || {};
+    
+    // Update existing widgets
+    for (const [widgetId, icon] of Object.entries(value)) {
+      if (currentWidgets[widgetId]) {
+        await firestoreStore.updateWidget(widgetId, { icon });
+      }
+    }
+
+    // Remove icons that are no longer in the value
+    for (const widgetId of Object.keys(currentWidgets)) {
+      if (!value[widgetId]) {
+        await firestoreStore.updateWidget(widgetId, { icon: undefined });
+      }
+    }
   }
 
   /**
    * Save actions to Firestore
    */
   async function setActions(value: Record<string, { tapAction?: any; holdAction?: any }>): Promise<void> {
-    await firestoreStore.saveDashboardData({ actions: value });
+    for (const [widgetId, action] of Object.entries(value)) {
+      await firestoreStore.updateWidget(widgetId, { action });
+    }
   }
 
   /**
    * Save label overrides to Firestore
    */
   async function setLabelOverrides(value: Record<string, string>): Promise<void> {
-    await firestoreStore.saveDashboardData({ labelOverrides: value });
+    const currentWidgets = firestoreStore.widgets || {};
+    
+    // Update existing widgets
+    for (const [widgetId, labelName] of Object.entries(value)) {
+      if (currentWidgets[widgetId]) {
+        await firestoreStore.updateWidget(widgetId, { labelName });
+      }
+    }
+
+    // Remove label overrides that are no longer in the value (empty string means clear)
+    for (const widgetId of Object.keys(currentWidgets)) {
+      if (!value[widgetId]) {
+        await firestoreStore.updateWidget(widgetId, { labelName: undefined });
+      }
+    }
   }
 
   /**
    * Save HA actions to Firestore
    */
   async function setHAActions(value: Record<string, { service: string; serviceData?: Record<string, any> }>): Promise<void> {
-    await firestoreStore.saveDashboardData({ haActions: value });
+    for (const [widgetId, haAction] of Object.entries(value)) {
+      await firestoreStore.updateWidget(widgetId, { haAction });
+    }
   }
 
   /**
-   * Save scale to Firestore
+   * Save label visibility to Firestore
    */
-  async function setScale(value: number): Promise<void> {
-    await firestoreStore.saveDashboardData({ scale: value });
-  }
-
-  /**
-   * Save panX to Firestore
-   */
-  async function setPanX(value: number): Promise<void> {
-    await firestoreStore.saveDashboardData({ panX: value });
-  }
-
-  /**
-   * Save panY to Firestore
-   */
-  async function setPanY(value: number): Promise<void> {
-    await firestoreStore.saveDashboardData({ panY: value });
+  async function setLabelVisible(widgetId: string, visible: boolean): Promise<void> {
+    await firestoreStore.updateWidget(widgetId, { labelVisible: visible });
   }
 
   return {
@@ -100,19 +231,17 @@ export function useFirestoreData() {
     actions,
     labelOverrides,
     haActions,
-    scale,
-    panX,
-    panY,
+    labelVisible,
     setEntities,
     setPositions,
+    updateWidgetPosition,
     setSizes,
+    updateWidgetSize,
     setIcons,
     setActions,
     setLabelOverrides,
     setHAActions,
-    setScale,
-    setPanX,
-    setPanY,
+    setLabelVisible,
+    setUserInteracting,
   };
 }
-

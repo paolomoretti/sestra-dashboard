@@ -124,20 +124,23 @@ const {
   actions,
   labelOverrides,
   haActions,
-  scale,
-  panX,
-  panY,
+  labelVisible,
   setEntities: setPlacedEntityIds,
   setPositions,
+  updateWidgetPosition,
   setSizes,
+  updateWidgetSize,
   setIcons,
   setActions,
   setLabelOverrides,
   setHAActions,
-  setScale,
-  setPanX,
-  setPanY,
+  setLabelVisible,
 } = useFirestoreData();
+
+// Local reactive state for pan/zoom (not stored in Firestore, always starts fresh)
+const scale = ref(1);
+const panX = ref(0);
+const panY = ref(0);
 
 // Computed: Get full entity data for placed entities
 const placedEntities = computed(() => {
@@ -185,6 +188,7 @@ const placedEntities = computed(() => {
         tapAction: actionsData[entityId]?.tapAction ?? entity.tapAction,
         holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
         labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
+        labelVisible: labelVisible.value[entityId] !== undefined ? labelVisible.value[entityId] : true,
         haAction: haActionsData[entityId] ?? entity.haAction,
       } as EntityData;
     })
@@ -271,15 +275,19 @@ onMounted(() => {
   if (!scale.value || scale.value === 0) {
     nextTick(() => {
       const initialScale = calculateInitialScale();
-      setScale(initialScale);
       // Center the image
       if (dashboardWrapperRef.value) {
         const wrapperWidth = dashboardWrapperRef.value.clientWidth;
         const wrapperHeight = dashboardWrapperRef.value.clientHeight;
         const scaledWidth = FLOORPLAN_WIDTH * initialScale;
         const scaledHeight = FLOORPLAN_HEIGHT * initialScale;
-        setPanX((wrapperWidth - scaledWidth) / 2);
-        setPanY((wrapperHeight - scaledHeight) / 2);
+        const newPanX = (wrapperWidth - scaledWidth) / 2;
+        const newPanY = (wrapperHeight - scaledHeight) / 2;
+
+        // Update local state immediately
+        scale.value = initialScale;
+        panX.value = newPanX;
+        panY.value = newPanY;
       }
     });
   }
@@ -340,9 +348,10 @@ function handleWheel(e: WheelEvent) {
   const newPanX = mouseX - diagramX * newScale;
   const newPanY = mouseY - diagramY * newScale;
 
-  setScale(newScale);
-  setPanX(newPanX);
-  setPanY(newPanY);
+  // Update local state immediately
+  scale.value = newScale;
+  panX.value = newPanX;
+  panY.value = newPanY;
 }
 
 // Pan
@@ -391,9 +400,9 @@ function handleMouseMove(e: MouseEvent) {
     const deltaX = currentMouseX - panStartX;
     const deltaY = currentMouseY - panStartY;
 
-    // Apply delta to current pan position
-    setPanX(panX.value + deltaX);
-    setPanY(panY.value + deltaY);
+    // Update local state immediately
+    panX.value = panX.value + deltaX;
+    panY.value = panY.value + deltaY;
 
     // Update start position for next move to make it smooth
     panStartX = currentMouseX;
@@ -435,7 +444,7 @@ function handleTouchStart(e: TouchEvent) {
       target.classList.contains('dashboard-container') ||
       target.classList.contains('dashboard-background') ||
       target.classList.contains('dashboard-wrapper')
-    ) {
+      ) {
       isPanning = true;
       clearSelection();
     }
@@ -480,9 +489,9 @@ function handleTouchMove(e: TouchEvent) {
     const deltaX = currentX - touchStartX;
     const deltaY = currentY - touchStartY;
 
-    // Apply pan
-    setPanX(touchStartPanX + deltaX);
-    setPanY(touchStartPanY + deltaY);
+    // Update local state immediately
+    panX.value = touchStartPanX + deltaX;
+    panY.value = touchStartPanY + deltaY;
   } else if (e.touches.length === 2 && isPinching) {
     // Pinch-to-zoom
     const touch1 = e.touches[0];
@@ -513,9 +522,10 @@ function handleTouchMove(e: TouchEvent) {
       const newPanX = centerX - diagramX * newScale;
       const newPanY = centerY - diagramY * newScale;
 
-      setScale(newScale);
-      setPanX(newPanX);
-      setPanY(newPanY);
+      // Update local state immediately
+      scale.value = newScale;
+      panX.value = newPanX;
+      panY.value = newPanY;
     }
   }
 }
@@ -552,15 +562,13 @@ function handleEntitySelect(entity: EntityData) {
 async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>) {
   // Update Firestore
   if (updates.loc) {
-    const newPositions = { ...positions.value };
-    newPositions[entityId] = updates.loc;
-    await setPositions(newPositions);
+    // Directly update only the widget that changed
+    await updateWidgetPosition(entityId, updates.loc);
   }
 
   if (updates.size) {
-    const newSizes = { ...sizes.value };
-    newSizes[entityId] = updates.size;
-    await setSizes(newSizes);
+    // Directly update only the widget that changed
+    await updateWidgetSize(entityId, updates.size);
   }
 
   if (updates.icon !== undefined) {
@@ -599,6 +607,10 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
       delete newHAActions[entityId];
     }
     await setHAActions(newHAActions);
+  }
+
+  if (updates.labelVisible !== undefined) {
+    await setLabelVisible(entityId, updates.labelVisible);
   }
 }
 
@@ -759,9 +771,10 @@ defineExpose({
     const newPanX = centerX - diagramX * newScale;
     const newPanY = centerY - diagramY * newScale;
 
-    setScale(newScale);
-    setPanX(newPanX);
-    setPanY(newPanY);
+    // Update local state immediately
+    scale.value = newScale;
+    panX.value = newPanX;
+    panY.value = newPanY;
   },
   zoomOut: () => {
     if (!dashboardWrapperRef.value) return;
@@ -779,9 +792,10 @@ defineExpose({
     const newPanX = centerX - diagramX * newScale;
     const newPanY = centerY - diagramY * newScale;
 
-    setScale(newScale);
-    setPanX(newPanX);
-    setPanY(newPanY);
+    // Update local state immediately
+    scale.value = newScale;
+    panX.value = newPanX;
+    panY.value = newPanY;
   },
   zoomReset: () => {
     if (!dashboardWrapperRef.value) return;
@@ -792,9 +806,13 @@ defineExpose({
     const scaledWidth = FLOORPLAN_WIDTH * initialScale;
     const scaledHeight = FLOORPLAN_HEIGHT * initialScale;
 
-    setScale(initialScale);
-    setPanX((wrapperWidth - scaledWidth) / 2);
-    setPanY((wrapperHeight - scaledHeight) / 2);
+    const newPanX = (wrapperWidth - scaledWidth) / 2;
+    const newPanY = (wrapperHeight - scaledHeight) / 2;
+
+    // Update local state immediately
+    scale.value = initialScale;
+    panX.value = newPanX;
+    panY.value = newPanY;
   },
   zoomFitToWidth: () => {
     if (!dashboardWrapperRef.value) return;
@@ -804,10 +822,10 @@ defineExpose({
     // Calculate scale to fit width exactly
     const scaleToFitWidth = wrapperWidth / FLOORPLAN_WIDTH;
 
-    // Align to top
-    setScale(scaleToFitWidth);
-    setPanX(0); // No horizontal pan needed, image fills width
-    setPanY(0); // Align to top
+    // Update local state immediately
+    scale.value = scaleToFitWidth;
+    panX.value = 0;
+    panY.value = 0;
   },
   zoomToEntity: (x: number, y: number) => {
     if (!dashboardWrapperRef.value) return;
@@ -826,9 +844,10 @@ defineExpose({
     const newPanX = centerX - x * targetScale;
     const newPanY = centerY - y * targetScale;
 
-    setScale(targetScale);
-    setPanX(newPanX);
-    setPanY(newPanY);
+    // Update local state immediately
+    scale.value = targetScale;
+    panX.value = newPanX;
+    panY.value = newPanY;
   },
   getZoomLevel: () => scale.value || 1,
   zoomToLevel: (levelName: string) => {
@@ -850,9 +869,10 @@ defineExpose({
     // Enable animation for smooth transition
     isAnimatingZoom.value = true;
 
-    setScale(targetScale);
-    setPanX(targetPanX);
-    setPanY(targetPanY);
+    // Update local state immediately
+    scale.value = targetScale;
+    panX.value = targetPanX;
+    panY.value = targetPanY;
 
     // Disable animation after transition completes
     setTimeout(() => {

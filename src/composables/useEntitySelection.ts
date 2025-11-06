@@ -17,6 +17,7 @@ export interface EntityData {
   // For action buttons
   isActionButton?: boolean;
   labelOverride?: string;
+  labelVisible?: boolean; // Whether to show the label for this widget (default: true)
   haAction?: {
     service: string;
     serviceData?: Record<string, any>;
