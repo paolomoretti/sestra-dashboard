@@ -12,9 +12,9 @@
       v-if="entity.isActionButton"
       class="entity-widget action-button-widget"
       :class="{ selected: isSelected, resizing: isResizing, dragging: isDragging }"
-      @touchstart.prevent.stop="handleActionButtonTouchStart"
-      @touchmove.prevent.stop="handleActionButtonTouchMove"
-      @touchend.prevent.stop="handleActionButtonTouchEnd"
+      @touchstart="handleActionButtonTouchStart"
+      @touchmove="handleActionButtonTouchMove"
+      @touchend="handleActionButtonTouchEnd"
       @contextmenu.prevent.stop="handleActionButtonRightClick"
     >
        <button
@@ -45,9 +45,9 @@
       v-else
       class="entity-widget"
       :class="{ selected: isSelected, resizing: isResizing, dragging: isDragging }"
-      @touchstart.prevent.stop="handleTouchStart"
-      @touchmove.prevent.stop="handleTouchMove"
-      @touchend.prevent.stop="handleTouchEnd"
+      @touchstart="handleTouchStart"
+      @touchmove="handleTouchMove"
+      @touchend="handleTouchEnd"
     >
        <!-- Icon --> <img
         v-if="iconUrl"
@@ -474,6 +474,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { debouncedRef } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
+import { useToast } from '../composables/useToast';
 import {
   selectedEntity,
   selectedEntityPosition,
@@ -1001,8 +1002,14 @@ async function handleIconClick(e: MouseEvent) {
         if (!response.ok) {
           throw new Error(`Failed to call service: ${response.statusText}`);
         }
+        // Show success toast
+        const { success } = useToast();
+        success(`Action executed: ${serviceName}`);
       } catch (error) {
         console.error('Error executing HA action:', error);
+        // Show error toast
+        const { error: showError } = useToast();
+        showError(`Failed to execute action: ${serviceName}`);
       }
     }
     return;
@@ -1011,6 +1018,12 @@ async function handleIconClick(e: MouseEvent) {
   // Execute tap action if exists
   if (props.entity.tapAction?.action) {
     await executeTapAction(props.entity.tapAction, props.entity, haConfig);
+    // Show success toast
+    const { success } = useToast();
+    const actionName = props.entity.tapAction.action === 'toggle' ? 'Toggled' : 
+                      props.entity.tapAction.action === 'navigate' ? 'Navigated' : 
+                      'Action executed';
+    success(`${actionName}: ${displayLabel.value}`);
     // Still zoom to entity after action (but don't select)
     if (window.zoomToEntity) {
       window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
@@ -1089,8 +1102,14 @@ async function handleActionButtonClick(e: MouseEvent) {
         if (!response.ok) {
           throw new Error(`Failed to call service: ${response.statusText}`);
         }
+        // Show success toast
+        const { success } = useToast();
+        success(`Action executed: ${serviceName}`);
       } catch (error) {
         console.error('Error executing HA action:', error);
+        // Show error toast
+        const { error: showError } = useToast();
+        showError(`Failed to execute action: ${serviceName}`);
       }
     }
   }
@@ -1145,6 +1164,10 @@ function handleActionButtonTouchStart(e: TouchEvent) {
   actionButtonTouchStartTime = Date.now();
   actionButtonTouchMoved = false;
 
+  // Store touch start position for movement detection
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+
   // Start long-press timer
   longPressTimer = setTimeout(() => {
     // Long press detected - open panel
@@ -1155,46 +1178,72 @@ function handleActionButtonTouchStart(e: TouchEvent) {
 
   // If selected, allow dragging (use regular touch handlers)
   if (isSelected.value) {
+    e.preventDefault();
+    e.stopPropagation();
     handleTouchStart(e);
   }
+  // If not selected, don't prevent default - let click events fire
 }
 
 function handleActionButtonTouchMove(e: TouchEvent) {
+  if (e.touches.length !== 1) return;
+  
+  const touch = e.touches[0];
+  if (!touch) return;
+
+  // Calculate movement distance
+  const dx = Math.abs(touch.clientX - touchStartX);
+  const dy = Math.abs(touch.clientY - touchStartY);
+  const moved = dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD;
+
   // If we've moved, cancel long-press and allow dragging
-  if (!actionButtonTouchMoved) {
+  if (moved && !actionButtonTouchMoved) {
     actionButtonTouchMoved = true;
     if (longPressTimer) {
       clearTimeout(longPressTimer);
       longPressTimer = null;
     }
+    
+    // If selected, start dragging
+    if (isSelected.value) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isDragging.value) {
+        handleTouchStart(e);
+      }
+    }
   }
 
-  // If selected, continue with drag
+  // If selected and dragging, continue with drag
   if (isSelected.value && isDragging.value) {
     handleTouchMove(e);
   }
 }
 
-function handleActionButtonTouchEnd() {
+async function handleActionButtonTouchEnd(e: TouchEvent) {
   // Clear long-press timer
   if (longPressTimer) {
     clearTimeout(longPressTimer);
     longPressTimer = null;
   }
 
-  // If we moved, it was a drag - don't execute action
-  if (actionButtonTouchMoved || isDragging.value) {
-    if (isDragging.value) {
-      handleTouchEnd();
-    }
+  // If we were dragging, handle it
+  if (isDragging.value) {
+    handleTouchEnd(e);
     actionButtonTouchMoved = false;
     return;
   }
 
-  // If we didn't move and it was a quick tap, execute action
-  const touchDuration = Date.now() - actionButtonTouchStartTime;
-  if (touchDuration < LONG_PRESS_DURATION) {
-    // Quick tap - execute action
+  // Check if it was a tap (not a drag)
+  const touchEndTime = Date.now();
+  const timeDiff = touchEndTime - actionButtonTouchStartTime;
+  const dx = Math.abs((e.changedTouches[0]?.clientX ?? 0) - touchStartX);
+  const dy = Math.abs((e.changedTouches[0]?.clientY ?? 0) - touchStartY);
+  const moved = dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD;
+  const wasQuickTap = timeDiff < TAP_TIME_THRESHOLD && !moved && !actionButtonTouchMoved;
+
+  // If it was a quick tap, execute action
+  if (wasQuickTap) {
     if (!isSelected.value && props.entity.haAction?.service) {
       const service = props.entity.haAction.service;
       const [domain, serviceName] = service.split('.');
@@ -1202,7 +1251,7 @@ function handleActionButtonTouchEnd() {
         try {
           const apiBaseUrl = getApiBaseUrl(haConfig);
           const url = `${apiBaseUrl}/services/${domain}/${serviceName}`;
-          void fetch(url, {
+          const response = await fetch(url, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${haConfig.accessToken}`,
@@ -1210,8 +1259,17 @@ function handleActionButtonTouchEnd() {
             },
             body: JSON.stringify(props.entity.haAction.serviceData || {}),
           });
+          if (!response.ok) {
+            throw new Error(`Failed to call service: ${response.statusText}`);
+          }
+          // Show success toast
+          const { success } = useToast();
+          success(`Action executed: ${serviceName}`);
         } catch (error) {
           console.error('Error executing HA action:', error);
+          // Show error toast
+          const { error: showError } = useToast();
+          showError(`Failed to execute action: ${serviceName}`);
         }
       }
     }
@@ -1722,12 +1780,16 @@ function handleNavigationPathChange(event: Event) {
 // Handle delete button click
 function handleDelete() {
   if (confirm('Are you sure you want to delete this widget?')) {
+    const entityName = displayLabel.value;
     emit('delete', props.entity.key);
     // Clear selection after deletion
     clearSelection();
     // Close panel
     isPanelOpen.value = false;
     isExpanded.value = false;
+    // Show success toast
+    const { success } = useToast();
+    success(`Widget deleted: ${entityName}`);
   }
 }
 
@@ -1915,6 +1977,12 @@ function handleMouseUp() {
 }
 
 // Touch handlers for mobile widget dragging
+let touchStartTime = 0;
+let touchStartX = 0;
+let touchStartY = 0;
+const DRAG_THRESHOLD = 10; // pixels
+const TAP_TIME_THRESHOLD = 300; // milliseconds
+
 function handleTouchStart(e: TouchEvent) {
   // Only handle single touch
   if (e.touches.length !== 1) return;
@@ -1928,6 +1996,11 @@ function handleTouchStart(e: TouchEvent) {
     return;
   }
 
+  // Store touch start info for tap detection
+  touchStartTime = Date.now();
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+
   // Check if touching label
   const clickedOnLabel = target.closest('.entity-label') !== null;
   if (clickedOnLabel) {
@@ -1940,52 +2013,80 @@ function handleTouchStart(e: TouchEvent) {
     delete (window as any).__entityDragStartTarget;
   }
 
-  e.preventDefault();
-  e.stopPropagation();
+  // Don't prevent default yet - wait to see if it's a drag or tap
+  // Only prevent if we're selected (to allow dragging)
+  if (isSelected.value) {
+    e.preventDefault();
+    e.stopPropagation();
+    isDragging.value = true;
+    hasDragged.value = false;
+  } else {
+    // If not selected, don't prevent default - let click events fire
+    isDragging.value = false;
+    hasDragged.value = false;
+  }
 
-  isDragging.value = true;
-  hasDragged.value = false;
+  // Only set up drag tracking if we're actually dragging
+  if (isDragging.value) {
+    // Get dashboard wrapper for coordinate conversion
+    const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
+    if (!dashboardWrapper) return;
 
-  // Get dashboard wrapper for coordinate conversion
-  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!dashboardWrapper) return;
+    const wrapperRect = dashboardWrapper.getBoundingClientRect();
 
-  const wrapperRect = dashboardWrapper.getBoundingClientRect();
+    // Get current pan and scale
+    const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
+    const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
+    const scale = props.scale ?? 1;
 
-  // Get current pan and scale
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-  const scale = props.scale ?? 1;
+    // Touch position in wrapper coordinates
+    const touchX = touch.clientX - wrapperRect.left;
+    const touchY = touch.clientY - wrapperRect.top;
 
-  // Touch position in wrapper coordinates
-  const touchX = touch.clientX - wrapperRect.left;
-  const touchY = touch.clientY - wrapperRect.top;
+    // Convert touch position to diagram coordinates
+    const diagramTouchX = (touchX - panX) / scale;
+    const diagramTouchY = (touchY - panY) / scale;
 
-  // Convert touch position to diagram coordinates
-  const diagramTouchX = (touchX - panX) / scale;
-  const diagramTouchY = (touchY - panY) / scale;
+    // Current entity position in diagram coordinates
+    const entityX = x.value;
+    const entityY = y.value;
 
-  // Current entity position in diagram coordinates
-  const entityX = x.value;
-  const entityY = y.value;
+    // Calculate offset from touch point to entity origin
+    const offsetX = diagramTouchX - entityX;
+    const offsetY = diagramTouchY - entityY;
 
-  // Calculate offset from touch point to entity origin
-  const offsetX = diagramTouchX - entityX;
-  const offsetY = diagramTouchY - entityY;
+    // Store offset for later use
+    (window as any).__entityDragOffsetX = offsetX;
+    (window as any).__entityDragOffsetY = offsetY;
 
-  // Store offset for later use
-  (window as any).__entityDragOffsetX = offsetX;
-  (window as any).__entityDragOffsetY = offsetY;
-
-  document.addEventListener('touchmove', handleTouchMove);
-  document.addEventListener('touchend', handleTouchEnd);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+  }
 }
 
 function handleTouchMove(e: TouchEvent) {
-  if (!isDragging.value || e.touches.length !== 1) return;
-
+  if (e.touches.length !== 1) return;
+  
   const touch = e.touches[0];
   if (!touch) return;
+
+  // Calculate movement distance
+  const dx = Math.abs(touch.clientX - touchStartX);
+  const dy = Math.abs(touch.clientY - touchStartY);
+  const moved = dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD;
+
+  // If we moved enough, start dragging
+  if (moved && !isDragging.value) {
+    isDragging.value = true;
+    hasDragged.value = true;
+    // Now prevent default to stop scrolling and other behaviors
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  // Only handle dragging if we're actually dragging
+  if (!isDragging.value) return;
+
   const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
   if (!dashboardWrapper) return;
 
@@ -2004,7 +2105,16 @@ function handleTouchMove(e: TouchEvent) {
   const diagramTouchX = (currentTouchX - panX) / scale;
   const diagramTouchY = (currentTouchY - panY) / scale;
 
-  // Get stored offset
+  // Get stored offset (set it if not already set)
+  if (!(window as any).__entityDragOffsetX) {
+    const entityX = x.value;
+    const entityY = y.value;
+    const offsetX = diagramTouchX - entityX;
+    const offsetY = diagramTouchY - entityY;
+    (window as any).__entityDragOffsetX = offsetX;
+    (window as any).__entityDragOffsetY = offsetY;
+  }
+
   const offsetX = (window as any).__entityDragOffsetX ?? 0;
   const offsetY = (window as any).__entityDragOffsetY ?? 0;
 
@@ -2016,14 +2126,9 @@ function handleTouchMove(e: TouchEvent) {
   setX(newX);
   setY(newY);
 
-  // Mark that we've dragged
-  hasDragged.value = true;
-
   // Mark if we dragged from label
   const dragStartPos = (window as any).__entityDragStartPos;
   if (dragStartPos) {
-    const dx = Math.abs(touch.clientX - dragStartPos.x);
-    const dy = Math.abs(touch.clientY - dragStartPos.y);
     if (dx > 5 || dy > 5) {
       const startTarget = (window as any).__entityDragStartTarget;
       if (startTarget?.closest('.entity-label')) {
@@ -2038,8 +2143,20 @@ function handleTouchMove(e: TouchEvent) {
   }
 }
 
-function handleTouchEnd() {
+function handleTouchEnd(e: TouchEvent) {
+  // Remove document listeners
+  document.removeEventListener('touchmove', handleTouchMove);
+  document.removeEventListener('touchend', handleTouchEnd);
+
+  const touchEndTime = Date.now();
+  const timeDiff = touchEndTime - touchStartTime;
+  const dx = Math.abs((e.changedTouches[0]?.clientX ?? 0) - touchStartX);
+  const dy = Math.abs((e.changedTouches[0]?.clientY ?? 0) - touchStartY);
+  const moved = dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD;
+  const wasQuickTap = timeDiff < TAP_TIME_THRESHOLD && !moved;
+
   if (isDragging.value) {
+    // We were dragging - save position
     isDragging.value = false;
 
     // Clean up offset and drag start info
@@ -2052,11 +2169,40 @@ function handleTouchEnd() {
     const newLoc = `${x.value} ${y.value}`;
     emit('update', props.entity.key, { loc: newLoc });
     savePosition();
+  } else if (wasQuickTap) {
+    // It was a tap, not a drag - trigger click behavior
+    const target = e.changedTouches[0]?.target as HTMLElement;
+    if (!target) return;
 
-    // Remove event listeners
-    document.removeEventListener('touchmove', handleTouchMove);
-    document.removeEventListener('touchend', handleTouchEnd);
+    // Check if we tapped on the label
+    const clickedOnLabel = target.closest('.entity-label') !== null;
+    if (clickedOnLabel) {
+      // Trigger label click
+      handleLabelClick(e as any);
+      return;
+    }
+
+    // Check if we tapped on the icon
+    const clickedOnIcon = target.closest('.entity-icon') !== null || 
+                          target.closest('.action-button-icon') !== null;
+    if (clickedOnIcon) {
+      // Trigger icon click
+      handleIconClick(e as any);
+      return;
+    }
+
+    // Otherwise, trigger widget click (for action buttons)
+    if (props.entity.isActionButton) {
+      handleActionButtonClick(e as any);
+    } else {
+      // For regular widgets, select them
+      emit('select', props.entity);
+    }
   }
+
+  // Clean up
+  hasDragged.value = false;
+  hasDraggedFromLabel.value = false;
 }
 
 // Watch for entity updates
@@ -2276,6 +2422,34 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   z-index: 10;
 }
 
+@media (max-width: 768px) {
+  .resize-handle {
+    width: 20px;
+    height: 20px;
+    border-width: 3px;
+  }
+  
+  .resize-handle-se {
+    bottom: -10px;
+    right: -10px;
+  }
+  
+  .resize-handle-sw {
+    bottom: -10px;
+    left: -10px;
+  }
+  
+  .resize-handle-ne {
+    top: -10px;
+    right: -10px;
+  }
+  
+  .resize-handle-nw {
+    top: -10px;
+    left: -10px;
+  }
+}
+
 .resize-handle-se {
   bottom: -6px;
   right: -6px;
@@ -2360,6 +2534,27 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   max-width: 200px;
 }
 
+@media (max-width: 768px) {
+  .entity-info-panel {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    min-width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+    width: calc(100vw - 32px);
+  }
+  
+  .entity-info-panel.expanded {
+    min-width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+  }
+  
+  .entity-info-panel:not(.expanded) {
+    min-width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+  }
+}
+
 .panel-header {
   background-color: #333333;
   padding: 10px 14px;
@@ -2414,6 +2609,17 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   white-space: nowrap;
 }
 
+@media (max-width: 768px) {
+  .panel-title {
+    font-size: 18px;
+  }
+  
+  .panel-header {
+    padding: 12px 16px;
+    min-height: 44px;
+  }
+}
+
 .panel-header.collapsed .panel-title {
   font-size: 11px;
   font-weight: normal;
@@ -2446,6 +2652,14 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   text-align: center;
 }
 
+@media (max-width: 768px) {
+  .panel-tab {
+    padding: 10px 8px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+}
+
 .panel-tab:hover {
   background-color: rgba(255, 255, 255, 0.05);
   color: #ffffff;
@@ -2464,6 +2678,12 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 .panel-content {
   padding: 8px 14px 10px;
   overflow: visible;
+}
+
+@media (max-width: 768px) {
+  .panel-content {
+    padding: 12px 16px 14px;
+  }
 }
 
 .detail-row {
@@ -2495,6 +2715,14 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   transition: background-color 0.2s ease;
 }
 
+@media (max-width: 768px) {
+  .delete-button {
+    font-size: 15px;
+    padding: 12px 16px;
+    min-height: 44px;
+  }
+}
+
 .delete-button:hover {
   background-color: #c62828;
 }
@@ -2516,6 +2744,17 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   color: #ffffff;
   flex: 1;
   word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .detail-label {
+    font-size: 13px;
+    min-width: 100px;
+  }
+  
+  .detail-value {
+    font-size: 13px;
+  }
 }
 
 .detail-value.state-value {
@@ -2541,6 +2780,14 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   outline: none;
   z-index: 10001;
   position: relative;
+}
+
+@media (max-width: 768px) {
+  .icon-select {
+    font-size: 16px;
+    padding: 8px 12px;
+    min-height: 44px;
+  }
 }
 
 .icon-select:hover {
@@ -2570,6 +2817,14 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   font-size: 11px;
   padding: 4px 8px;
   outline: none;
+}
+
+@media (max-width: 768px) {
+  .icon-search-input {
+    font-size: 16px;
+    padding: 8px 12px;
+    min-height: 44px;
+  }
 }
 
 .icon-search-input:focus {
@@ -2680,6 +2935,14 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   outline: none;
 }
 
+@media (max-width: 768px) {
+  .text-input {
+    font-size: 16px;
+    padding: 8px 12px;
+    min-height: 44px;
+  }
+}
+
 .text-input:hover {
   border-color: #5a5a5a;
 }
@@ -2704,6 +2967,23 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 .condition-value {
   flex: 0 0 auto;
   width: 80px;
+}
+
+@media (max-width: 768px) {
+  .condition-controls {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .condition-operator {
+    min-width: 100%;
+    width: 100%;
+  }
+  
+  .condition-value {
+    width: 100%;
+  }
 }
 
 /* Expand/collapse animation */

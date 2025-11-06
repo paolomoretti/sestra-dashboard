@@ -1,9 +1,9 @@
 <template>
-  <div id="sidebar" class="w-[300px] bg-[#2a2a2a] border-l border-[#3a3a3a] overflow-y-auto overflow-x-hidden flex flex-col min-w-[200px] transition-all duration-300">
+  <div id="sidebar" class="sidebar-container w-full sm:w-[300px] bg-[#2a2a2a] border-l border-[#3a3a3a] overflow-y-auto overflow-x-hidden flex flex-col sm:min-w-[200px] transition-all duration-300">
     <div class="flex flex-col h-full">
       <!-- Header -->
-      <div class="px-4 py-3 bg-[#333] border-b border-[#3a3a3a] flex-shrink-0">
-        <h3 class="text-sm font-semibold text-white m-0 flex items-center gap-2">
+      <div class="px-4 py-3 sm:py-3 bg-[#333] border-b border-[#3a3a3a] flex-shrink-0">
+        <h3 class="text-base sm:text-sm font-semibold text-white m-0 flex items-center gap-2">
           <span>📋</span>
           <span>Entities</span>
         </h3>
@@ -16,7 +16,7 @@
             v-model="searchQuery"
             type="text"
             placeholder="Search entities..."
-            class="w-full px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-sm text-white placeholder-[#666] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            class="w-full px-3 py-3 sm:py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-base sm:text-sm text-white placeholder-[#666] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             @input="handleSearch"
           />
         </div>
@@ -57,9 +57,18 @@ const activeEntityTab = ref(storedTab.value);
 // Search query state
 const searchQuery = ref('');
 
-function handleEntitySelected(entity: EntityData) {
-  // For now, just log - can be used to add entity directly
-  console.log('Entity selected:', entity);
+async function handleEntitySelected(entity: EntityData) {
+  // On mobile or when clicking (not dragging), add entity at viewport center
+  // Check if we're on mobile by checking if touch events are available
+  const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  
+  // Always use click-to-add for now (works better on mobile and desktop)
+  if (window.addEntityAtViewportCenter) {
+    await window.addEntityAtViewportCenter(entity);
+  } else if (window.addEntity) {
+    // Fallback to old method if new one doesn't exist
+    window.addEntity(entity);
+  }
 }
 
 // Debounce function for search

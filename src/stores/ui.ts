@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, watch, computed, type Ref } from 'vue';
+import { ref, watch, type Ref } from 'vue';
 import { useThrottleFn } from '@vueuse/core';
 import { useFirestoreStore } from './firestore';
 

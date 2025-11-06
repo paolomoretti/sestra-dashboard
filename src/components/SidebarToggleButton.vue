@@ -27,11 +27,21 @@ const { toggleSidebar } = uiStore;
   background-color: #333333;
   border: 1px solid #4a4a4a;
   border-radius: 4px;
-  padding: 6px 12px;
+  padding: 8px 12px;
   color: #ffffff;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+@media (min-width: 640px) {
+  .sidebar-toggle-button {
+    padding: 6px 12px;
+    min-height: auto;
+    min-width: auto;
+  }
 }
 
 .sidebar-toggle-button:hover {
@@ -55,6 +65,12 @@ const { toggleSidebar } = uiStore;
 
 .button-text {
   font-weight: 500;
+}
+
+@media (max-width: 639px) {
+  .button-text {
+    display: none;
+  }
 }
 </style>
 

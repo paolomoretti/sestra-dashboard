@@ -884,6 +884,33 @@ defineExpose({
       setPlacedEntityIds([...placedEntityIds.value, entity.key]);
     }
   },
+  addEntityAtViewportCenter: async (entity: EntityData) => {
+    if (!dashboardWrapperRef.value) return;
+    
+    const rect = dashboardWrapperRef.value.getBoundingClientRect();
+    const currentScale = scale.value || 1;
+    
+    // Calculate center of viewport in wrapper coordinates
+    const viewportCenterX = rect.width / 2;
+    const viewportCenterY = rect.height / 2;
+    
+    // Convert to diagram coordinates (accounting for pan and scale)
+    const x = (viewportCenterX - panX.value) / currentScale;
+    const y = (viewportCenterY - panY.value) / currentScale;
+    
+    // Add entity to placed entities if not already there
+    if (!placedEntityIds.value.includes(entity.key)) {
+      await setPlacedEntityIds([...placedEntityIds.value, entity.key]);
+    }
+    
+    // Save position at viewport center
+    const newPositions = { ...positions.value };
+    newPositions[entity.key] = `${x} ${y}`;
+    await setPositions(newPositions);
+    
+    // Select the newly added entity so user can see it
+    setSelectedEntity(entity);
+  },
 });
 
 // Helper function

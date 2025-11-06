@@ -22,6 +22,8 @@ declare global {
     zoomToEntity?: (x: number, y: number) => void;
     zoomToLevel?: (levelName: string) => void;
     getZoomLevel?: () => number;
+    addEntity?: (entity: any) => void;
+    addEntityAtViewportCenter?: (entity: any) => Promise<void>;
     __entityDragOffsetX?: number; // For EntityWidget custom drag
     __entityDragOffsetY?: number; // For EntityWidget custom drag
   }

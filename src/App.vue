@@ -3,12 +3,12 @@
   <div id="app" class="h-screen flex flex-col">
 
     <header
-      class="px-8 py-4 bg-[#2a2a2a] border-b border-[#3a3a3a] flex-shrink-0 flex items-center justify-between"
+      class="header-container px-4 sm:px-8 py-3 sm:py-4 bg-[#2a2a2a] border-b border-[#3a3a3a] flex-shrink-0 flex items-center justify-between"
     >
 
-      <h1 class="m-0 text-2xl">🏠 Sestra Dashboard</h1>
+      <h1 class="m-0 text-lg sm:text-2xl">🏠 Sestra Dashboard</h1>
 
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 sm:gap-3">
          <LabelToggleButton /> <SidebarToggleButton />
       </div>
 
@@ -19,6 +19,7 @@
       <Sidebar v-if="sidebarVisible" /> <ZoomControls /> <AddButton
         @add-action-button="handleAddActionButton"
       />
+      <ToastContainer />
     </div>
 
   </div>
@@ -37,6 +38,7 @@ import NumericValues from './components/NumericValues.vue';
 import LabelToggleButton from './components/LabelToggleButton.vue';
 import SidebarToggleButton from './components/SidebarToggleButton.vue';
 import AddButton from './components/AddButton.vue';
+import ToastContainer from './components/ToastContainer.vue';
 import './style.css';
 
 const uiStore = useUIStore();
@@ -120,6 +122,8 @@ onMounted(() => {
     window.zoomFitToWidth = () => dashboardRef.value?.zoomFitToWidth();
     window.zoomToEntity = (x: number, y: number) => dashboardRef.value?.zoomToEntity(x, y);
     window.getZoomLevel = () => dashboardRef.value?.getZoomLevel() ?? 1;
+    window.addEntity = (entity: any) => dashboardRef.value?.addEntity(entity);
+    window.addEntityAtViewportCenter = (entity: any) => dashboardRef.value?.addEntityAtViewportCenter(entity);
   }
 
 });

@@ -4,7 +4,7 @@
       v-for="entity in filteredEntities"
       :key="entity.key"
       class="palette-item"
-      draggable="true"
+      :draggable="!isTouchDevice"
       @dragstart="handleDragStart($event, entity)"
       @click="handleItemClick(entity)"
     >
@@ -30,9 +30,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { getMDIIconPath, createIconSVG, getIconColor } from '../utils/iconUtils';
 import type { EntityData } from '../composables/useEntitySelection';
+
+// Detect touch devices
+const isTouchDevice = ref(false);
+onMounted(() => {
+  isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+});
 
 interface Props {
   entities: EntityData[];
@@ -103,13 +109,21 @@ function handleItemClick(entity: EntityData) {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px;
+  padding: 12px;
   background: #2a2a2a;
   border: 1px solid #3a3a3a;
   border-radius: 4px;
   cursor: grab;
   transition: all 0.2s;
   user-select: none;
+  min-height: 60px;
+}
+
+@media (min-width: 640px) {
+  .palette-item {
+    padding: 8px;
+    min-height: auto;
+  }
 }
 
 .palette-item:hover {
@@ -146,14 +160,14 @@ function handleItemClick(entity: EntityData) {
 .palette-name {
   font-weight: 500;
   color: #fff;
-  font-size: 13px;
+  font-size: 15px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .palette-entity-id {
-  font-size: 11px;
+  font-size: 12px;
   color: #888;
   font-family: monospace;
   white-space: nowrap;
@@ -162,9 +176,23 @@ function handleItemClick(entity: EntityData) {
 }
 
 .palette-state {
-  font-size: 11px;
+  font-size: 12px;
   color: #aaa;
   margin-top: 2px;
+}
+
+@media (min-width: 640px) {
+  .palette-name {
+    font-size: 13px;
+  }
+  
+  .palette-entity-id {
+    font-size: 11px;
+  }
+  
+  .palette-state {
+    font-size: 11px;
+  }
 }
 </style>
 
