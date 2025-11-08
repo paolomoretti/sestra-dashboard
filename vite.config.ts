@@ -56,7 +56,8 @@ export default defineConfig(({ mode }: ConfigEnv) => {
     build: {
       outDir: 'dist',
       sourcemap: true
-    }
+    },
+    publicDir: 'public'
   };
 });
 

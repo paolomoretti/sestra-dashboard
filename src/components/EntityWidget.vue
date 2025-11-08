@@ -651,11 +651,13 @@ const isSelected = computed(() => selectedEntity.value?.key === props.entity.key
 const widgetStyle = computed(() => {
   // Position is in diagram coordinates, no transform needed here
   // The dashboard container will apply the transform
-  // Determine z-index: dragging > selected > normal
-  // Selected widgets need very high z-index to ensure they're always on top
+  // Determine z-index: dragging > panel open > selected > normal
+  // When panel is open, widget needs high z-index to be above other widgets
   let zIndex = 1;
   if (isDragging.value) {
-    zIndex = 20002; // Highest priority when dragging (above selected)
+    zIndex = 20002; // Highest priority when dragging (above everything)
+  } else if (isPanelOpen.value) {
+    zIndex = 20000; // High priority when panel is open (ensures widget is above other widgets)
   } else if (isSelected.value) {
     zIndex = 20000; // Very high priority when selected (below dragging, above everything else)
   }

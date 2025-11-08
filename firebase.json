@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "sestra-dashboard",
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -12,6 +13,7 @@
         "destination": "/index.html"
       }
     ],
+    "cleanUrls": true,
     "headers": [
       {
         "source": "**/*.@(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)",

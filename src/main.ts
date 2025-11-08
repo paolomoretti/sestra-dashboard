@@ -47,6 +47,19 @@ window.pinia = pinia;
 
 app.mount('#app');
 
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('✅ Service Worker registered:', registration.scope);
+      })
+      .catch((error) => {
+        console.warn('⚠️ Service Worker registration failed:', error);
+      });
+  });
+}
+
 // Load entities after app is mounted
 nextTick(async () => {
   // Import after Pinia is set up
