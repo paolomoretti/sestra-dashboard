@@ -25,6 +25,7 @@ export interface WidgetData {
   entityName: string; // The entity key/id
   labelName?: string; // Label override
   labelVisible?: boolean; // Whether to show the label for this widget (default: true)
+  stateVisible?: boolean; // Whether to show the state value for this widget (default: true)
   icon?: string;
   position: string; // Format: "x y"
   size: string; // Format: "width height"
@@ -32,6 +33,8 @@ export interface WidgetData {
   haAction?: { service: string; serviceData?: Record<string, any> };
   valuePrefix?: string; // Prefix to display before the numeric value
   valueSuffix?: string; // Suffix to display after the numeric value
+  iconColorOn?: string; // Custom color for icon when state is "on" (hex color, e.g., "#FFC107")
+  iconColorOff?: string; // Custom color for icon when state is "off" or default (hex color, e.g., "#888888")
 }
 
 export interface UIData {

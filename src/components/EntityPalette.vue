@@ -88,7 +88,7 @@ function getIconUrl(entity: EntityData): string | null {
   const path = getMDIIconPath(iconName);
   if (!path) return null;
 
-  const color = getIconColor(entity.key, entity.state, iconName);
+  const color = getIconColor(entity.key, entity.state, entity.iconColorOn, entity.iconColorOff);
   return createIconSVG(path, color, 30);
 }
 

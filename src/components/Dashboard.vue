@@ -132,6 +132,7 @@ const {
   labelOverrides,
   haActions,
   labelVisible,
+  stateVisible,
   valuePrefixes,
   valueSuffixes,
   setEntities: setPlacedEntityIds,
@@ -144,6 +145,7 @@ const {
   setLabelOverrides,
   setHAActions,
   setLabelVisible,
+  setStateVisible,
   setValuePrefix,
   setValueSuffix,
 } = useFirestoreData();
@@ -175,55 +177,58 @@ const placedEntities = computed(() => {
   const sizesData = sizes.value;
   const iconsData = icons.value;
   const actionsData = actions.value;
-  const labelOverridesData = labelOverrides.value;
-  const haActionsData = haActions.value;
-  const valuePrefixesData = valuePrefixes.value;
-  const valueSuffixesData = valueSuffixes.value;
+      const labelOverridesData = labelOverrides.value;
+      const haActionsData = haActions.value;
+      const valuePrefixesData = valuePrefixes.value;
+      const valueSuffixesData = valueSuffixes.value;
 
-  return placedEntityIds.value
-    .map(entityId => {
-      // Check if this is an action button
-      const isActionButton = entityId.startsWith('action_button_');
+      return placedEntityIds.value
+        .map(entityId => {
+          // Check if this is an action button
+          const isActionButton = entityId.startsWith('action_button_');
 
-      // Find entity in store (or create synthetic entity for action buttons)
-      let entity: EntityData | null =
-        entitiesStore.allEntities.find(e => e.key === entityId) ?? null;
+          // Find entity in store (or create synthetic entity for action buttons)
+          let entity: EntityData | null =
+            entitiesStore.allEntities.find(e => e.key === entityId) ?? null;
 
-      // If not found and it's an action button, create a synthetic entity
-      if (!entity && isActionButton) {
-        entity = {
-          key: entityId,
-          isActionButton: true,
-          category: 'action_button',
-          name: labelOverridesData[entityId] || 'Action Button',
-          state: 'idle',
-          icon: iconsData[entityId] || 'gesture-tap-button',
-          loc: positionsData[entityId] || '0 0',
-          size: sizesData[entityId] || (isActionButton ? '120 80' : '80 40'),
-          tapAction: actionsData[entityId]?.tapAction || { action: 'call-service', service: '' },
-          labelOverride: labelOverridesData[entityId] || 'Action Button',
-          haAction: haActionsData[entityId] || { service: '' },
-        };
-      }
+          // If not found and it's an action button, create a synthetic entity
+          if (!entity && isActionButton) {
+            entity = {
+              key: entityId,
+              isActionButton: true,
+              category: 'action_button',
+              name: labelOverridesData[entityId] || 'Action Button',
+              state: 'idle',
+              icon: iconsData[entityId] || 'gesture-tap-button',
+              loc: positionsData[entityId] || '0 0',
+              size: sizesData[entityId] || (isActionButton ? '120 80' : '80 40'),
+              tapAction: actionsData[entityId]?.tapAction || { action: 'call-service', service: '' },
+              labelOverride: labelOverridesData[entityId] || 'Action Button',
+              haAction: haActionsData[entityId] || { service: '' },
+            };
+          }
 
-      if (!entity) return null;
+          if (!entity) return null;
 
-      return {
-        ...entity,
-        loc: positionsData[entityId] || entity.loc,
-        size: sizesData[entityId] || entity.size,
-        icon: iconsData[entityId] || entity.icon,
-        tapAction: actionsData[entityId]?.tapAction ?? entity.tapAction,
-        holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
-        labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
-        labelVisible: labelVisible.value[entityId] !== undefined ? labelVisible.value[entityId] : true,
-        valuePrefix: valuePrefixesData[entityId] ?? entity.valuePrefix,
-        valueSuffix: valueSuffixesData[entityId] ?? entity.valueSuffix,
-        haAction: haActionsData[entityId] ?? entity.haAction,
-      } as EntityData;
-    })
-    .filter((e): e is EntityData => e !== null);
-});
+          return {
+            ...entity,
+            loc: positionsData[entityId] || entity.loc,
+            size: sizesData[entityId] || entity.size,
+            icon: iconsData[entityId] || entity.icon,
+            tapAction: actionsData[entityId]?.tapAction ?? entity.tapAction,
+            holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
+            labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
+            labelVisible: labelVisible.value[entityId] !== undefined ? labelVisible.value[entityId] : true,
+            stateVisible: stateVisible.value[entityId] !== undefined ? stateVisible.value[entityId] : true,
+            valuePrefix: valuePrefixesData[entityId] ?? entity.valuePrefix,
+            valueSuffix: valueSuffixesData[entityId] ?? entity.valueSuffix,
+            iconColorOn: (firestoreStore.widgets[entityId] as any)?.iconColorOn ?? entity.iconColorOn,
+            iconColorOff: (firestoreStore.widgets[entityId] as any)?.iconColorOff ?? entity.iconColorOff,
+            haAction: haActionsData[entityId] ?? entity.haAction,
+          } as EntityData;
+        })
+        .filter((e): e is EntityData => e !== null);
+    });
 // Calculate initial scale to fit image in viewport
 function calculateInitialScale(): number {
   if (!dashboardWrapperRef.value) return 1;
@@ -687,6 +692,10 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
     await setLabelVisible(entityId, updates.labelVisible);
   }
 
+  if (updates.stateVisible !== undefined) {
+    await setStateVisible(entityId, updates.stateVisible);
+  }
+
   if ('valuePrefix' in updates) {
     // Always send the update - pass through empty string as-is
     // The updateWidget function will handle converting empty string to deleteField()
@@ -697,6 +706,14 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
     // Always send the update - pass through empty string as-is
     // The updateWidget function will handle converting empty string to deleteField()
     await setValueSuffix(entityId, updates.valueSuffix === null ? undefined : updates.valueSuffix);
+  }
+
+  if ('iconColorOn' in updates) {
+    await firestoreStore.updateWidget(entityId, { iconColorOn: updates.iconColorOn });
+  }
+
+  if ('iconColorOff' in updates) {
+    await firestoreStore.updateWidget(entityId, { iconColorOff: updates.iconColorOff });
   }
 }
 
@@ -922,11 +939,12 @@ defineExpose({
     // Zoom level to show entity nicely (1.2x zoom, but cap at maxScale)
     const targetScale = Math.min(1.2, maxScale);
 
-    // Calculate the center of the viewport in diagram coordinates
+    // Calculate the target position in viewport coordinates
+    // Position entity at 35% from top (instead of 50%) to leave space at bottom for info panel
     const centerX = wrapperWidth / 2;
-    const centerY = wrapperHeight / 2;
+    const centerY = wrapperHeight * 0.35;
 
-    // Calculate pan to center entity at viewport center
+    // Calculate pan to position entity at the target viewport position
     const newPanX = centerX - x * targetScale;
     const newPanY = centerY - y * targetScale;
 

@@ -315,6 +315,18 @@
                   /> <span class="toggle-slider"></span> </label
                 >
               </div>
+               <!-- State Visibility -->
+              <div class="detail-row" v-if="entity.state">
+                 <span class="detail-label">Show State:</span> <label class="toggle-switch"
+                  > <input
+                    type="checkbox"
+                    :checked="widgetStateVisible"
+                    @change="handleStateVisibilityChange"
+                    @mousedown.stop
+                    @click.stop
+                  /> <span class="toggle-slider"></span> </label
+                >
+              </div>
                <!-- Value Prefix -->
               <div class="detail-row" v-if="isNumericEntity">
                  <span class="detail-label">Value Prefix:</span> <input
@@ -436,6 +448,52 @@
 
                 </div>
 
+              </div>
+               <!-- Icon Color Overrides -->
+              <div class="detail-row">
+                 <span class="detail-label">Icon Color (On):</span>
+                <div class="color-input-wrapper">
+                   <input
+                    type="color"
+                    :value="entity.iconColorOn || '#FFC107'"
+                    @input="handleIconColorOnChange"
+                    @mousedown.stop
+                    @click.stop
+                    class="color-input"
+                  /> <input
+                    type="text"
+                    :value="entity.iconColorOn || '#FFC107'"
+                    @input="handleIconColorOnTextChange"
+                    @mousedown.stop
+                    @click.stop
+                    class="text-input color-text-input"
+                    placeholder="#FFC107"
+                    pattern="^#[0-9A-Fa-f]{6}$"
+                  />
+                </div>
+              </div>
+               <!-- Icon Color Off -->
+              <div class="detail-row">
+                 <span class="detail-label">Icon Color (Off):</span>
+                <div class="color-input-wrapper">
+                   <input
+                    type="color"
+                    :value="entity.iconColorOff || '#888888'"
+                    @input="handleIconColorOffChange"
+                    @mousedown.stop
+                    @click.stop
+                    class="color-input"
+                  /> <input
+                    type="text"
+                    :value="entity.iconColorOff || '#888888'"
+                    @input="handleIconColorOffTextChange"
+                    @mousedown.stop
+                    @click.stop
+                    class="text-input color-text-input"
+                    placeholder="#888888"
+                    pattern="^#[0-9A-Fa-f]{6}$"
+                  />
+                </div>
               </div>
                <!-- State Condition -->
               <div class="detail-row" v-if="isNumericEntity">
@@ -578,7 +636,12 @@ const iconUrl = computed(() => {
   const path = getMDIIconPath(iconName);
   if (!path) return null;
 
-  const color = getIconColor(props.entity.key, props.entity.state);
+  const color = getIconColor(
+    props.entity.key,
+    props.entity.state,
+    props.entity.iconColorOn,
+    props.entity.iconColorOff
+  );
   const iconSize = Math.max(24, Math.min(width.value, height.value) * 0.6);
   return createIconSVG(path, color, iconSize);
 });
@@ -630,6 +693,11 @@ const isTemperatureSensor = computed(() => {
 
 // Unified numeric display that uses prefix/suffix when available
 const numericDisplay = computed(() => {
+  // Check if state visibility is enabled
+  if (!widgetStateVisible.value) {
+    return null;
+  }
+
   if (!isNumericEntity.value || !props.entity.state) {
     return null;
   }
@@ -893,6 +961,11 @@ const { labelsVisible } = storeToRefs(uiStore);
 // Widget-specific label visibility (from Firestore, default to true)
 const widgetLabelVisible = computed(() => {
   return props.entity.labelVisible !== undefined ? props.entity.labelVisible : true;
+});
+
+// Widget-specific state visibility (from Firestore, default to true)
+const widgetStateVisible = computed(() => {
+  return props.entity.stateVisible !== undefined ? props.entity.stateVisible : true;
 });
 
 // Combined label visibility: show only when both global AND widget are true
@@ -1788,6 +1861,58 @@ function handleLabelVisibilityChange(event: Event) {
   const target = event.target as HTMLInputElement;
   // Save to Firestore via emit update
   emit('update', props.entity.key, { labelVisible: target.checked });
+}
+
+function handleStateVisibilityChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  // Save to Firestore via emit update
+  emit('update', props.entity.key, { stateVisible: target.checked });
+}
+
+function handleIconColorOnChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const color = target.value;
+  // Save to Firestore via emit update
+  emit('update', props.entity.key, { iconColorOn: color });
+}
+
+function handleIconColorOnTextChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  let color = target.value.trim();
+  // Ensure it starts with # and is valid hex
+  if (color && !color.startsWith('#')) {
+    color = '#' + color;
+  }
+  // Validate hex color format
+  if (color && /^#[0-9A-Fa-f]{6}$/.test(color)) {
+    emit('update', props.entity.key, { iconColorOn: color });
+  } else if (color === '' || color === '#') {
+    // Allow clearing the field
+    emit('update', props.entity.key, { iconColorOn: undefined });
+  }
+}
+
+function handleIconColorOffChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const color = target.value;
+  // Save to Firestore via emit update
+  emit('update', props.entity.key, { iconColorOff: color });
+}
+
+function handleIconColorOffTextChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  let color = target.value.trim();
+  // Ensure it starts with # and is valid hex
+  if (color && !color.startsWith('#')) {
+    color = '#' + color;
+  }
+  // Validate hex color format
+  if (color && /^#[0-9A-Fa-f]{6}$/.test(color)) {
+    emit('update', props.entity.key, { iconColorOff: color });
+  } else if (color === '' || color === '#') {
+    // Allow clearing the field
+    emit('update', props.entity.key, { iconColorOff: undefined });
+  }
 }
 
 function handleValuePrefixChange(event: Event) {
@@ -3031,6 +3156,39 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 .condition-value {
   flex: 0 0 auto;
   width: 80px;
+}
+
+/* Color input wrapper */
+.color-input-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1;
+}
+
+.color-input {
+  width: 40px;
+  height: 30px;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+.color-text-input {
+  flex: 1;
+  min-width: 0;
 }
 
 @media (max-width: 768px) {

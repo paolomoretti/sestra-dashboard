@@ -885,7 +885,9 @@ function defineTemplates() {
             // Get color based on entity state - read from data
             const entityId = data.key || '';
             const entityState = data.state || '';
-            const color = getIconColor(entityId, entityState, icon);
+            const iconColorOn = data.iconColorOn;
+            const iconColorOff = data.iconColorOff;
+            const color = getIconColor(entityId, entityState, iconColorOn, iconColorOff);
             const svgUri = createIconSVG(path, color, 24);
 
             return svgUri || '';

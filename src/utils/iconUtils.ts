@@ -55,37 +55,33 @@ export function createIconSVG(
  * Get icon color based on entity domain and state
  * @param entityId - Entity ID (e.g., 'light.living_room')
  * @param state - Entity state (e.g., 'on', 'off', 'unavailable')
+ * @param iconColorOn - Optional custom color for "on" state (overrides default)
+ * @param iconColorOff - Optional custom color for "off" state (overrides default)
  * @returns Color hex code
  */
 export function getIconColor(
   entityId: string | null | undefined,
-  state: string | null | undefined
+  state: string | null | undefined,
+  iconColorOn?: string | null | undefined,
+  iconColorOff?: string | null | undefined
 ): string {
-  if (!entityId || !state) return '#888888'; // Default gray
+  if (!entityId || !state) {
+    // Use custom off color if provided, otherwise default gray
+    return iconColorOff || '#888888';
+  }
 
-  const domain = entityId.split('.')[0];
   const normalizedState = (state || '').toLowerCase();
 
   // Handle unavailable/unknown states
   if (normalizedState === 'unavailable' || normalizedState === 'unknown') {
-    return '#555555'; // Dark gray for unavailable
+    return '#555555'; // Dark gray for unavailable (always use this, not override)
   }
 
-  // Domain-specific color logic - only for entities with state-based colors
-  switch (domain) {
-    case 'light':
-      return normalizedState === 'on' ? '#FFC107' : '#888888'; // Yellow when on, gray when off
-
-    case 'switch':
-      return normalizedState === 'on' ? '#4CAF50' : '#888888'; // Green when on, gray when off
-
-    case 'binary_sensor':
-      // Binary sensors: 'on' typically means active/detected
-      return normalizedState === 'on' ? '#4CAF50' : '#888888'; // Green for active, gray for inactive
-
-    default:
-      // For all other entities (sensors, cameras, etc.), use default gray
-      return '#888888';
+  // Check for custom color overrides first
+  if (normalizedState === 'on') {
+    return iconColorOn || '#FFC107'; // Use custom on color if provided, otherwise default yellow
+  } else {
+    return iconColorOff || '#888888'; // Use custom off color if provided, otherwise default gray
   }
 }
 

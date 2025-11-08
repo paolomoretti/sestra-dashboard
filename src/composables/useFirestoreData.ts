@@ -87,6 +87,15 @@ export function useFirestoreData() {
     return result;
   });
 
+  const stateVisible = computed(() => {
+    const result: Record<string, boolean> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      // Default to true if not set
+      result[widgetId] = widget.stateVisible !== undefined ? widget.stateVisible : true;
+    });
+    return result;
+  });
+
   const valuePrefixes = computed(() => {
     const result: Record<string, string> = {};
     Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
@@ -203,10 +212,29 @@ export function useFirestoreData() {
 
   /**
    * Save actions to Firestore
+   * Only updates widgets whose actions have actually changed
    */
   async function setActions(value: Record<string, { tapAction?: any; holdAction?: any }>): Promise<void> {
+    const currentActions = actions.value;
+    
+    // Update widgets whose actions have changed
     for (const [widgetId, action] of Object.entries(value)) {
-      await firestoreStore.updateWidget(widgetId, { action });
+      const currentAction = currentActions[widgetId];
+      // Only update if the action has actually changed
+      // Compare by JSON stringify to handle object comparison
+      const currentActionStr = JSON.stringify(currentAction || {});
+      const newActionStr = JSON.stringify(action || {});
+      if (currentActionStr !== newActionStr) {
+        await firestoreStore.updateWidget(widgetId, { action: action || undefined });
+      }
+    }
+
+    // Remove actions that are no longer in the value (only if they existed before)
+    for (const widgetId of Object.keys(currentActions)) {
+      if (!value[widgetId] && currentActions[widgetId]) {
+        // Only update if the widget had an action before
+        await firestoreStore.updateWidget(widgetId, { action: undefined });
+      }
     }
   }
 
@@ -237,10 +265,29 @@ export function useFirestoreData() {
 
   /**
    * Save HA actions to Firestore
+   * Only updates widgets whose HA actions have actually changed
    */
   async function setHAActions(value: Record<string, { service: string; serviceData?: Record<string, any> }>): Promise<void> {
+    const currentHAActions = haActions.value;
+    
+    // Update widgets whose HA actions have changed
     for (const [widgetId, haAction] of Object.entries(value)) {
-      await firestoreStore.updateWidget(widgetId, { haAction });
+      const currentHAAction = currentHAActions[widgetId];
+      // Only update if the HA action has actually changed
+      // Compare by JSON stringify to handle object comparison
+      const currentHAActionStr = JSON.stringify(currentHAAction || {});
+      const newHAActionStr = JSON.stringify(haAction || {});
+      if (currentHAActionStr !== newHAActionStr) {
+        await firestoreStore.updateWidget(widgetId, { haAction: haAction || undefined });
+      }
+    }
+
+    // Remove HA actions that are no longer in the value (only if they existed before)
+    for (const widgetId of Object.keys(currentHAActions)) {
+      if (!value[widgetId] && currentHAActions[widgetId]) {
+        // Only update if the widget had an HA action before
+        await firestoreStore.updateWidget(widgetId, { haAction: undefined });
+      }
     }
   }
 
@@ -249,6 +296,13 @@ export function useFirestoreData() {
    */
   async function setLabelVisible(widgetId: string, visible: boolean): Promise<void> {
     await firestoreStore.updateWidget(widgetId, { labelVisible: visible });
+  }
+
+  /**
+   * Save state visibility to Firestore
+   */
+  async function setStateVisible(widgetId: string, visible: boolean): Promise<void> {
+    await firestoreStore.updateWidget(widgetId, { stateVisible: visible });
   }
 
   /**
@@ -274,6 +328,7 @@ export function useFirestoreData() {
     labelOverrides,
     haActions,
     labelVisible,
+    stateVisible,
     valuePrefixes,
     valueSuffixes,
     setEntities,
@@ -286,6 +341,7 @@ export function useFirestoreData() {
     setLabelOverrides,
     setHAActions,
     setLabelVisible,
+    setStateVisible,
     setValuePrefix,
     setValueSuffix,
     setUserInteracting,
