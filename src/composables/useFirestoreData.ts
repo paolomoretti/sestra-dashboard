@@ -178,20 +178,24 @@ export function useFirestoreData() {
 
   /**
    * Save icons to Firestore
+   * Only updates widgets whose icon has actually changed
    */
   async function setIcons(value: Record<string, string>): Promise<void> {
-    const currentWidgets = firestoreStore.widgets || {};
+    const currentIcons = icons.value;
     
-    // Update existing widgets
+    // Update widgets whose icon has changed
     for (const [widgetId, icon] of Object.entries(value)) {
-      if (currentWidgets[widgetId]) {
-        await firestoreStore.updateWidget(widgetId, { icon });
+      const currentIcon = currentIcons[widgetId];
+      // Only update if the icon has actually changed
+      if (currentIcon !== icon) {
+        await firestoreStore.updateWidget(widgetId, { icon: icon || undefined });
       }
     }
 
-    // Remove icons that are no longer in the value
-    for (const widgetId of Object.keys(currentWidgets)) {
-      if (!value[widgetId]) {
+    // Remove icons that are no longer in the value (only if they existed before)
+    for (const widgetId of Object.keys(currentIcons)) {
+      if (!value[widgetId] && currentIcons[widgetId]) {
+        // Only update if the widget had an icon before
         await firestoreStore.updateWidget(widgetId, { icon: undefined });
       }
     }
@@ -208,20 +212,24 @@ export function useFirestoreData() {
 
   /**
    * Save label overrides to Firestore
+   * Only updates widgets whose label override has actually changed
    */
   async function setLabelOverrides(value: Record<string, string>): Promise<void> {
-    const currentWidgets = firestoreStore.widgets || {};
+    const currentLabelOverrides = labelOverrides.value;
     
-    // Update existing widgets
+    // Update widgets whose label override has changed
     for (const [widgetId, labelName] of Object.entries(value)) {
-      if (currentWidgets[widgetId]) {
-        await firestoreStore.updateWidget(widgetId, { labelName });
+      const currentLabel = currentLabelOverrides[widgetId];
+      // Only update if the value has actually changed
+      if (currentLabel !== labelName) {
+        await firestoreStore.updateWidget(widgetId, { labelName: labelName || undefined });
       }
     }
 
-    // Remove label overrides that are no longer in the value (empty string means clear)
-    for (const widgetId of Object.keys(currentWidgets)) {
-      if (!value[widgetId]) {
+    // Remove label overrides that are no longer in the value (only if they existed before)
+    for (const widgetId of Object.keys(currentLabelOverrides)) {
+      if (!value[widgetId] && currentLabelOverrides[widgetId]) {
+        // Only update if the widget had a label override before
         await firestoreStore.updateWidget(widgetId, { labelName: undefined });
       }
     }

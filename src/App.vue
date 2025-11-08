@@ -119,6 +119,31 @@ useHotkeys([
     description: 'Zoom to Living Room',
     preventDefault: true,
   },
+  {
+    key: '+',
+    handler: () => {
+      dashboardRef.value?.zoomIn();
+    },
+    description: 'Zoom in',
+    preventDefault: true,
+  },
+  {
+    key: '=',
+    handler: () => {
+      // Also handle '=' key (which is '+' without shift on some keyboards)
+      dashboardRef.value?.zoomIn();
+    },
+    description: 'Zoom in',
+    preventDefault: true,
+  },
+  {
+    key: '-',
+    handler: () => {
+      dashboardRef.value?.zoomOut();
+    },
+    description: 'Zoom out',
+    preventDefault: true,
+  },
 ]);
 
 // Expose dashboard functions to window for backward compatibility

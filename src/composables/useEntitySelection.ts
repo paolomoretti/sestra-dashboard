@@ -27,6 +27,9 @@ export interface EntityData {
   // Area/room information
   areaId?: string | null;
   areaName?: string | null;
+  // Camera-specific fields
+  entityPicture?: string; // URL to entity picture (for cameras)
+  videoUrl?: string; // URL to video stream (for cameras)
 }
 
 export interface Position {

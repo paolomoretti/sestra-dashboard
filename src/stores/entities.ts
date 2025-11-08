@@ -288,6 +288,10 @@ export const useEntitiesStore = defineStore('entities', () => {
           
           const areaName = areaId ? areaMap.get(areaId) : null;
 
+          // Extract camera-specific attributes
+          const entityPicture = state.attributes.entity_picture as string | undefined;
+          const videoUrl = state.attributes.video_url as string | undefined;
+
           return {
             key: state.entity_id,
             entityId: state.entity_id,
@@ -303,6 +307,8 @@ export const useEntitiesStore = defineStore('entities', () => {
             holdAction: null,
             areaId: areaId ?? null,
             areaName: areaName ?? null,
+            entityPicture: entityPicture ?? undefined,
+            videoUrl: videoUrl ?? undefined,
           } as EntityData;
         });
 

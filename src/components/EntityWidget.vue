@@ -134,8 +134,8 @@
               <div class="detail-row">
                  <span class="detail-label">Label:</span> <input
                   type="text"
-                  :value="labelOverride"
-                  @input="handleLabelOverrideChange"
+                  v-model="labelOverrideInput"
+                  @blur="handleLabelOverrideBlur"
                   @mousedown.stop
                   @click.stop
                   class="text-input"
@@ -562,6 +562,18 @@ const [height, setHeight] = useLocalStorage<number>(
 
 // Icon URL
 const iconUrl = computed(() => {
+  // For cameras, use entity_picture if available
+  if (props.entity.category === 'camera' && props.entity.entityPicture) {
+    // entity_picture might be relative (e.g., /api/camera_proxy/...) or absolute
+    let pictureUrl = props.entity.entityPicture;
+    if (pictureUrl.startsWith('/')) {
+      // Relative URL - prepend Home Assistant base URL
+      pictureUrl = `${haConfig.address}${pictureUrl}`;
+    }
+    return pictureUrl;
+  }
+
+  // For other entities, use the MDI icon
   const iconName = props.entity.icon ?? 'circle-outline';
   const path = getMDIIconPath(iconName);
   if (!path) return null;
@@ -996,6 +1008,18 @@ async function handleIconClick(e: MouseEvent) {
   // Don't handle click if we just finished dragging
   if (hasDragged.value) {
     hasDragged.value = false;
+    return;
+  }
+
+  // For cameras, open video_url in a new tab if available
+  if (props.entity.category === 'camera' && props.entity.videoUrl) {
+    let videoUrl = props.entity.videoUrl;
+    // video_url might be relative or absolute
+    if (videoUrl.startsWith('/')) {
+      // Relative URL - prepend Home Assistant base URL
+      videoUrl = `${haConfig.address}${videoUrl}`;
+    }
+    window.open(videoUrl, '_blank');
     return;
   }
 
@@ -1674,10 +1698,17 @@ function handleTapActionChange(event: Event) {
   localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
 }
 
-// Handle label override change
-function handleLabelOverrideChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const newLabel = target.value;
+// Local ref for label override input (to avoid saving on every keystroke)
+const labelOverrideInput = ref<string>(labelOverride.value);
+
+// Sync local ref with prop when it changes externally
+watch(labelOverride, (newValue) => {
+  labelOverrideInput.value = newValue;
+}, { immediate: true });
+
+// Handle label override blur (save when user leaves the field)
+function handleLabelOverrideBlur() {
+  const newLabel = labelOverrideInput.value.trim();
 
   emit('update', props.entity.key, { labelOverride: newLabel });
 

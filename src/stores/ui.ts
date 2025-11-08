@@ -137,15 +137,12 @@ export const useUIStore = defineStore('ui', () => {
     }
   }, 1000);
 
-  watch(
-    scale,
-    (newValue: number | undefined) => {
-      // Only save if scale is defined and we've already restored it (to avoid saving during initial restore)
-      if (newValue !== undefined && hasRestoredScale && !isSyncingFromFirestore) {
-        void saveScale(newValue);
-      }
+  watch(scale, (newValue: number | undefined) => {
+    // Only save if scale is defined and we've already restored it (to avoid saving during initial restore)
+    if (newValue !== undefined && hasRestoredScale && !isSyncingFromFirestore) {
+      void saveScale(newValue);
     }
-  );
+  });
 
   function setScale(value: number): void {
     // Mark that we've restored scale if it was undefined and now we're setting it
