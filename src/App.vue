@@ -111,6 +111,14 @@ useHotkeys([
     description: 'Zoom to Garden',
     preventDefault: true,
   },
+  {
+    key: 'l',
+    handler: () => {
+      dashboardRef.value?.zoomToLevel('livingroom');
+    },
+    description: 'Zoom to Living Room',
+    preventDefault: true,
+  },
 ]);
 
 // Expose dashboard functions to window for backward compatibility

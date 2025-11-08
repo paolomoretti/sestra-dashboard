@@ -39,6 +39,17 @@ export default defineConfig(({ mode }: ConfigEnv) => {
           changeOrigin: true,
           secure: false,
           rewrite: (path: string) => path, // Keep /api in the path
+          configure: (proxy, _options) => {
+            proxy.on('error', (err, _req, res) => {
+              console.log('proxy error', err);
+            });
+            proxy.on('proxyReq', (proxyReq, req, res) => {
+              // Log proxy requests for debugging
+              if (req.url?.includes('registry')) {
+                console.log('Proxying registry request:', req.url);
+              }
+            });
+          },
         }
       }
     },

@@ -87,6 +87,26 @@ export function useFirestoreData() {
     return result;
   });
 
+  const valuePrefixes = computed(() => {
+    const result: Record<string, string> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      if (widget.valuePrefix !== undefined) {
+        result[widgetId] = widget.valuePrefix;
+      }
+    });
+    return result;
+  });
+
+  const valueSuffixes = computed(() => {
+    const result: Record<string, string> = {};
+    Object.entries(firestoreStore.widgets || {}).forEach(([widgetId, widget]) => {
+      if (widget.valueSuffix !== undefined) {
+        result[widgetId] = widget.valueSuffix;
+      }
+    });
+    return result;
+  });
+
   /**
    * Save entities list (creates/updates widgets)
    */
@@ -223,6 +243,20 @@ export function useFirestoreData() {
     await firestoreStore.updateWidget(widgetId, { labelVisible: visible });
   }
 
+  /**
+   * Save value prefix to Firestore
+   */
+  async function setValuePrefix(widgetId: string, prefix: string | undefined): Promise<void> {
+    await firestoreStore.updateWidget(widgetId, { valuePrefix: prefix });
+  }
+
+  /**
+   * Save value suffix to Firestore
+   */
+  async function setValueSuffix(widgetId: string, suffix: string | undefined): Promise<void> {
+    await firestoreStore.updateWidget(widgetId, { valueSuffix: suffix });
+  }
+
   return {
     entities,
     positions,
@@ -232,6 +266,8 @@ export function useFirestoreData() {
     labelOverrides,
     haActions,
     labelVisible,
+    valuePrefixes,
+    valueSuffixes,
     setEntities,
     setPositions,
     updateWidgetPosition,
@@ -242,6 +278,8 @@ export function useFirestoreData() {
     setLabelOverrides,
     setHAActions,
     setLabelVisible,
+    setValuePrefix,
+    setValueSuffix,
     setUserInteracting,
   };
 }

@@ -50,6 +50,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
+import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useFirestoreData } from '../composables/useFirestoreData';
 import EntityWidget from './EntityWidget.vue';
@@ -61,6 +62,7 @@ import {
 } from '../composables/useEntitySelection';
 import { useEntitiesStore } from '../stores/entities';
 import { useFirestoreStore } from '../stores/firestore';
+import { useUIStore } from '../stores/ui';
 
 // Constants
 const FLOORPLAN_WIDTH = 2190;
@@ -105,6 +107,11 @@ const PREDEFINED_ZOOM_LEVELS: Record<string, ZoomLevel> = {
     panXPercent: 47.01,
     panYPercent: -35.41,
   },
+  livingroom: {
+    scalePercent: 86.7,
+    panXPercent: 19.33,
+    panYPercent: -5.09,
+  },
 };
 
 // Refs
@@ -125,6 +132,8 @@ const {
   labelOverrides,
   haActions,
   labelVisible,
+  valuePrefixes,
+  valueSuffixes,
   setEntities: setPlacedEntityIds,
   setPositions,
   updateWidgetPosition,
@@ -135,12 +144,29 @@ const {
   setLabelOverrides,
   setHAActions,
   setLabelVisible,
+  setValuePrefix,
+  setValueSuffix,
 } = useFirestoreData();
 
-// Local reactive state for pan/zoom (not stored in Firestore, always starts fresh)
-const scale = ref(1);
+// UI store for scale and scroll position
+const uiStore = useUIStore();
+const { scale: uiScale } = storeToRefs(uiStore);
+const { setScale: setUIScale } = uiStore;
+
+// Watch for Firestore initialization
+const { isInitialized: firestoreInitialized } = storeToRefs(firestoreStore);
+
+// Local reactive state for pan (scroll position is managed by UI store)
 const panX = ref(0);
 const panY = ref(0);
+
+// Computed scale that uses UI store scale if available, otherwise falls back to local
+const scale = computed({
+  get: () => uiScale.value ?? 1,
+  set: (value: number) => {
+    setUIScale(value);
+  }
+});
 
 // Computed: Get full entity data for placed entities
 const placedEntities = computed(() => {
@@ -151,6 +177,8 @@ const placedEntities = computed(() => {
   const actionsData = actions.value;
   const labelOverridesData = labelOverrides.value;
   const haActionsData = haActions.value;
+  const valuePrefixesData = valuePrefixes.value;
+  const valueSuffixesData = valueSuffixes.value;
 
   return placedEntityIds.value
     .map(entityId => {
@@ -189,6 +217,8 @@ const placedEntities = computed(() => {
         holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
         labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
         labelVisible: labelVisible.value[entityId] !== undefined ? labelVisible.value[entityId] : true,
+        valuePrefix: valuePrefixesData[entityId] ?? entity.valuePrefix,
+        valueSuffix: valueSuffixesData[entityId] ?? entity.valueSuffix,
         haAction: haActionsData[entityId] ?? entity.haAction,
       } as EntityData;
     })
@@ -237,6 +267,7 @@ watch(
   { immediate: false }
 );
 
+
 // Handle Escape key to deselect
 let escapeHandler: ((_e: KeyboardEvent) => void) | null = null;
 
@@ -271,26 +302,69 @@ onMounted(() => {
   };
   document.addEventListener('keydown', escapeHandler);
 
-  // Initialize scale if not already set
-  if (!scale.value || scale.value === 0) {
-    nextTick(() => {
-      const initialScale = calculateInitialScale();
-      // Center the image
-      if (dashboardWrapperRef.value) {
-        const wrapperWidth = dashboardWrapperRef.value.clientWidth;
-        const wrapperHeight = dashboardWrapperRef.value.clientHeight;
-        const scaledWidth = FLOORPLAN_WIDTH * initialScale;
-        const scaledHeight = FLOORPLAN_HEIGHT * initialScale;
-        const newPanX = (wrapperWidth - scaledWidth) / 2;
-        const newPanY = (wrapperHeight - scaledHeight) / 2;
+  // Initialize scale: wait for Firestore to load, then restore from UI store if available, otherwise calculate initial
+  let scaleInitialized = false;
+  
+  const initializeScaleOnce = () => {
+    if (scaleInitialized || !dashboardWrapperRef.value) return;
+    
+    const wrapperWidth = dashboardWrapperRef.value.clientWidth;
+    const wrapperHeight = dashboardWrapperRef.value.clientHeight;
+    
+    // If scale is already restored from Firestore, use it
+    if (uiScale.value !== undefined) {
+      const scaledWidth = FLOORPLAN_WIDTH * uiScale.value;
+      const scaledHeight = FLOORPLAN_HEIGHT * uiScale.value;
+      const newPanX = (wrapperWidth - scaledWidth) / 2;
+      const newPanY = (wrapperHeight - scaledHeight) / 2;
+      panX.value = newPanX;
+      panY.value = newPanY;
+      scaleInitialized = true;
+      return;
+    }
+    
+    // If Firestore is initialized but no scale was found, calculate initial
+    // Only do this if Firestore has finished loading (to avoid setting before restore)
+    if (firestoreInitialized.value) {
+      const targetScale = calculateInitialScale();
+      const scaledWidth = FLOORPLAN_WIDTH * targetScale;
+      const scaledHeight = FLOORPLAN_HEIGHT * targetScale;
+      const newPanX = (wrapperWidth - scaledWidth) / 2;
+      const newPanY = (wrapperHeight - scaledHeight) / 2;
+      
+      setUIScale(targetScale);
+      panX.value = newPanX;
+      panY.value = newPanY;
+      scaleInitialized = true;
+    }
+  };
 
-        // Update local state immediately
-        scale.value = initialScale;
-        panX.value = newPanX;
-        panY.value = newPanY;
+  // Watch for Firestore initialization
+  watch(firestoreInitialized, (initialized) => {
+    if (initialized) {
+      nextTick(() => {
+        initializeScaleOnce();
+      });
+    }
+  });
+
+  // Watch for scale restoration from Firestore (this takes priority)
+  watch(uiScale, (newScale) => {
+    if (newScale !== undefined && dashboardWrapperRef.value && !scaleInitialized) {
+      nextTick(() => {
+        initializeScaleOnce();
+      });
+    }
+  }, { immediate: true });
+
+  // Fallback: if Firestore never initializes or takes too long, initialize after a delay
+  nextTick(() => {
+    setTimeout(() => {
+      if (!scaleInitialized) {
+        initializeScaleOnce();
       }
-    });
-  }
+    }, 1000); // Wait 1 second for Firestore to load
+  });
 });
 
 onUnmounted(() => {
@@ -611,6 +685,18 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
 
   if (updates.labelVisible !== undefined) {
     await setLabelVisible(entityId, updates.labelVisible);
+  }
+
+  if ('valuePrefix' in updates) {
+    // Always send the update - pass through empty string as-is
+    // The updateWidget function will handle converting empty string to deleteField()
+    await setValuePrefix(entityId, updates.valuePrefix === null ? undefined : updates.valuePrefix);
+  }
+
+  if ('valueSuffix' in updates) {
+    // Always send the update - pass through empty string as-is
+    // The updateWidget function will handle converting empty string to deleteField()
+    await setValueSuffix(entityId, updates.valueSuffix === null ? undefined : updates.valueSuffix);
   }
 }
 

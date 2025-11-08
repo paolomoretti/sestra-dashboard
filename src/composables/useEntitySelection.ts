@@ -18,10 +18,15 @@ export interface EntityData {
   isActionButton?: boolean;
   labelOverride?: string;
   labelVisible?: boolean; // Whether to show the label for this widget (default: true)
+  valuePrefix?: string; // Prefix to display before the numeric value
+  valueSuffix?: string; // Suffix to display after the numeric value
   haAction?: {
     service: string;
     serviceData?: Record<string, any>;
   };
+  // Area/room information
+  areaId?: string | null;
+  areaName?: string | null;
 }
 
 export interface Position {

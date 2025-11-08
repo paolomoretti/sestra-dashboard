@@ -13,6 +13,7 @@ import {
   getDocs,
   query,
   onSnapshot,
+  deleteField,
   type DocumentData,
   type Unsubscribe,
   type QuerySnapshot,
@@ -29,12 +30,15 @@ export interface WidgetData {
   size: string; // Format: "width height"
   action?: { tapAction?: any; holdAction?: any };
   haAction?: { service: string; serviceData?: Record<string, any> };
+  valuePrefix?: string; // Prefix to display before the numeric value
+  valueSuffix?: string; // Suffix to display after the numeric value
 }
 
 export interface UIData {
   labelsVisible?: boolean; // Global labels visibility (default: true)
   sidebarVisible?: boolean; // Sidebar visibility (default: true)
   scrollPosition?: { x: number; y: number }; // Scroll position
+  scale?: number; // Zoom/scale level
 }
 
 const COLLECTION_NAME = 'widgets';
@@ -302,15 +306,61 @@ export const useFirestoreStore = defineStore('firestore', () => {
       return;
     }
 
-    // Remove undefined values from updates
-    const cleanedUpdates = removeUndefinedFields(updates);
+    // For valuePrefix and valueSuffix, if undefined or empty string is passed, we need to delete the field
+    const processedUpdates: any = { ...updates };
+    const fieldsToDelete: string[] = [];
     
+    if ('valuePrefix' in updates && (updates.valuePrefix === undefined || updates.valuePrefix === '')) {
+      // Mark for deletion in Firestore
+      processedUpdates.valuePrefix = deleteField();
+      fieldsToDelete.push('valuePrefix');
+    }
+    if ('valueSuffix' in updates && (updates.valueSuffix === undefined || updates.valueSuffix === '')) {
+      // Mark for deletion in Firestore
+      processedUpdates.valueSuffix = deleteField();
+      fieldsToDelete.push('valueSuffix');
+    }
+    
+    // Remove undefined values from updates (but keep deleteField() for prefix/suffix)
+    const cleanedUpdates = removeUndefinedFields(processedUpdates);
+    
+    // Update local state
     const updatedWidget: WidgetData = {
       ...currentWidget,
-      ...cleanedUpdates,
+    };
+    
+    // Apply updates, but remove fields marked for deletion
+    for (const [key, value] of Object.entries(cleanedUpdates)) {
+      if (fieldsToDelete.includes(key)) {
+        // Remove from local state
+        delete (updatedWidget as any)[key];
+      } else {
+        (updatedWidget as any)[key] = value;
+      }
+    }
+    
+    widgets.value = {
+      ...widgets.value,
+      [widgetId]: updatedWidget,
     };
 
-    await saveWidget(widgetId, updatedWidget);
+    // Save to Firestore
+    if (useFirestore.value && db) {
+      try {
+        const docRef = doc(db, COLLECTION_NAME, widgetId);
+        await setDoc(docRef, cleanedUpdates, { merge: true });
+        console.log(`✅ Widget ${widgetId} updated in Firestore`);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        error.value = errorMessage;
+        console.error(`❌ Failed to update widget ${widgetId} in Firestore:`, err);
+        // Fall back to localStorage
+        saveWidgetToLocalStorage(widgetId, updatedWidget);
+      }
+    } else {
+      // Save to localStorage
+      saveWidgetToLocalStorage(widgetId, updatedWidget);
+    }
   }
 
   /**
@@ -425,6 +475,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
           labelsVisible: data.labelsVisible,
           sidebarVisible: data.sidebarVisible,
           scrollPosition: data.scrollPosition,
+          scale: data.scale,
         };
         console.log('✅ UI settings loaded from Firestore');
       } else {

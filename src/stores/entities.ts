@@ -11,12 +11,29 @@ export interface HAEntityState {
     friendly_name?: string;
     icon?: string;
     device_class?: string;
+    area_id?: string;
     [key: string]: unknown;
   };
 }
 
+export interface HAArea {
+  area_id: string;
+  name: string;
+}
+
+export interface HADevice {
+  id: string;
+  area_id: string | null;
+  name_by_user?: string;
+  name?: string;
+  identifiers: Array<[string, string]>;
+  connections: Array<[string, string]>;
+}
+
 export const useEntitiesStore = defineStore('entities', () => {
   const allEntities: Ref<EntityData[]> = ref<EntityData[]>([]);
+  const areas: Ref<HAArea[]> = ref<HAArea[]>([]);
+  const devices: Ref<HADevice[]> = ref<HADevice[]>([]);
   const isLoading: Ref<boolean> = ref(false);
   const lastUpdated: Ref<Date | null> = ref<Date | null>(null);
   let wsConnection: WebSocket | null = null;
@@ -29,9 +46,137 @@ export const useEntitiesStore = defineStore('entities', () => {
     return `${config.address}/api`;
   }
 
+  /**
+   * Fetch data from Home Assistant via WebSocket API
+   */
+  async function fetchViaWebSocket<T>(config: HAConfig, messageType: string, messageId: number = 1): Promise<T | null> {
+    return new Promise((resolve, reject) => {
+      const wsProtocol = config.address.startsWith('https') ? 'wss' : 'ws';
+      const baseUrl = config.address.replace(/^https?/, wsProtocol).replace(/\/api\/?$/, '');
+      const wsUrl = `${baseUrl}/api/websocket`;
+
+      const ws = new WebSocket(wsUrl);
+      let authenticated = false;
+      let resolved = false;
+
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          ws.close();
+          reject(new Error('WebSocket request timeout'));
+        }
+      }, 10000); // 10 second timeout
+
+      ws.onopen = () => {
+        // Wait for auth_required message
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+
+          if (message.type === 'auth_required') {
+            ws.send(JSON.stringify({
+              type: 'auth',
+              access_token: config.accessToken,
+            }));
+            return;
+          }
+
+          if (message.type === 'auth_ok') {
+            authenticated = true;
+            // Send the actual request
+            ws.send(JSON.stringify({
+              id: messageId,
+              type: messageType,
+            }));
+            return;
+          }
+
+          if (message.type === 'auth_invalid') {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              ws.close();
+              reject(new Error('WebSocket authentication failed'));
+            }
+            return;
+          }
+
+          if (message.type === 'result' && message.id === messageId) {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              ws.close();
+              resolve(message.result as T);
+            }
+            return;
+          }
+        } catch (error) {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            ws.close();
+            reject(error);
+          }
+        }
+      };
+
+      ws.onerror = (error) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          ws.close();
+          reject(error);
+        }
+      };
+
+      ws.onclose = () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          reject(new Error('WebSocket connection closed'));
+        }
+      };
+    });
+  }
+
+  async function loadAreas(config: HAConfig): Promise<void> {
+    try {
+      const areasData = await fetchViaWebSocket<HAArea[]>(config, 'config/area_registry/list', 10);
+      if (areasData && Array.isArray(areasData)) {
+        areas.value = areasData;
+        console.debug(`Loaded ${areasData.length} areas from Home Assistant`);
+      } else {
+        areas.value = [];
+      }
+    } catch (error) {
+      console.warn('Error loading areas via WebSocket:', error);
+      areas.value = [];
+    }
+  }
+
+  async function loadDevices(config: HAConfig): Promise<void> {
+    try {
+      const devicesData = await fetchViaWebSocket<HADevice[]>(config, 'config/device_registry/list', 11);
+      if (devicesData && Array.isArray(devicesData)) {
+        devices.value = devicesData;
+        console.debug(`Loaded ${devicesData.length} devices from Home Assistant`);
+      } else {
+        devices.value = [];
+      }
+    } catch (error) {
+      console.warn('Error loading devices via WebSocket:', error);
+      devices.value = [];
+    }
+  }
+
   async function loadEntities(config: HAConfig): Promise<void> {
     isLoading.value = true;
     try {
+      // Load areas and devices first to map area_id to area names and entities to devices
+      await Promise.all([loadAreas(config), loadDevices(config)]);
+
       const url = `${getApiBaseUrl(config)}/states`;
       const response = await fetch(url, {
         method: 'GET',
@@ -46,6 +191,45 @@ export const useEntitiesStore = defineStore('entities', () => {
       }
 
       const states = (await response.json()) as HAEntityState[];
+
+      // Create a map of area_id to area name
+      const areaMap = new Map<string, string>();
+      areas.value.forEach(area => {
+        areaMap.set(area.area_id, area.name);
+      });
+
+      // Create a map of entity_id to device (via device_id from entity registry)
+      // We'll need to fetch entity registry to get device_id for each entity
+      let entityRegistry: Array<{ entity_id: string; device_id: string | null }> = [];
+      try {
+        const registryData = await fetchViaWebSocket<Array<{ entity_id: string; device_id: string | null }>>(
+          config,
+          'config/entity_registry/list',
+          12
+        );
+        if (registryData && Array.isArray(registryData)) {
+          entityRegistry = registryData;
+          console.debug(`Loaded ${entityRegistry.length} entities from entity registry`);
+        }
+      } catch (error) {
+        console.warn('Error loading entity registry via WebSocket:', error);
+      }
+
+      // Create a map of entity_id to device_id
+      const entityToDeviceMap = new Map<string, string>();
+      entityRegistry.forEach(entry => {
+        if (entry.device_id) {
+          entityToDeviceMap.set(entry.entity_id, entry.device_id);
+        }
+      });
+
+      // Create a map of device_id to area_id
+      const deviceToAreaMap = new Map<string, string>();
+      devices.value.forEach(device => {
+        if (device.area_id) {
+          deviceToAreaMap.set(device.id, device.area_id);
+        }
+      });
 
       // Filter and transform entities
       const entities: EntityData[] = states
@@ -90,6 +274,20 @@ export const useEntitiesStore = defineStore('entities', () => {
           const defaultIcon = getDefaultIcon(domain, deviceClass ?? null);
           const icon = extractedIcon ?? defaultIcon;
 
+          // Extract area information
+          // First check if entity has area_id directly in attributes
+          let areaId = state.attributes.area_id as string | undefined;
+          
+          // If not, try to get it from the device
+          if (!areaId) {
+            const deviceId = entityToDeviceMap.get(state.entity_id);
+            if (deviceId) {
+              areaId = deviceToAreaMap.get(deviceId);
+            }
+          }
+          
+          const areaName = areaId ? areaMap.get(areaId) : null;
+
           return {
             key: state.entity_id,
             entityId: state.entity_id,
@@ -103,6 +301,8 @@ export const useEntitiesStore = defineStore('entities', () => {
             size: null,
             tapAction: null,
             holdAction: null,
+            areaId: areaId ?? null,
+            areaName: areaName ?? null,
           } as EntityData;
         });
 
@@ -291,9 +491,13 @@ export const useEntitiesStore = defineStore('entities', () => {
 
   return {
     allEntities,
+    areas,
+    devices,
     isLoading,
     lastUpdated,
     loadEntities,
+    loadAreas,
+    loadDevices,
     updateEntityStates,
     connectWebSocket,
     disconnectWebSocket,

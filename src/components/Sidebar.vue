@@ -11,7 +11,7 @@
       
       <!-- Content -->
       <div class="flex-1 flex flex-col min-h-0">
-        <div class="px-4 py-3 flex-shrink-0">
+        <div class="px-4 py-3 flex-shrink-0 space-y-3">
           <input
             v-model="searchQuery"
             type="text"
@@ -20,17 +20,51 @@
             @input="handleSearch"
           />
         </div>
-        <EntityTabs 
-          :tabs="entityTabs" 
-          :active-tab="activeEntityTab"
-          @update:active-tab="activeEntityTab = $event"
-          class="flex-shrink-0"
-        />
+        <div class="filter-dropdowns-container border-b border-[#3a3a3a] flex-shrink-0">
+          <div class="filter-dropdown-wrapper">
+            <select
+              v-model="selectedRoom"
+              class="filter-dropdown"
+            >
+              <option value="all">🏠 All Rooms</option>
+              <option
+                v-for="area in sortedAreas"
+                :key="area.area_id"
+                :value="area.area_id"
+              >
+                {{ area.name }}
+              </option>
+            </select>
+          </div>
+          <div class="filter-dropdown-wrapper">
+            <select
+              :value="activeEntityTab"
+              @change="(e) => { 
+                const newTab = (e.target as HTMLSelectElement).value;
+                activeEntityTab = newTab;
+                setStoredTab(newTab);
+                if (window.updatePaletteFilter) {
+                  window.updatePaletteFilter(newTab, searchQuery);
+                }
+              }"
+              class="filter-dropdown"
+            >
+              <option
+                v-for="tab in entityTabs"
+                :key="tab.value"
+                :value="tab.value"
+              >
+                {{ tab.icon }} {{ tab.label }}
+              </option>
+            </select>
+          </div>
+        </div>
         <div class="flex-1 min-h-0 overflow-hidden">
           <EntityPalette
             :entities="allEntities"
             :filter="activeEntityTab"
             :search-query="searchQuery"
+            :room-filter="selectedRoom"
             @entity-selected="handleEntitySelected"
           />
         </div>
@@ -44,11 +78,10 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useEntitiesStore } from '../stores/entities';
-import EntityTabs from './EntityTabs.vue';
 import EntityPalette from './EntityPalette.vue';
 import type { EntityData } from '../composables/useEntitySelection';
 const entitiesStore = useEntitiesStore();
-const { allEntities } = storeToRefs(entitiesStore);
+const { allEntities, areas } = storeToRefs(entitiesStore);
 
 // Entity tabs state
 const [storedTab, setStoredTab] = useLocalStorage('activeEntityTab', 'all');
@@ -56,6 +89,19 @@ const activeEntityTab = ref(storedTab.value);
 
 // Search query state
 const searchQuery = ref('');
+
+// Room filter state
+const [storedRoom, setStoredRoom] = useLocalStorage('activeRoomFilter', 'all');
+// Migrate old empty string values to 'all'
+const selectedRoom = ref(storedRoom.value || 'all');
+if (storedRoom.value === '') {
+  setStoredRoom('all');
+}
+
+// Sorted areas for dropdown
+const sortedAreas = computed(() => {
+  return [...areas.value].sort((a, b) => a.name.localeCompare(b.name));
+});
 
 async function handleEntitySelected(entity: EntityData) {
   // On mobile or when clicking (not dragging), add entity at viewport center
@@ -111,6 +157,11 @@ watch(searchQuery, () => {
   handleSearch();
 });
 
+// Watch for room filter changes
+watch(selectedRoom, (newRoom) => {
+  setStoredRoom(newRoom);
+});
+
 onMounted(() => {
   // Initialize palette if it hasn't been initialized yet (sidebar was hidden on load)
   if (window.initPalette) {
@@ -131,5 +182,63 @@ onMounted(() => {
 
 #paletteDiv canvas:active {
   cursor: grabbing;
+}
+
+.filter-dropdowns-container {
+  display: flex;
+  padding: 0;
+  border-top: 1px solid #3a3a3a;
+}
+
+.filter-dropdown-wrapper {
+  flex: 1;
+  border-right: 1px solid #3a3a3a;
+}
+
+.filter-dropdown-wrapper:last-child {
+  border-right: none;
+}
+
+.filter-dropdown {
+  width: 100%;
+  background-color: #2a2a2a;
+  border: none;
+  border-bottom: 2px solid #3a3a3a;
+  color: #ffffff;
+  font-size: 14px;
+  padding: 12px 16px;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 12px;
+  padding-right: 40px;
+  transition: background-color 0.2s ease;
+}
+
+.filter-dropdown:hover {
+  background-color: #333333;
+}
+
+.filter-dropdown:focus {
+  background-color: #333333;
+  border-bottom-color: #2d5aa0;
+}
+
+.filter-dropdown option {
+  background-color: #2a2a2a;
+  color: #ffffff;
+  padding: 8px;
+}
+
+@media (max-width: 768px) {
+  .filter-dropdown {
+    font-size: 16px;
+    padding: 14px 16px;
+    padding-right: 40px;
+    min-height: 44px;
+  }
 }
 </style>

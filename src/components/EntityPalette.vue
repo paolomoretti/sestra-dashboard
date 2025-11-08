@@ -19,9 +19,9 @@
 
       <!-- Entity info -->
       <div class="palette-info">
-        <div class="palette-name">{{ entity.name || entity.key }}</div>
-        <div class="palette-entity-id">{{ entity.key }}</div>
-        <div v-if="entity.state" class="palette-state">
+        <div class="palette-name" :title="entity.name || entity.key">{{ entity.name || entity.key }}</div>
+        <div class="palette-entity-id" :title="entity.key">{{ entity.key }}</div>
+        <div v-if="entity.state" class="palette-state" :title="`State: ${entity.state}`">
           State: {{ entity.state }}
         </div>
       </div>
@@ -44,6 +44,7 @@ interface Props {
   entities: EntityData[];
   filter: string;
   searchQuery: string;
+  roomFilter?: string;
 }
 
 const props = defineProps<Props>();
@@ -59,6 +60,13 @@ const filteredEntities = computed(() => {
     filtered = filtered.filter((e) => {
       const domain = e.key.split('.')[0];
       return domain === props.filter.replace('_', '-');
+    });
+  }
+
+  // Filter by room
+  if (props.roomFilter && props.roomFilter !== 'all') {
+    filtered = filtered.filter((e) => {
+      return e.areaId === props.roomFilter;
     });
   }
 

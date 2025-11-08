@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, watch, type Ref } from 'vue';
-import { useThrottleFn } from '@vueuse/core';
+import { useDebounceFn } from '@vueuse/core';
 import { useFirestoreStore } from './firestore';
 
 interface ScrollPosition {
@@ -92,23 +92,67 @@ export const useUIStore = defineStore('ui', () => {
     { immediate: true, deep: true }
   );
 
-  // Throttled function to save scroll position (every 500ms)
-  const saveScrollPosition = useThrottleFn(async (position: ScrollPosition) => {
+  // Debounced function to save scroll position (after 1 second of inactivity)
+  const saveScrollPosition = useDebounceFn(async (position: ScrollPosition) => {
     if (!isSyncingFromFirestore) {
-      await firestoreStore.saveUISettings({ scrollPosition: position });
+      void firestoreStore.saveUISettings({ scrollPosition: position });
     }
-  }, 500);
+  }, 1000);
 
   watch(
     scrollPosition,
     (newValue: ScrollPosition) => {
-      saveScrollPosition(newValue);
+      void saveScrollPosition(newValue);
     },
     { deep: true }
   );
 
   function setScrollPosition(x: number, y: number): void {
     scrollPosition.value = { x, y };
+  }
+
+  // Scale (zoom level) - synced with Firestore
+  const scale: Ref<number | undefined> = ref(undefined);
+  let hasRestoredScale = false;
+
+  // Watch Firestore and sync to local ref (only on initial load)
+  watch(
+    () => firestoreStore.uiData?.scale,
+    newValue => {
+      // Only restore scale on initial load (first time it's set from Firestore)
+      if (newValue !== undefined && !hasRestoredScale && scale.value === undefined) {
+        isSyncingFromFirestore = true;
+        scale.value = newValue;
+        hasRestoredScale = true;
+        isSyncingFromFirestore = false;
+      }
+    },
+    { immediate: true }
+  );
+
+  // Debounced function to save scale (after 1 second of inactivity)
+  const saveScale = useDebounceFn(async (scaleValue: number) => {
+    if (!isSyncingFromFirestore) {
+      void firestoreStore.saveUISettings({ scale: scaleValue });
+    }
+  }, 1000);
+
+  watch(
+    scale,
+    (newValue: number | undefined) => {
+      // Only save if scale is defined and we've already restored it (to avoid saving during initial restore)
+      if (newValue !== undefined && hasRestoredScale && !isSyncingFromFirestore) {
+        void saveScale(newValue);
+      }
+    }
+  );
+
+  function setScale(value: number): void {
+    // Mark that we've restored scale if it was undefined and now we're setting it
+    if (scale.value === undefined) {
+      hasRestoredScale = true;
+    }
+    scale.value = value;
   }
 
   return {
@@ -123,5 +167,9 @@ export const useUIStore = defineStore('ui', () => {
     // Scroll position
     scrollPosition,
     setScrollPosition,
+    // Scale
+    scale,
+    setScale,
+    hasRestoredScale: () => hasRestoredScale,
   };
 });

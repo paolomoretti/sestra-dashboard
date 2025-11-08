@@ -58,12 +58,8 @@
         @click.stop="handleIconClick"
         @mousedown.stop="handleIconMouseDown"
         @contextmenu.stop="handleIconRightClick"
-      /> <!-- Temperature display for temperature sensors -->
-      <div v-if="temperatureDisplay" class="temperature-display"> {{ temperatureDisplay }} </div>
-       <!-- Humidity display for humidity sensors -->
-      <div v-if="humidityDisplay" class="temperature-display"> {{ humidityDisplay }} </div>
-       <!-- Power display for power sensors -->
-      <div v-if="powerDisplay" class="temperature-display"> {{ powerDisplay }} </div>
+      /> <!-- Numeric value display -->
+      <div v-if="numericDisplay" class="temperature-display"> {{ numericDisplay }} </div>
        <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
         >
         <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
@@ -318,6 +314,30 @@
                     @click.stop
                   /> <span class="toggle-slider"></span> </label
                 >
+              </div>
+               <!-- Value Prefix -->
+              <div class="detail-row" v-if="isNumericEntity">
+                 <span class="detail-label">Value Prefix:</span> <input
+                  type="text"
+                  :value="entity.valuePrefix || ''"
+                  @input="handleValuePrefixChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input"
+                  placeholder="e.g., $, €"
+                />
+              </div>
+               <!-- Value Suffix -->
+              <div class="detail-row" v-if="isNumericEntity">
+                 <span class="detail-label">Value Suffix:</span> <input
+                  type="text"
+                  :value="entity.valueSuffix || ''"
+                  @input="handleValueSuffixChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input"
+                  placeholder="e.g., %, °C, W"
+                />
               </div>
                <!-- Icon selection -->
               <div class="detail-row">
@@ -596,8 +616,9 @@ const isTemperatureSensor = computed(() => {
   );
 });
 
-const temperatureDisplay = computed(() => {
-  if (!isTemperatureSensor.value || !props.entity.state) {
+// Unified numeric display that uses prefix/suffix when available
+const numericDisplay = computed(() => {
+  if (!isNumericEntity.value || !props.entity.state) {
     return null;
   }
 
@@ -611,40 +632,98 @@ const temperatureDisplay = computed(() => {
     return null;
   }
 
-  // Try to parse temperature value and unit
-  // State might be: "21.5", "21.5°C", "21.5 °C", "70.5°F", etc.
-  const tempMatch = state.match(/^(-?\d+\.?\d*)\s*°?([CF])?/i);
-  if (!tempMatch?.[1]) {
-    // If no match, try to parse just the number
-    const numMatch = state.match(/^(-?\d+\.?\d*)/);
-    if (numMatch?.[1]) {
-      const value = parseFloat(numMatch[1]);
-      if (!isNaN(value)) {
-        // Infer unit: if > 50, likely Fahrenheit, else Celsius
-        const unit = value > 50 ? 'F' : 'C';
-        return `${value.toFixed(1)}°${unit}`;
+  // Extract numeric value from state
+  const numericValue = parseNumericState(props.entity.state);
+  if (numericValue === null) {
+    return null;
+  }
+
+  // If custom prefix/suffix are set, use them
+  const customPrefix = props.entity.valuePrefix;
+  const customSuffix = props.entity.valueSuffix;
+  
+  if (customPrefix !== undefined || customSuffix !== undefined) {
+    const prefix = customPrefix || '';
+    const suffix = customSuffix || '';
+    // Determine decimal places based on value
+    const decimals = Math.abs(numericValue) < 1 ? 2 : Math.abs(numericValue) < 10 ? 1 : 0;
+    return `${prefix}${numericValue.toFixed(decimals)}${suffix}`;
+  }
+
+  // Otherwise, use type-specific defaults
+  if (isTemperatureSensor.value) {
+    // Temperature display
+    const tempMatch = state.match(/^(-?\d+\.?\d*)\s*°?([CF])?/i);
+    if (!tempMatch?.[1]) {
+      // If no match, try to parse just the number
+      const numMatch = state.match(/^(-?\d+\.?\d*)/);
+      if (numMatch?.[1]) {
+        const value = parseFloat(numMatch[1]);
+        if (!isNaN(value)) {
+          // Infer unit: if > 50, likely Fahrenheit, else Celsius
+          const unit = value > 50 ? 'F' : 'C';
+          return `${value.toFixed(1)}°${unit}`;
+        }
       }
+      return null;
     }
-    return null;
+
+    const value = parseFloat(tempMatch[1]);
+    if (isNaN(value)) {
+      return null;
+    }
+
+    // Get unit from match or infer
+    const matchedUnit = tempMatch[2];
+    let unit = matchedUnit ? matchedUnit.toUpperCase() : null;
+    if (!unit) {
+      // Infer unit: if > 50, likely Fahrenheit, else Celsius
+      unit = value > 50 ? 'F' : 'C';
+    }
+
+    return `${value.toFixed(1)}°${unit}`;
   }
 
-  const value = parseFloat(tempMatch[1]);
-  if (isNaN(value)) {
-    return null;
+  if (isHumiditySensor.value) {
+    // Humidity display
+    const humidityMatch = state.match(/^(\d+\.?\d*)\s*%?/);
+    if (!humidityMatch?.[1]) {
+      return null;
+    }
+
+    const value = parseFloat(humidityMatch[1]);
+    if (isNaN(value)) {
+      return null;
+    }
+
+    // Clamp value between 0 and 100
+    const clampedValue = Math.max(0, Math.min(100, value));
+
+    return `${clampedValue.toFixed(0)}%`;
   }
 
-  // Get unit from match or infer
-  const matchedUnit = tempMatch[2];
-  let unit = matchedUnit ? matchedUnit.toUpperCase() : null;
-  if (!unit) {
-    // Infer unit: if > 50, likely Fahrenheit, else Celsius
-    unit = value > 50 ? 'F' : 'C';
+  if (isPowerSensor.value) {
+    // Power display
+    const powerMatch = state.match(/^(-?\d+\.?\d*)\s*W?/i);
+    if (!powerMatch?.[1]) {
+      return null;
+    }
+
+    const value = parseFloat(powerMatch[1]);
+    if (isNaN(value)) {
+      return null;
+    }
+
+    // Display with W unit
+    return `${value.toFixed(1)}W`;
   }
 
-  return `${value.toFixed(1)}°${unit}`;
+  // Generic numeric display (no prefix/suffix, no type-specific formatting)
+  const decimals = Math.abs(numericValue) < 1 ? 2 : Math.abs(numericValue) < 10 ? 1 : 0;
+  return numericValue.toFixed(decimals);
 });
 
-// Humidity display for humidity sensors
+// Humidity sensor detection
 const isHumiditySensor = computed(() => {
   const deviceClass = props.entity.deviceClass?.toLowerCase();
   const iconName = props.entity.icon?.toLowerCase() ?? '';
@@ -658,39 +737,7 @@ const isHumiditySensor = computed(() => {
   );
 });
 
-const humidityDisplay = computed(() => {
-  if (!isHumiditySensor.value || !props.entity.state) {
-    return null;
-  }
-
-  const state = props.entity.state.trim();
-  if (!state || state === 'unknown' || state === 'unavailable') {
-    return null;
-  }
-
-  // Check condition before displaying
-  if (!stateConditionMet.value) {
-    return null;
-  }
-
-  // Try to parse humidity value (usually just a number, sometimes with %)
-  const humidityMatch = state.match(/^(\d+\.?\d*)\s*%?/);
-  if (!humidityMatch?.[1]) {
-    return null;
-  }
-
-  const value = parseFloat(humidityMatch[1]);
-  if (isNaN(value)) {
-    return null;
-  }
-
-  // Clamp value between 0 and 100
-  const clampedValue = Math.max(0, Math.min(100, value));
-
-  return `${clampedValue.toFixed(0)}%`;
-});
-
-// Power display for power sensors
+// Power sensor detection
 const isPowerSensor = computed(() => {
   const deviceClass = props.entity.deviceClass?.toLowerCase();
   const iconName = props.entity.icon?.toLowerCase() ?? '';
@@ -706,36 +753,6 @@ const isPowerSensor = computed(() => {
     entityId.includes('energy') ||
     entityId.includes('watt')
   );
-});
-
-const powerDisplay = computed(() => {
-  if (!isPowerSensor.value || !props.entity.state) {
-    return null;
-  }
-
-  const state = props.entity.state.trim();
-  if (!state || state === 'unknown' || state === 'unavailable') {
-    return null;
-  }
-
-  // Check condition before displaying
-  if (!stateConditionMet.value) {
-    return null;
-  }
-
-  // Try to parse power value (usually "0.0", "120.5", etc., possibly with "W" unit)
-  const powerMatch = state.match(/^(-?\d+\.?\d*)\s*W?/i);
-  if (!powerMatch?.[1]) {
-    return null;
-  }
-
-  const value = parseFloat(powerMatch[1]);
-  if (isNaN(value)) {
-    return null;
-  }
-
-  // Display with W unit
-  return `${value.toFixed(1)}W`;
 });
 
 // Resize
@@ -1740,6 +1757,22 @@ function handleLabelVisibilityChange(event: Event) {
   const target = event.target as HTMLInputElement;
   // Save to Firestore via emit update
   emit('update', props.entity.key, { labelVisible: target.checked });
+}
+
+function handleValuePrefixChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const prefix = target.value.trim();
+  // Always emit the value explicitly, even if empty string
+  // This ensures the update is always sent, even when clearing the field
+  emit('update', props.entity.key, { valuePrefix: prefix });
+}
+
+function handleValueSuffixChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const suffix = target.value.trim();
+  // Always emit the value explicitly, even if empty string
+  // This ensures the update is always sent, even when clearing the field
+  emit('update', props.entity.key, { valueSuffix: suffix });
 }
 
 function handleStateConditionOperatorChange(event: Event) {
