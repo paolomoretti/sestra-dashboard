@@ -32,6 +32,10 @@ export default defineConfig(({ mode }: ConfigEnv) => {
     server: {
       port: 3333,
       open: true,
+      hmr: {
+        port: 3333,
+        clientPort: 3333,
+      },
       proxy: {
         // Proxy /api requests to Home Assistant
         '/api': {

@@ -12,6 +12,7 @@
     <div
       ref="dashboardRef"
       class="dashboard-container"
+      :class="{ 'drawing-mode': isDrawingRectangle }"
       :style="containerStyle"
       @mousedown="handleMouseDown"
       @mousemove="handleMouseMove"
@@ -24,7 +25,16 @@
         :style="backgroundStyle"
         draggable="false"
         alt="Floor plan"
-      /> <!-- Entities --> <EntityWidget
+      /> <!-- Zone Rectangles (rendered first so they appear behind widgets) --> <ZoneRectangle
+        v-for="zone in zones"
+        :key="zone.id"
+        :zone="zone"
+        :scale="currentScale"
+        :selected="selectedZoneId === zone.id"
+        @select="handleZoneSelect"
+        @update="handleZoneUpdate"
+        @delete="handleZoneDelete"
+      /> <!-- Entities (rendered after zones so they appear on top) --> <EntityWidget
         v-for="entity in placedEntities"
         :key="entity.key"
         :entity="entity"
@@ -43,6 +53,13 @@
 
     </div>
 
+    <!-- Temporary drawing rectangle (while drawing) - outside container for proper positioning -->
+    <div
+      v-if="isDrawingRectangle && drawingRectangle"
+      class="drawing-rectangle"
+      :style="drawingRectangleStyle"
+    />
+
   </div>
 
 </template>
@@ -54,6 +71,7 @@ import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useFirestoreData } from '../composables/useFirestoreData';
 import EntityWidget from './EntityWidget.vue';
+import ZoneRectangle, { type ZoneData } from './ZoneRectangle.vue';
 import {
   setSelectedEntity,
   clearSelection,
@@ -120,6 +138,14 @@ const dashboardRef = ref<HTMLElement>();
 const isDraggingFromPalette = ref(false);
 const isAnimatingZoom = ref(false);
 const entitiesStore = useEntitiesStore();
+
+// Rectangle drawing state
+const isDrawingRectangle = ref(false);
+const drawingRectangle = ref<{ x: number; y: number; width: number; height: number } | null>(null);
+const rectangleStartX = ref(0);
+const rectangleStartY = ref(0);
+const zones = ref<ZoneData[]>([]);
+const selectedZoneId = ref<string | null>(null);
 
 // Firestore data
 const firestoreStore = useFirestoreStore();
@@ -296,12 +322,19 @@ onMounted(() => {
 
     if (e.key === 'Escape') {
       clearSelection();
-    } else if ((e.key === 'Backspace' || e.key === 'Delete') && selectedEntity.value) {
-      // Delete selected entity when Backspace or Delete is pressed
+      selectedZoneId.value = null;
+    } else if ((e.key === 'Backspace' || e.key === 'Delete')) {
+      // Delete selected entity or zone when Backspace or Delete is pressed
       e.preventDefault();
-      if (confirm('Are you sure you want to delete this widget?')) {
-        handleEntityDelete(selectedEntity.value.key);
-        clearSelection();
+      if (selectedEntity.value) {
+        if (confirm('Are you sure you want to delete this widget?')) {
+          handleEntityDelete(selectedEntity.value.key);
+          clearSelection();
+        }
+      } else if (selectedZoneId.value) {
+        if (confirm('Are you sure you want to delete this zone?')) {
+          handleZoneDelete(selectedZoneId.value);
+        }
       }
     }
   };
@@ -370,6 +403,25 @@ onMounted(() => {
       }
     }, 1000); // Wait 1 second for Firestore to load
   });
+
+  // Load zones from Firestore
+  watch(firestoreInitialized, (initialized) => {
+    if (initialized) {
+      loadZonesFromFirestore();
+    }
+  }, { immediate: true });
+
+  // Watch for Firestore widget changes to update zones (debounced to avoid too many reloads)
+  const debouncedLoadZones = useDebounceFn(() => {
+    if (!isDrawingRectangle.value) {
+      loadZonesFromFirestore();
+    }
+  }, 300);
+  
+  watch(() => firestoreStore.widgets, () => {
+    // Only reload if we're not currently drawing or updating a zone
+    debouncedLoadZones();
+  }, { deep: true });
 });
 
 onUnmounted(() => {
@@ -457,8 +509,32 @@ function handleMouseDown(e: MouseEvent) {
   ) {
     if (!dashboardWrapperRef.value) return;
 
+    // If in rectangle drawing mode, start drawing
+    if (isDrawingRectangle.value) {
+      const rect = dashboardWrapperRef.value.getBoundingClientRect();
+      const currentScale = scale.value || 1;
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      // Convert to diagram coordinates
+      const diagramX = (mouseX - panX.value) / currentScale;
+      const diagramY = (mouseY - panY.value) / currentScale;
+      
+      rectangleStartX.value = diagramX;
+      rectangleStartY.value = diagramY;
+      drawingRectangle.value = {
+        x: diagramX,
+        y: diagramY,
+        width: 0,
+        height: 0,
+      };
+      e.preventDefault();
+      return;
+    }
+
     // Deselect any selected entity when clicking empty space
     clearSelection();
+    selectedZoneId.value = null;
 
     isPanning = true;
     const rect = dashboardWrapperRef.value.getBoundingClientRect();
@@ -470,6 +546,30 @@ function handleMouseDown(e: MouseEvent) {
 }
 
 function handleMouseMove(e: MouseEvent) {
+  // Handle rectangle drawing
+  if (isDrawingRectangle.value && drawingRectangle.value && dashboardWrapperRef.value) {
+    const rect = dashboardWrapperRef.value.getBoundingClientRect();
+    const currentScale = scale.value || 1;
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    // Convert to diagram coordinates
+    const diagramX = (mouseX - panX.value) / currentScale;
+    const diagramY = (mouseY - panY.value) / currentScale;
+    
+    // Calculate rectangle dimensions
+    const width = diagramX - rectangleStartX.value;
+    const height = diagramY - rectangleStartY.value;
+    
+    drawingRectangle.value = {
+      x: Math.min(rectangleStartX.value, diagramX),
+      y: Math.min(rectangleStartY.value, diagramY),
+      width: Math.abs(width),
+      height: Math.abs(height),
+    };
+    return;
+  }
+
   if (isPanning && dashboardWrapperRef.value) {
     const rect = dashboardWrapperRef.value.getBoundingClientRect();
     const currentMouseX = e.clientX - rect.left;
@@ -490,6 +590,18 @@ function handleMouseMove(e: MouseEvent) {
 }
 
 function handleMouseUp(e: MouseEvent) {
+  // Handle rectangle drawing completion
+  if (isDrawingRectangle.value && drawingRectangle.value) {
+    const rect = drawingRectangle.value;
+    // Only create rectangle if it has minimum size
+    if (rect.width > 20 && rect.height > 20) {
+      createZone(rect.x, rect.y, rect.width, rect.height);
+    }
+    drawingRectangle.value = null;
+    isDrawingRectangle.value = false;
+    return;
+  }
+
   isPanning = false;
 
   // Deselect if clicking on empty space (not on an entity)
@@ -500,6 +612,7 @@ function handleMouseUp(e: MouseEvent) {
     target.classList.contains('dashboard-wrapper')
   ) {
     clearSelection();
+    selectedZoneId.value = null;
   }
 }
 
@@ -855,9 +968,196 @@ async function createActionButton() {
   }, 100);
 }
 
+// Zone management
+const drawingRectangleStyle = computed(() => {
+  if (!drawingRectangle.value) return {};
+  const currentScale = scale.value || 1;
+  return {
+    position: 'absolute' as const,
+    left: `${drawingRectangle.value.x * currentScale + panX.value}px`,
+    top: `${drawingRectangle.value.y * currentScale + panY.value}px`,
+    width: `${drawingRectangle.value.width * currentScale}px`,
+    height: `${drawingRectangle.value.height * currentScale}px`,
+    border: '2px dashed rgba(33, 150, 243, 0.8)',
+    backgroundColor: 'rgba(33, 150, 243, 0.15)',
+    borderRadius: '4px',
+    pointerEvents: 'none' as const,
+    zIndex: 20000,
+    boxSizing: 'border-box' as const,
+  };
+});
+
+async function createZone(x: number, y: number, width: number, height: number) {
+  const zoneId = `zone_${Date.now()}`;
+  const newZone: ZoneData = {
+    id: zoneId,
+    label: 'New Zone',
+    x,
+    y,
+    width,
+    height,
+  };
+  
+  zones.value.push(newZone);
+  await saveZoneToFirestore(newZone);
+  
+  // Disable drawing mode after creating a zone
+  isDrawingRectangle.value = false;
+  drawingRectangle.value = null;
+  
+  // Select the newly created zone and open the panel for editing
+  selectedZoneId.value = zoneId;
+  clearSelection();
+  
+  // Wait for the zone component to render, then focus the input
+  await nextTick();
+  setTimeout(() => {
+    // Find the zone's label input and focus it
+    const zoneComponent = document.querySelector(`[data-zone-id="${zoneId}"]`);
+    if (zoneComponent) {
+      const input = zoneComponent.querySelector('input[type="text"]') as HTMLInputElement;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+  }, 100);
+}
+
+function handleZoneSelect(zone: ZoneData) {
+  selectedZoneId.value = zone.id;
+  clearSelection();
+}
+
+async function handleZoneUpdate(zoneId: string, updates: Partial<ZoneData>) {
+  const zoneIndex = zones.value.findIndex(z => z.id === zoneId);
+  if (zoneIndex === -1) return;
+  
+  zones.value[zoneIndex] = {
+    ...zones.value[zoneIndex],
+    ...updates,
+  };
+  
+  await saveZoneToFirestore(zones.value[zoneIndex]);
+}
+
+async function handleZoneDelete(zoneId: string) {
+  // Make sure we're only deleting the specified zone
+  if (!zoneId || !selectedZoneId.value || selectedZoneId.value !== zoneId) {
+    console.warn('Zone delete: zoneId mismatch or no zone selected');
+    return;
+  }
+  
+  const zoneIndex = zones.value.findIndex(z => z.id === zoneId);
+  if (zoneIndex === -1) {
+    console.warn('Zone delete: zone not found in local state');
+    return;
+  }
+  
+  // Remove from local state first
+  zones.value.splice(zoneIndex, 1);
+  selectedZoneId.value = null;
+  
+  // Then delete from Firestore
+  await deleteZoneFromFirestore(zoneId);
+}
+
+async function saveZoneToFirestore(zone: ZoneData) {
+  try {
+    console.log('Saving zone to Firestore:', zone);
+    await firestoreStore.saveWidget(zone.id, {
+      entityName: zone.id,
+      position: `${zone.x} ${zone.y}`,
+      size: `${zone.width} ${zone.height}`,
+      labelName: zone.label || 'Unnamed Zone',
+    });
+    console.log('Zone saved successfully');
+  } catch (error) {
+    console.error('Error saving zone to Firestore:', error);
+  }
+}
+
+async function deleteZoneFromFirestore(zoneId: string) {
+  try {
+    await firestoreStore.deleteWidget(zoneId);
+  } catch (error) {
+    console.error('Error deleting zone from Firestore:', error);
+  }
+}
+
+async function loadZonesFromFirestore() {
+  try {
+    const widgets = firestoreStore.widgets;
+    const loadedZones: ZoneData[] = [];
+    
+    for (const [widgetId, widget] of Object.entries(widgets)) {
+      // Only load zones (widgets that start with "zone_")
+      if (widgetId.startsWith('zone_')) {
+        const [x, y] = widget.position.split(' ').map(Number);
+        const [width, height] = widget.size.split(' ').map(Number);
+        
+        // Skip if we already have this zone (to avoid overwriting during updates)
+        const existingZone = zones.value.find(z => z.id === widgetId);
+        if (existingZone) {
+          // Only update if the data actually changed
+          if (existingZone.x !== x || existingZone.y !== y || 
+              existingZone.width !== width || existingZone.height !== height ||
+              existingZone.label !== (widget.labelName || 'Unnamed Zone')) {
+            const index = zones.value.findIndex(z => z.id === widgetId);
+            if (index !== -1) {
+              zones.value[index] = {
+                id: widgetId,
+                label: widget.labelName || 'Unnamed Zone',
+                x: x || 0,
+                y: y || 0,
+                width: width || 100,
+                height: height || 100,
+              };
+            }
+          }
+        } else {
+          loadedZones.push({
+            id: widgetId,
+            label: widget.labelName || 'Unnamed Zone',
+            x: x || 0,
+            y: y || 0,
+            width: width || 100,
+            height: height || 100,
+          });
+        }
+      }
+    }
+    
+    // Add new zones that don't exist yet
+    for (const zone of loadedZones) {
+      if (!zones.value.find(z => z.id === zone.id)) {
+        zones.value.push(zone);
+      }
+    }
+    
+    // Remove zones that no longer exist in Firestore
+    zones.value = zones.value.filter(zone => {
+      return widgets[zone.id] || zone.id.startsWith('zone_');
+    });
+    
+    console.log(`Loaded ${zones.value.length} zones from Firestore`);
+  } catch (error) {
+    console.error('Error loading zones from Firestore:', error);
+  }
+}
+
+// Function to enable/disable rectangle drawing mode
+function setRectangleDrawingMode(enabled: boolean) {
+  isDrawingRectangle.value = enabled;
+  if (!enabled) {
+    drawingRectangle.value = null;
+  }
+}
+
 // Expose functions for external use
 defineExpose({
   createActionButton,
+  setRectangleDrawingMode,
   zoomIn: () => {
     if (!dashboardWrapperRef.value) return;
     const rect = dashboardWrapperRef.value.getBoundingClientRect();
@@ -1063,6 +1363,17 @@ function parsePosition(loc?: string): { x: number; y: number } {
   background: rgba(0, 0, 0, 0.1);
   pointer-events: all;
   z-index: 10;
+}
+
+.drawing-rectangle {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.dashboard-container.drawing-mode {
+  cursor: crosshair;
 }
 </style>
 

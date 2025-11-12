@@ -17,6 +17,13 @@
         <span class="menu-icon">⚡</span>
         <span class="menu-label">Action Button</span>
       </button>
+      <button
+        class="add-menu-item"
+        @click="handleAddZone"
+      >
+        <span class="menu-icon">⬜</span>
+        <span class="menu-label">Zone Rectangle</span>
+      </button>
     </div>
   </div>
 </template>
@@ -26,6 +33,7 @@ import { ref } from 'vue';
 
 const emit = defineEmits<{
   addActionButton: [];
+  addZone: [];
 }>();
 
 const isMenuOpen = ref(false);
@@ -36,6 +44,11 @@ function toggleMenu() {
 
 function handleAddActionButton() {
   emit('addActionButton');
+  isMenuOpen.value = false;
+}
+
+function handleAddZone() {
+  emit('addZone');
   isMenuOpen.value = false;
 }
 

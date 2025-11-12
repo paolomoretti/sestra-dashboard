@@ -16,8 +16,9 @@
 
     <div class="flex flex-1 overflow-hidden relative">
        <Dashboard ref="dashboardRef" class="flex-1 bg-[#1a1a1a] overflow-hidden" /> <NumericValues />
-      <Sidebar v-if="sidebarVisible" /> <ZoomControls /> <AddButton
+      <Sidebar v-if="sidebarVisible" /> <ZoomControls />       <AddButton
         @add-action-button="handleAddActionButton"
+        @add-zone="handleAddZone"
       />
       <ToastContainer />
     </div>
@@ -163,6 +164,10 @@ onMounted(() => {
 
 function handleAddActionButton() {
   dashboardRef.value?.createActionButton();
+}
+
+function handleAddZone() {
+  dashboardRef.value?.setRectangleDrawingMode(true);
 }
 </script>
 
