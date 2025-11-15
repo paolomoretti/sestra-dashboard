@@ -1,5 +1,6 @@
 import type { HAConfig } from '../../config';
 import type { EntityData } from '../composables/useEntitySelection';
+import { useToast } from '../composables/useToast';
 
 // Import config or get from window
 function getApiBaseUrl(config: HAConfig): string {
@@ -105,6 +106,9 @@ async function toggleEntity(entityId: string, config: HAConfig): Promise<void> {
 
     return result;
   } catch (error) {
+    const { error: showError } = useToast();
+    const errorMessage = error instanceof Error ? error.message : 'Failed to toggle entity';
+    showError(`API connection failed: ${errorMessage}`);
     console.error('Error toggling entity:', error);
     throw error;
   }
@@ -186,6 +190,9 @@ async function callService(service: string, entityId: string | undefined, target
 
     return await response.json();
   } catch (error) {
+    const { error: showError } = useToast();
+    const errorMessage = error instanceof Error ? error.message : 'Failed to call service';
+    showError(`API connection failed: ${errorMessage}`);
     console.error('Error calling service:', error);
     throw error;
   }

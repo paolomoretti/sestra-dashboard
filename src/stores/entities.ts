@@ -3,6 +3,7 @@ import { ref, type Ref } from 'vue';
 import type { EntityData } from '../composables/useEntitySelection';
 import type { HAConfig } from '../../config';
 import { extractIconFromHA, getDefaultIcon } from '../utils/iconUtils';
+import { useToast } from '../composables/useToast';
 
 export interface HAEntityState {
   entity_id: string;
@@ -127,6 +128,8 @@ export const useEntitiesStore = defineStore('entities', () => {
           resolved = true;
           clearTimeout(timeout);
           ws.close();
+          const { error: showError } = useToast();
+          showError('WebSocket connection error');
           reject(error);
         }
       };
@@ -135,6 +138,8 @@ export const useEntitiesStore = defineStore('entities', () => {
         if (!resolved) {
           resolved = true;
           clearTimeout(timeout);
+          const { error: showError } = useToast();
+          showError('WebSocket connection closed');
           reject(new Error('WebSocket connection closed'));
         }
       };
@@ -187,6 +192,8 @@ export const useEntitiesStore = defineStore('entities', () => {
       });
 
       if (!response.ok) {
+        const { error: showError } = useToast();
+        showError(`Failed to load entities: HTTP ${response.status} ${response.statusText}`);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
@@ -319,6 +326,9 @@ export const useEntitiesStore = defineStore('entities', () => {
       window.allEntities = entities;
       window.allEntitiesForFiltering = entities;
     } catch (error) {
+      const { error: showError } = useToast();
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load entities';
+      showError(`Failed to load entities: ${errorMessage}`);
       console.error('Error loading entities:', error);
       throw error;
     } finally {
@@ -337,7 +347,11 @@ export const useEntitiesStore = defineStore('entities', () => {
         },
       });
 
-      if (!response.ok) return;
+      if (!response.ok) {
+        const { error: showError } = useToast();
+        showError(`Failed to update states: HTTP ${response.status} ${response.statusText}`);
+        return;
+      }
 
       const states = (await response.json()) as HAEntityState[];
       const stateMap = new Map(states.map(s => [s.entity_id, s.state]));
@@ -353,6 +367,9 @@ export const useEntitiesStore = defineStore('entities', () => {
         window.allEntities = allEntities.value;
       }
     } catch (error) {
+      const { error: showError } = useToast();
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update states';
+      showError(`Failed to update entity states: ${errorMessage}`);
       console.error('Error updating entity states:', error);
     }
   }
@@ -424,6 +441,8 @@ export const useEntitiesStore = defineStore('entities', () => {
 
           // Handle authentication error
           if (message.type === 'auth_invalid') {
+            const { error: showError } = useToast();
+            showError('WebSocket authentication failed');
             console.error('WebSocket authentication failed:', message.message);
             ws.close();
             return;
@@ -461,6 +480,8 @@ export const useEntitiesStore = defineStore('entities', () => {
       };
 
       ws.onerror = error => {
+        const { error: showError } = useToast();
+        showError('WebSocket connection error');
         console.error('WebSocket error:', error);
       };
 

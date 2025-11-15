@@ -13,6 +13,7 @@ import {
 } from './utils/iconUtils';
 import type { HAConfig } from '../config';
 import type { HAEntityState } from './utils/iconUtils';
+import { useToast } from './composables/useToast';
 
 let diagram: go.Diagram | null = null;
 let palette: go.Palette | null = null;
@@ -454,11 +455,17 @@ export function initDashboard(config: HAConfig): void {
               });
           })
           .catch(error => {
+            const { error: showError } = useToast();
+            const errorMessage = error instanceof Error ? error.message : 'Failed to load entities';
+            showError(`Failed to load entities: ${errorMessage}`);
             console.error('Error in loadEntities:', error);
           });
       })
       .catch(error => {
-        addEvent(`Failed to connect: ${error.message}`, 'error');
+        const { error: showError } = useToast();
+        const errorMessage = error instanceof Error ? error.message : 'Connection failed';
+        addEvent(`Failed to connect: ${errorMessage}`, 'error');
+        showError(`API connection failed: ${errorMessage}`);
         console.error('Home Assistant connection error:', error);
         isLoadingEntities = false; // Enable saves even if connection fails
       });
@@ -980,20 +987,27 @@ function defineTemplates() {
  * Test connection to Home Assistant API
  */
 async function testHAConnection(config: HAConfig): Promise<any> {
-  const url = `${getApiBaseUrl(config)}/`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  try {
+    const url = `${getApiBaseUrl(config)}/`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    const { error: showError } = useToast();
+    const errorMessage = error instanceof Error ? error.message : 'Connection failed';
+    showError(`API connection failed: ${errorMessage}`);
+    throw error;
   }
-
-  return response.json();
 }
 
 /**
@@ -1247,7 +1261,10 @@ async function loadEntities(config: HAConfig): Promise<void> {
 
     addEvent(`Loaded ${paletteNodes.length} entities in palette`, 'info');
   } catch (error) {
-    addEvent(`Error loading sensors: ${error.message}`, 'error');
+    const { error: showError } = useToast();
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load entities';
+    addEvent(`Error loading sensors: ${errorMessage}`, 'error');
+    showError(`Failed to load entities: ${errorMessage}`);
     console.error('Error loading sensors:', error);
   }
 }
@@ -1707,7 +1724,9 @@ async function updateSensorStates(config: HAConfig): Promise<void> {
       },
     });
 
-    if (!response.ok) return;
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
 
     const states = await response.json();
     const model = diagram.model;
@@ -1738,6 +1757,9 @@ async function updateSensorStates(config: HAConfig): Promise<void> {
     });
     diagram.commitTransaction('updateStates');
   } catch (error) {
+    const { error: showError } = useToast();
+    const errorMessage = error instanceof Error ? error.message : 'Failed to update states';
+    showError(`Failed to update entity states: ${errorMessage}`);
     console.error('Error updating states:', error);
   }
 }

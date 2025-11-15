@@ -3,6 +3,7 @@
  */
 
 import type { HAConfig } from '../../config';
+import { useToast } from '../composables/useToast';
 
 export function getApiBaseUrl(config: HAConfig): string {
   if (import.meta.env.DEV) {
@@ -49,6 +50,9 @@ export async function fetchHAServices(config: HAConfig): Promise<HAService[]> {
     const services = await response.json();
     return services as HAService[];
   } catch (error) {
+    const { error: showError } = useToast();
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch services';
+    showError(`API connection failed: ${errorMessage}`);
     console.error('Error fetching HA services:', error);
     throw error;
   }
@@ -122,6 +126,9 @@ export async function fetchAutomations(config: HAConfig): Promise<Array<{ entity
 
     return automations;
   } catch (error) {
+    const { error: showError } = useToast();
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch automations';
+    showError(`API connection failed: ${errorMessage}`);
     console.error('Error fetching automations:', error);
     throw error;
   }
