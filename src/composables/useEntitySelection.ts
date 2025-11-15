@@ -13,7 +13,7 @@ export interface EntityData {
   loc?: string;
   size?: string | null;
   tapAction?: TapAction | null;
-  holdAction?: any;
+  holdAction?: TapAction | null;
   // For action buttons
   isActionButton?: boolean;
   labelOverride?: string;

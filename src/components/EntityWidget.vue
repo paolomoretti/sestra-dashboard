@@ -288,6 +288,41 @@
                   placeholder="/dashboard/living-room"
                 />
               </div>
+               <!-- Long Press Action (for regular entities) -->
+              <div v-if="!entity.isActionButton" class="detail-row">
+                 <span class="detail-label">Long Press Action:</span> <select
+                  :value="currentLongPressAction"
+                  @change="handleLongPressActionChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="icon-select"
+                >
+
+                  <option value="">None</option>
+
+                  <option value="toggle">Toggle</option>
+
+                  <option value="more-info">More Info</option>
+
+                  <option value="navigate">Navigate</option>
+                   </select
+                >
+              </div>
+               <!-- Long Press Navigation Path (only show if navigate is selected) -->
+              <div
+                v-if="!entity.isActionButton && currentLongPressAction === 'navigate'"
+                class="detail-row"
+              >
+                 <span class="detail-label">Long Press Nav Path:</span> <input
+                  type="text"
+                  :value="currentLongPressNavigationPath"
+                  @input="handleLongPressNavigationPathChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input"
+                  placeholder="/dashboard/living-room"
+                />
+              </div>
                <!-- Delete Button -->
               <div class="detail-row delete-row">
                  <button
@@ -1178,10 +1213,52 @@ async function handleIconClick(e: MouseEvent) {
 
 // Handle mousedown on icon - allows dragging from anywhere
 function handleIconMouseDown(e: MouseEvent) {
+  // Don't start long press on right-click
+  if (e.button === 2) {
+    handleMouseDown(e);
+    return;
+  }
+
+  // Start long press timer for icon
+  iconLongPressStarted = false;
+  iconLongPressTimer = setTimeout(() => {
+    // Long press detected - execute hold action if exists
+    if (props.entity.holdAction?.action && !hasDragged.value) {
+      iconLongPressStarted = true;
+      void executeLongPressAction();
+    }
+  }, LONG_PRESS_DURATION);
+
   // Always allow dragging from icon
   // If user drags, hasDragged will be set and click handler won't fire
   // If user just clicks, hasDragged will be false and click handler will execute
   handleMouseDown(e);
+}
+
+// Execute long press action
+async function executeLongPressAction() {
+  if (!props.entity.holdAction?.action) return;
+
+  // Cancel any pending click actions
+  hasDragged.value = true;
+
+  // Execute the hold action
+  await executeTapAction(props.entity.holdAction, props.entity, haConfig);
+
+  // Show success toast
+  const { success } = useToast();
+  const actionName =
+    props.entity.holdAction.action === 'toggle'
+      ? 'Toggled'
+      : props.entity.holdAction.action === 'navigate'
+        ? 'Navigated'
+        : 'Action executed';
+  success(`${actionName} (long press): ${displayLabel.value}`);
+
+  // Zoom to entity position
+  if (window.zoomToEntity) {
+    window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
+  }
 }
 
 // Handle right-click on icon - always show info panel
@@ -1204,6 +1281,10 @@ function handleIconRightClick(e: MouseEvent) {
 // Action button handlers
 let longPressTimer: ReturnType<typeof setTimeout> | null = null;
 const LONG_PRESS_DURATION = 500; // ms
+
+// Long press detection for icon (mouse events)
+let iconLongPressTimer: ReturnType<typeof setTimeout> | null = null;
+let iconLongPressStarted = false;
 
 // Handle action button click - execute action
 async function handleActionButtonClick(e: MouseEvent) {
@@ -1655,6 +1736,16 @@ const currentNavigationPath = computed(() => {
   return props.entity.tapAction?.navigation_path ?? '';
 });
 
+// Current long press action value
+const currentLongPressAction = computed(() => {
+  return props.entity.holdAction?.action ?? '';
+});
+
+// Current long press navigation path
+const currentLongPressNavigationPath = computed(() => {
+  return props.entity.holdAction?.navigation_path ?? '';
+});
+
 // Label override for action buttons
 const labelOverride = computed(() => {
   return props.entity.labelOverride ?? props.entity.name ?? '';
@@ -1993,6 +2084,60 @@ function handleNavigationPathChange(event: Event) {
   localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
 }
 
+// Handle long press action change
+function handleLongPressActionChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  const actionType = target.value;
+
+  let holdAction: TapAction | null = null;
+  if (
+    actionType &&
+    (actionType === 'toggle' ||
+      actionType === 'more-info' ||
+      actionType === 'navigate' ||
+      actionType === 'call-service')
+  ) {
+    holdAction = { action: actionType } as TapAction;
+    // If navigate, preserve navigation path if it exists
+    if (actionType === 'navigate' && props.entity.holdAction?.navigation_path) {
+      holdAction.navigation_path = props.entity.holdAction.navigation_path;
+    }
+  }
+
+  emit('update', props.entity.key, { holdAction });
+
+  // Save actions to localStorage
+  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+  if (holdAction || props.entity.tapAction) {
+    actions[props.entity.key] = {
+      tapAction: props.entity.tapAction ?? null,
+      holdAction: holdAction ?? null,
+    };
+  } else {
+    delete actions[props.entity.key];
+  }
+  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+}
+
+// Handle long press navigation path change
+function handleLongPressNavigationPathChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const path = target.value;
+
+  const holdAction: TapAction = props.entity.holdAction ?? { action: 'navigate' };
+  holdAction.navigation_path = path;
+
+  emit('update', props.entity.key, { holdAction });
+
+  // Save actions
+  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+  actions[props.entity.key] = {
+    tapAction: props.entity.tapAction ?? null,
+    holdAction,
+  };
+  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+}
+
 // Handle delete button click
 function handleDelete() {
   if (confirm('Are you sure you want to delete this widget?')) {
@@ -2098,6 +2243,12 @@ function handleMouseMove(e: MouseEvent) {
     }
     // Moved enough - start dragging
     isDragging.value = true;
+    // Cancel long press timer if we're dragging
+    if (iconLongPressTimer) {
+      clearTimeout(iconLongPressTimer);
+      iconLongPressTimer = null;
+      iconLongPressStarted = false;
+    }
     // Now prevent default to stop text selection, etc.
     e.preventDefault();
   }
@@ -2164,6 +2315,18 @@ function handleMouseUp() {
   document.removeEventListener('touchmove', handleTouchMove);
   document.removeEventListener('touchend', handleTouchEnd);
 
+  // Clear long press timer if it's still running
+  if (iconLongPressTimer) {
+    clearTimeout(iconLongPressTimer);
+    iconLongPressTimer = null;
+  }
+
+  // If long press was executed, prevent click action
+  if (iconLongPressStarted) {
+    iconLongPressStarted = false;
+    hasDragged.value = true; // Prevent click handler from firing
+  }
+
   if (isDragging.value) {
     // We were dragging - save position
     isDragging.value = false;
@@ -2183,7 +2346,10 @@ function handleMouseUp() {
     // Click handlers will reset it after checking
   } else {
     // We weren't dragging - reset hasDragged so click handlers can fire
-    hasDragged.value = false;
+    // (unless long press was executed)
+    if (!iconLongPressStarted) {
+      hasDragged.value = false;
+    }
     // Clean up
     delete (window as any).__entityDragOffsetX;
     delete (window as any).__entityDragOffsetY;
