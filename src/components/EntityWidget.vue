@@ -58,8 +58,8 @@
         @click.stop="handleIconClick"
         @mousedown.stop="handleIconMouseDown"
         @contextmenu.stop="handleIconRightClick"
-      /> <!-- Numeric value display -->
-      <div v-if="numericDisplay" class="temperature-display"> {{ numericDisplay }} </div>
+      /> <!-- State value display (numeric or string) -->
+      <div v-if="stateDisplay" class="temperature-display"> {{ stateDisplay }} </div>
        <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
         >
         <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
@@ -471,6 +471,7 @@
                     pattern="^#[0-9A-Fa-f]{6}$"
                   />
                 </div>
+
               </div>
                <!-- Icon Color Off -->
               <div class="detail-row">
@@ -494,6 +495,7 @@
                     pattern="^#[0-9A-Fa-f]{6}$"
                   />
                 </div>
+
               </div>
                <!-- State Condition -->
               <div class="detail-row" v-if="isNumericEntity">
@@ -693,14 +695,14 @@ const isTemperatureSensor = computed(() => {
   );
 });
 
-// Unified numeric display that uses prefix/suffix when available
-const numericDisplay = computed(() => {
+// Unified state display (numeric or string) that uses prefix/suffix when available
+const stateDisplay = computed(() => {
   // Check if state visibility is enabled
   if (!widgetStateVisible.value) {
     return null;
   }
 
-  if (!isNumericEntity.value || !props.entity.state) {
+  if (!props.entity.state) {
     return null;
   }
 
@@ -709,100 +711,104 @@ const numericDisplay = computed(() => {
     return null;
   }
 
-  // Check condition before displaying
-  if (!stateConditionMet.value) {
-    return null;
-  }
-
-  // Extract numeric value from state
+  // Check if state is numeric
   const numericValue = parseNumericState(props.entity.state);
-  if (numericValue === null) {
+  const isNumeric = numericValue !== null;
+
+  // For numeric states, check condition before displaying
+  if (isNumeric && !stateConditionMet.value) {
     return null;
   }
 
-  // If custom prefix/suffix are set, use them
-  const customPrefix = props.entity.valuePrefix;
-  const customSuffix = props.entity.valueSuffix;
-  
-  if (customPrefix !== undefined || customSuffix !== undefined) {
-    const prefix = customPrefix || '';
-    const suffix = customSuffix || '';
-    // Determine decimal places based on value
-    const decimals = Math.abs(numericValue) < 1 ? 2 : Math.abs(numericValue) < 10 ? 1 : 0;
-    return `${prefix}${numericValue.toFixed(decimals)}${suffix}`;
-  }
+  // Handle numeric states with formatting
+  if (isNumeric) {
+    // If custom prefix/suffix are set, use them
+    const customPrefix = props.entity.valuePrefix;
+    const customSuffix = props.entity.valueSuffix;
 
-  // Otherwise, use type-specific defaults
-  if (isTemperatureSensor.value) {
-    // Temperature display
-    const tempMatch = state.match(/^(-?\d+\.?\d*)\s*°?([CF])?/i);
-    if (!tempMatch?.[1]) {
-      // If no match, try to parse just the number
-      const numMatch = state.match(/^(-?\d+\.?\d*)/);
-      if (numMatch?.[1]) {
-        const value = parseFloat(numMatch[1]);
-        if (!isNaN(value)) {
-          // Infer unit: if > 50, likely Fahrenheit, else Celsius
-          const unit = value > 50 ? 'F' : 'C';
-          return `${value.toFixed(1)}°${unit}`;
+    if (customPrefix !== undefined || customSuffix !== undefined) {
+      const prefix = customPrefix || '';
+      const suffix = customSuffix || '';
+      // Determine decimal places based on value
+      const decimals = Math.abs(numericValue) < 1 ? 2 : Math.abs(numericValue) < 10 ? 1 : 0;
+      return `${prefix}${numericValue.toFixed(decimals)}${suffix}`;
+    }
+
+    // Otherwise, use type-specific defaults
+    if (isTemperatureSensor.value) {
+      // Temperature display
+      const tempMatch = state.match(/^(-?\d+\.?\d*)\s*°?([CF])?/i);
+      if (!tempMatch?.[1]) {
+        // If no match, try to parse just the number
+        const numMatch = state.match(/^(-?\d+\.?\d*)/);
+        if (numMatch?.[1]) {
+          const value = parseFloat(numMatch[1]);
+          if (!isNaN(value)) {
+            // Infer unit: if > 50, likely Fahrenheit, else Celsius
+            const unit = value > 50 ? 'F' : 'C';
+            return `${value.toFixed(1)}°${unit}`;
+          }
         }
+        return null;
       }
-      return null;
+
+      const value = parseFloat(tempMatch[1]);
+      if (isNaN(value)) {
+        return null;
+      }
+
+      // Get unit from match or infer
+      const matchedUnit = tempMatch[2];
+      let unit = matchedUnit ? matchedUnit.toUpperCase() : null;
+      if (!unit) {
+        // Infer unit: if > 50, likely Fahrenheit, else Celsius
+        unit = value > 50 ? 'F' : 'C';
+      }
+
+      return `${value.toFixed(1)}°${unit}`;
     }
 
-    const value = parseFloat(tempMatch[1]);
-    if (isNaN(value)) {
-      return null;
+    if (isHumiditySensor.value) {
+      // Humidity display
+      const humidityMatch = state.match(/^(\d+\.?\d*)\s*%?/);
+      if (!humidityMatch?.[1]) {
+        return null;
+      }
+
+      const value = parseFloat(humidityMatch[1]);
+      if (isNaN(value)) {
+        return null;
+      }
+
+      // Clamp value between 0 and 100
+      const clampedValue = Math.max(0, Math.min(100, value));
+
+      return `${clampedValue.toFixed(0)}%`;
     }
 
-    // Get unit from match or infer
-    const matchedUnit = tempMatch[2];
-    let unit = matchedUnit ? matchedUnit.toUpperCase() : null;
-    if (!unit) {
-      // Infer unit: if > 50, likely Fahrenheit, else Celsius
-      unit = value > 50 ? 'F' : 'C';
+    if (isPowerSensor.value) {
+      // Power display
+      const powerMatch = state.match(/^(-?\d+\.?\d*)\s*W?/i);
+      if (!powerMatch?.[1]) {
+        return null;
+      }
+
+      const value = parseFloat(powerMatch[1]);
+      if (isNaN(value)) {
+        return null;
+      }
+
+      // Display with W unit
+      return `${value.toFixed(1)}W`;
     }
 
-    return `${value.toFixed(1)}°${unit}`;
+    // Generic numeric display (no prefix/suffix, no type-specific formatting)
+    const decimals = Math.abs(numericValue) < 1 ? 2 : Math.abs(numericValue) < 10 ? 1 : 0;
+    return numericValue.toFixed(decimals);
   }
 
-  if (isHumiditySensor.value) {
-    // Humidity display
-    const humidityMatch = state.match(/^(\d+\.?\d*)\s*%?/);
-    if (!humidityMatch?.[1]) {
-      return null;
-    }
-
-    const value = parseFloat(humidityMatch[1]);
-    if (isNaN(value)) {
-      return null;
-    }
-
-    // Clamp value between 0 and 100
-    const clampedValue = Math.max(0, Math.min(100, value));
-
-    return `${clampedValue.toFixed(0)}%`;
-  }
-
-  if (isPowerSensor.value) {
-    // Power display
-    const powerMatch = state.match(/^(-?\d+\.?\d*)\s*W?/i);
-    if (!powerMatch?.[1]) {
-      return null;
-    }
-
-    const value = parseFloat(powerMatch[1]);
-    if (isNaN(value)) {
-      return null;
-    }
-
-    // Display with W unit
-    return `${value.toFixed(1)}W`;
-  }
-
-  // Generic numeric display (no prefix/suffix, no type-specific formatting)
-  const decimals = Math.abs(numericValue) < 1 ? 2 : Math.abs(numericValue) < 10 ? 1 : 0;
-  return numericValue.toFixed(decimals);
+  // For non-numeric states, display as string
+  return state;
 });
 
 // Humidity sensor detection
@@ -965,9 +971,21 @@ const widgetLabelVisible = computed(() => {
   return props.entity.labelVisible !== undefined ? props.entity.labelVisible : true;
 });
 
-// Widget-specific state visibility (from Firestore, default to true)
+// Widget-specific state visibility (from Firestore)
+// Defaults to false for binary states (on/off) since icon color already indicates state
+// Defaults to true for other states
 const widgetStateVisible = computed(() => {
-  return props.entity.stateVisible !== undefined ? props.entity.stateVisible : true;
+  // If explicitly set, use that value
+  if (props.entity.stateVisible !== undefined) {
+    return props.entity.stateVisible;
+  }
+  // Default to false for binary states (on/off)
+  const state = props.entity.state?.toLowerCase().trim();
+  if (state === 'on' || state === 'off') {
+    return false;
+  }
+  // Default to true for other states
+  return true;
 });
 
 // Combined label visibility: show only when both global AND widget are true
@@ -1136,9 +1154,12 @@ async function handleIconClick(e: MouseEvent) {
     await executeTapAction(props.entity.tapAction, props.entity, haConfig);
     // Show success toast
     const { success } = useToast();
-    const actionName = props.entity.tapAction.action === 'toggle' ? 'Toggled' : 
-                      props.entity.tapAction.action === 'navigate' ? 'Navigated' : 
-                      'Action executed';
+    const actionName =
+      props.entity.tapAction.action === 'toggle'
+        ? 'Toggled'
+        : props.entity.tapAction.action === 'navigate'
+          ? 'Navigated'
+          : 'Action executed';
     success(`${actionName}: ${displayLabel.value}`);
     // Still zoom to entity after action (but don't select)
     if (window.zoomToEntity) {
@@ -1303,7 +1324,7 @@ function handleActionButtonTouchStart(e: TouchEvent) {
 
 function handleActionButtonTouchMove(e: TouchEvent) {
   if (e.touches.length !== 1) return;
-  
+
   const touch = e.touches[0];
   if (!touch) return;
 
@@ -1319,7 +1340,7 @@ function handleActionButtonTouchMove(e: TouchEvent) {
       clearTimeout(longPressTimer);
       longPressTimer = null;
     }
-    
+
     // If selected, start dragging
     if (isSelected.value) {
       e.preventDefault();
@@ -1777,9 +1798,13 @@ function handleTapActionChange(event: Event) {
 const labelOverrideInput = ref<string>(labelOverride.value);
 
 // Sync local ref with prop when it changes externally
-watch(labelOverride, (newValue) => {
-  labelOverrideInput.value = newValue;
-}, { immediate: true });
+watch(
+  labelOverride,
+  newValue => {
+    labelOverrideInput.value = newValue;
+  },
+  { immediate: true }
+);
 
 // Handle label override blur (save when user leaves the field)
 function handleLabelOverrideBlur() {
@@ -1883,7 +1908,7 @@ function handleIconColorOnTextChange(event: Event) {
   let color = target.value.trim();
   // Ensure it starts with # and is valid hex
   if (color && !color.startsWith('#')) {
-    color = '#' + color;
+    color = `#${color}`;
   }
   // Validate hex color format
   if (color && /^#[0-9A-Fa-f]{6}$/.test(color)) {
@@ -1906,7 +1931,7 @@ function handleIconColorOffTextChange(event: Event) {
   let color = target.value.trim();
   // Ensure it starts with # and is valid hex
   if (color && !color.startsWith('#')) {
-    color = '#' + color;
+    color = `#${color}`;
   }
   // Validate hex color format
   if (color && /^#[0-9A-Fa-f]{6}$/.test(color)) {
@@ -2257,7 +2282,7 @@ function handleTouchStart(e: TouchEvent) {
 
 function handleTouchMove(e: TouchEvent) {
   if (e.touches.length !== 1) return;
-  
+
   const touch = e.touches[0];
   if (!touch) return;
 
@@ -2374,8 +2399,8 @@ function handleTouchEnd(e: TouchEvent) {
     }
 
     // Check if we tapped on the icon
-    const clickedOnIcon = target.closest('.entity-icon') !== null || 
-                          target.closest('.action-button-icon') !== null;
+    const clickedOnIcon =
+      target.closest('.entity-icon') !== null || target.closest('.action-button-icon') !== null;
     if (clickedOnIcon) {
       // Trigger icon click
       handleIconClick(e as any);
