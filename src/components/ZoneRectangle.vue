@@ -7,6 +7,7 @@
     :style="rectangleStyle"
     @click.stop="handleClick"
     @mousedown.stop="handleMouseDown"
+    @contextmenu.stop="handleRightClick"
   >
      <!-- Rectangle -->
     <div
@@ -76,6 +77,32 @@
                 placeholder="Zone label"
               />
             </div>
+             <!-- Lock Toggle -->
+            <div class="detail-row">
+               <span class="detail-label">Lock Zone:</span> <label class="toggle-switch"
+                > <input
+                  type="checkbox"
+                  :checked="zone.locked ?? false"
+                  @change="handleLockChange"
+                  @mousedown.stop
+                  @click.stop
+                /> <span class="toggle-slider"></span> </label
+              >
+            </div>
+             <!-- Shortcut Key -->
+            <div class="detail-row">
+               <span class="detail-label">Shortcut Key:</span> <input
+                type="text"
+                :value="zone.shortcutKey || ''"
+                @input="handleShortcutKeyChange"
+                @mousedown.stop
+                @click.stop
+                @keydown="handleShortcutKeyKeydown"
+                class="text-input"
+                placeholder="e.g., 1, 2, a"
+                maxlength="1"
+              />
+            </div>
              <!-- Delete Button -->
             <div class="detail-row delete-row">
                <button
@@ -111,6 +138,8 @@ export interface ZoneData {
   width: number;
   height: number;
   color?: string; // Optional color for the zone
+  locked?: boolean; // Whether the zone is locked (cannot be dragged)
+  shortcutKey?: string; // Keyboard shortcut key to zoom to this zone (e.g., '1', '2', 'a', etc.)
 }
 
 interface Props {
@@ -288,6 +317,10 @@ function handleClick(e: MouseEvent) {
     hasDragged.value = false;
     return;
   }
+  // If zone is locked, only allow selection from the label (handled by handleLabelClick)
+  if (props.zone.locked) {
+    return;
+  }
   // Check if click is on the rectangle itself (not a child element)
   if (
     e.target === e.currentTarget ||
@@ -329,6 +362,15 @@ function handleLabelRightClick(e: MouseEvent) {
   });
 }
 
+// Handle right-click on zone rectangle
+function handleRightClick(e: MouseEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+  isPanelOpen.value = true;
+  isExpanded.value = true;
+  emit('select', props.zone);
+}
+
 function toggleExpanded() {
   isExpanded.value = !isExpanded.value;
 }
@@ -336,6 +378,38 @@ function toggleExpanded() {
 function handleLabelBlur() {
   const newLabel = labelInput.value.trim();
   emit('update', props.zone.id, { label: newLabel || 'Unnamed Zone' });
+}
+
+function handleLockChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  emit('update', props.zone.id, { locked: target.checked });
+}
+
+function handleShortcutKeyChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const key = target.value.trim().toLowerCase();
+  // Only allow alphanumeric characters
+  if (key === '' || /^[a-z0-9]$/.test(key)) {
+    const updates: Partial<ZoneData> = {};
+    if (key) {
+      updates.shortcutKey = key;
+    } else {
+      // Explicitly clear shortcutKey by setting it to empty string
+      // This will be handled in saveZoneToFirestore to remove it
+      updates.shortcutKey = '';
+    }
+    emit('update', props.zone.id, updates);
+  } else {
+    // Reset to empty if invalid character
+    target.value = props.zone.shortcutKey ?? '';
+  }
+}
+
+function handleShortcutKeyKeydown(event: KeyboardEvent) {
+  // Prevent the key from being entered if it's a special key
+  if (event.key.length > 1 && !['Backspace', 'Delete', 'Tab'].includes(event.key)) {
+    event.preventDefault();
+  }
 }
 
 function handleDelete() {
@@ -350,6 +424,11 @@ function handleDelete() {
 // Drag handling
 function handleMouseDown(e: MouseEvent) {
   if (e.button === 2) return;
+
+  // Don't allow dragging if zone is locked
+  if (props.zone.locked) {
+    return;
+  }
 
   const target = e.target as HTMLElement;
   if (target.classList.contains('resize-handle')) {
@@ -795,6 +874,56 @@ onUnmounted(() => {
 .expand-leave-from {
   opacity: 1;
   max-height: 500px;
+}
+
+/* Toggle switch for lock */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #555;
+  transition: 0.3s;
+  border-radius: 20px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: '';
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #2d5aa0;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(16px);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 1px #2d5aa0;
 }
 </style>
 

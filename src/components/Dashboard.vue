@@ -52,8 +52,8 @@
       />
 
     </div>
+     <!-- Temporary drawing rectangle (while drawing) - outside container for proper positioning -->
 
-    <!-- Temporary drawing rectangle (while drawing) - outside container for proper positioning -->
     <div
       v-if="isDrawingRectangle && drawingRectangle"
       class="drawing-rectangle"
@@ -68,7 +68,6 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
-import { useLocalStorage } from '../composables/useLocalStorage';
 import { useFirestoreData } from '../composables/useFirestoreData';
 import EntityWidget from './EntityWidget.vue';
 import ZoneRectangle, { type ZoneData } from './ZoneRectangle.vue';
@@ -86,51 +85,6 @@ import { useUIStore } from '../stores/ui';
 const FLOORPLAN_WIDTH = 2190;
 const FLOORPLAN_HEIGHT = 6501;
 const floorplanImage = '/floorplan.png';
-
-// Predefined zoom levels (using percentages relative to floorplan dimensions)
-interface ZoomLevel {
-  scalePercent: number; // Scale as percentage (e.g., 96.7 means 0.967 scale)
-  panXPercent: number; // Pan X as percentage of floorplan width
-  panYPercent: number; // Pan Y as percentage of floorplan height
-}
-
-const PREDEFINED_ZOOM_LEVELS: Record<string, ZoomLevel> = {
-  kitchen: {
-    scalePercent: 96.7,
-    panXPercent: 13.53,
-    panYPercent: -21.82,
-  },
-  cellar: {
-    scalePercent: 66.7,
-    panXPercent: -7.67,
-    panYPercent: -21.77,
-  },
-  sara: {
-    scalePercent: 76.7,
-    panXPercent: 20.98,
-    panYPercent: -63.35,
-  },
-  paolo: {
-    scalePercent: 76.7,
-    panXPercent: 28.62,
-    panYPercent: -31.37,
-  },
-  bedroom: {
-    scalePercent: 76.7,
-    panXPercent: 26.15,
-    panYPercent: -43.44,
-  },
-  garden: {
-    scalePercent: 56.7,
-    panXPercent: 47.01,
-    panYPercent: -35.41,
-  },
-  livingroom: {
-    scalePercent: 86.7,
-    panXPercent: 19.33,
-    panYPercent: -5.09,
-  },
-};
 
 // Refs
 const dashboardWrapperRef = ref<HTMLElement>();
@@ -193,7 +147,7 @@ const scale = computed({
   get: () => uiScale.value ?? 1,
   set: (value: number) => {
     setUIScale(value);
-  }
+  },
 });
 
 // Computed: Get full entity data for placed entities
@@ -203,58 +157,61 @@ const placedEntities = computed(() => {
   const sizesData = sizes.value;
   const iconsData = icons.value;
   const actionsData = actions.value;
-      const labelOverridesData = labelOverrides.value;
-      const haActionsData = haActions.value;
-      const valuePrefixesData = valuePrefixes.value;
-      const valueSuffixesData = valueSuffixes.value;
+  const labelOverridesData = labelOverrides.value;
+  const haActionsData = haActions.value;
+  const valuePrefixesData = valuePrefixes.value;
+  const valueSuffixesData = valueSuffixes.value;
 
-      return placedEntityIds.value
-        .map(entityId => {
-          // Check if this is an action button
-          const isActionButton = entityId.startsWith('action_button_');
+  return placedEntityIds.value
+    .map(entityId => {
+      // Check if this is an action button
+      const isActionButton = entityId.startsWith('action_button_');
 
-          // Find entity in store (or create synthetic entity for action buttons)
-          let entity: EntityData | null =
-            entitiesStore.allEntities.find(e => e.key === entityId) ?? null;
+      // Find entity in store (or create synthetic entity for action buttons)
+      let entity: EntityData | null =
+        entitiesStore.allEntities.find(e => e.key === entityId) ?? null;
 
-          // If not found and it's an action button, create a synthetic entity
-          if (!entity && isActionButton) {
-            entity = {
-              key: entityId,
-              isActionButton: true,
-              category: 'action_button',
-              name: labelOverridesData[entityId] || 'Action Button',
-              state: 'idle',
-              icon: iconsData[entityId] || 'gesture-tap-button',
-              loc: positionsData[entityId] || '0 0',
-              size: sizesData[entityId] || (isActionButton ? '120 80' : '80 40'),
-              tapAction: actionsData[entityId]?.tapAction || { action: 'call-service', service: '' },
-              labelOverride: labelOverridesData[entityId] || 'Action Button',
-              haAction: haActionsData[entityId] || { service: '' },
-            };
-          }
+      // If not found and it's an action button, create a synthetic entity
+      if (!entity && isActionButton) {
+        entity = {
+          key: entityId,
+          isActionButton: true,
+          category: 'action_button',
+          name: labelOverridesData[entityId] || 'Action Button',
+          state: 'idle',
+          icon: iconsData[entityId] || 'gesture-tap-button',
+          loc: positionsData[entityId] || '0 0',
+          size: sizesData[entityId] || (isActionButton ? '120 80' : '80 40'),
+          tapAction: actionsData[entityId]?.tapAction || { action: 'call-service', service: '' },
+          labelOverride: labelOverridesData[entityId] || 'Action Button',
+          haAction: haActionsData[entityId] || { service: '' },
+        };
+      }
 
-          if (!entity) return null;
+      if (!entity) return null;
 
-          return {
-            ...entity,
-            loc: positionsData[entityId] || entity.loc,
-            size: sizesData[entityId] || entity.size,
-            icon: iconsData[entityId] || entity.icon,
-            tapAction: actionsData[entityId]?.tapAction ?? entity.tapAction,
-            holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
-            labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
-            labelVisible: labelVisible.value[entityId] !== undefined ? labelVisible.value[entityId] : true,
-            stateVisible: stateVisible.value[entityId] !== undefined ? stateVisible.value[entityId] : true,
-            valuePrefix: valuePrefixesData[entityId] ?? entity.valuePrefix,
-            valueSuffix: valueSuffixesData[entityId] ?? entity.valueSuffix,
-            iconColorOn: (firestoreStore.widgets[entityId] as any)?.iconColorOn ?? entity.iconColorOn,
-            iconColorOff: (firestoreStore.widgets[entityId] as any)?.iconColorOff ?? entity.iconColorOff,
-            haAction: haActionsData[entityId] ?? entity.haAction,
-          } as EntityData;
-        })
-        .filter((e): e is EntityData => e !== null);
-    });
+      return {
+        ...entity,
+        loc: positionsData[entityId] || entity.loc,
+        size: sizesData[entityId] || entity.size,
+        icon: iconsData[entityId] || entity.icon,
+        tapAction: actionsData[entityId]?.tapAction ?? entity.tapAction,
+        holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
+        labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
+        labelVisible:
+          labelVisible.value[entityId] !== undefined ? labelVisible.value[entityId] : true,
+        stateVisible:
+          stateVisible.value[entityId] !== undefined ? stateVisible.value[entityId] : true,
+        valuePrefix: valuePrefixesData[entityId] ?? entity.valuePrefix,
+        valueSuffix: valueSuffixesData[entityId] ?? entity.valueSuffix,
+        iconColorOn: (firestoreStore.widgets[entityId] as any)?.iconColorOn ?? entity.iconColorOn,
+        iconColorOff:
+          (firestoreStore.widgets[entityId] as any)?.iconColorOff ?? entity.iconColorOff,
+        haAction: haActionsData[entityId] ?? entity.haAction,
+      } as EntityData;
+    })
+    .filter((e): e is EntityData => e !== null);
+});
 // Calculate initial scale to fit image in viewport
 function calculateInitialScale(): number {
   if (!dashboardWrapperRef.value) return 1;
@@ -298,7 +255,6 @@ watch(
   { immediate: false }
 );
 
-
 // Handle Escape key to deselect
 let escapeHandler: ((_e: KeyboardEvent) => void) | null = null;
 
@@ -323,7 +279,7 @@ onMounted(() => {
     if (e.key === 'Escape') {
       clearSelection();
       selectedZoneId.value = null;
-    } else if ((e.key === 'Backspace' || e.key === 'Delete')) {
+    } else if (e.key === 'Backspace' || e.key === 'Delete') {
       // Delete selected entity or zone when Backspace or Delete is pressed
       e.preventDefault();
       if (selectedEntity.value) {
@@ -340,15 +296,41 @@ onMounted(() => {
   };
   document.addEventListener('keydown', escapeHandler);
 
+  // Register keyboard shortcuts for zones
+  zoneShortcutHandlerRef = (e: KeyboardEvent) => {
+    // Don't trigger if user is typing in input fields
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return;
+    }
+
+    // Don't trigger if meta/ctrl keys are pressed
+    if (e.metaKey || e.ctrlKey) {
+      return;
+    }
+
+    // Find zone with matching shortcut key
+    const key = e.key.toLowerCase();
+    const zone = zones.value.find(z => z.shortcutKey?.toLowerCase() === key);
+    if (zone) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (window.zoomToZone) {
+        window.zoomToZone(zone, 50);
+      }
+    }
+  };
+  document.addEventListener('keydown', zoneShortcutHandlerRef);
+
   // Initialize scale: wait for Firestore to load, then restore from UI store if available, otherwise calculate initial
   let scaleInitialized = false;
-  
+
   const initializeScaleOnce = () => {
     if (scaleInitialized || !dashboardWrapperRef.value) return;
-    
+
     const wrapperWidth = dashboardWrapperRef.value.clientWidth;
     const wrapperHeight = dashboardWrapperRef.value.clientHeight;
-    
+
     // If scale is already restored from Firestore, use it
     if (uiScale.value !== undefined) {
       const scaledWidth = FLOORPLAN_WIDTH * uiScale.value;
@@ -360,7 +342,7 @@ onMounted(() => {
       scaleInitialized = true;
       return;
     }
-    
+
     // If Firestore is initialized but no scale was found, calculate initial
     // Only do this if Firestore has finished loading (to avoid setting before restore)
     if (firestoreInitialized.value) {
@@ -369,7 +351,7 @@ onMounted(() => {
       const scaledHeight = FLOORPLAN_HEIGHT * targetScale;
       const newPanX = (wrapperWidth - scaledWidth) / 2;
       const newPanY = (wrapperHeight - scaledHeight) / 2;
-      
+
       setUIScale(targetScale);
       panX.value = newPanX;
       panY.value = newPanY;
@@ -378,7 +360,7 @@ onMounted(() => {
   };
 
   // Watch for Firestore initialization
-  watch(firestoreInitialized, (initialized) => {
+  watch(firestoreInitialized, initialized => {
     if (initialized) {
       nextTick(() => {
         initializeScaleOnce();
@@ -387,13 +369,17 @@ onMounted(() => {
   });
 
   // Watch for scale restoration from Firestore (this takes priority)
-  watch(uiScale, (newScale) => {
-    if (newScale !== undefined && dashboardWrapperRef.value && !scaleInitialized) {
-      nextTick(() => {
-        initializeScaleOnce();
-      });
-    }
-  }, { immediate: true });
+  watch(
+    uiScale,
+    newScale => {
+      if (newScale !== undefined && dashboardWrapperRef.value && !scaleInitialized) {
+        nextTick(() => {
+          initializeScaleOnce();
+        });
+      }
+    },
+    { immediate: true }
+  );
 
   // Fallback: if Firestore never initializes or takes too long, initialize after a delay
   nextTick(() => {
@@ -405,11 +391,15 @@ onMounted(() => {
   });
 
   // Load zones from Firestore
-  watch(firestoreInitialized, (initialized) => {
-    if (initialized) {
-      loadZonesFromFirestore();
-    }
-  }, { immediate: true });
+  watch(
+    firestoreInitialized,
+    initialized => {
+      if (initialized) {
+        loadZonesFromFirestore();
+      }
+    },
+    { immediate: true }
+  );
 
   // Watch for Firestore widget changes to update zones (debounced to avoid too many reloads)
   const debouncedLoadZones = useDebounceFn(() => {
@@ -417,16 +407,26 @@ onMounted(() => {
       loadZonesFromFirestore();
     }
   }, 300);
-  
-  watch(() => firestoreStore.widgets, () => {
-    // Only reload if we're not currently drawing or updating a zone
-    debouncedLoadZones();
-  }, { deep: true });
+
+  watch(
+    () => firestoreStore.widgets,
+    () => {
+      // Only reload if we're not currently drawing or updating a zone
+      debouncedLoadZones();
+    },
+    { deep: true }
+  );
 });
+
+// Store zone shortcut handler reference for cleanup
+let zoneShortcutHandlerRef: ((e: KeyboardEvent) => void) | null = null;
 
 onUnmounted(() => {
   if (escapeHandler) {
     document.removeEventListener('keydown', escapeHandler);
+  }
+  if (zoneShortcutHandlerRef) {
+    document.removeEventListener('keydown', zoneShortcutHandlerRef);
   }
 });
 
@@ -515,11 +515,11 @@ function handleMouseDown(e: MouseEvent) {
       const currentScale = scale.value || 1;
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
-      
+
       // Convert to diagram coordinates
       const diagramX = (mouseX - panX.value) / currentScale;
       const diagramY = (mouseY - panY.value) / currentScale;
-      
+
       rectangleStartX.value = diagramX;
       rectangleStartY.value = diagramY;
       drawingRectangle.value = {
@@ -552,15 +552,15 @@ function handleMouseMove(e: MouseEvent) {
     const currentScale = scale.value || 1;
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    
+
     // Convert to diagram coordinates
     const diagramX = (mouseX - panX.value) / currentScale;
     const diagramY = (mouseY - panY.value) / currentScale;
-    
+
     // Calculate rectangle dimensions
     const width = diagramX - rectangleStartX.value;
     const height = diagramY - rectangleStartY.value;
-    
+
     drawingRectangle.value = {
       x: Math.min(rectangleStartX.value, diagramX),
       y: Math.min(rectangleStartY.value, diagramY),
@@ -636,7 +636,7 @@ function handleTouchStart(e: TouchEvent) {
       target.classList.contains('dashboard-container') ||
       target.classList.contains('dashboard-background') ||
       target.classList.contains('dashboard-wrapper')
-      ) {
+    ) {
       isPanning = true;
       clearSelection();
     }
@@ -997,18 +997,18 @@ async function createZone(x: number, y: number, width: number, height: number) {
     width,
     height,
   };
-  
+
   zones.value.push(newZone);
   await saveZoneToFirestore(newZone);
-  
+
   // Disable drawing mode after creating a zone
   isDrawingRectangle.value = false;
   drawingRectangle.value = null;
-  
+
   // Select the newly created zone and open the panel for editing
   selectedZoneId.value = zoneId;
   clearSelection();
-  
+
   // Wait for the zone component to render, then focus the input
   await nextTick();
   setTimeout(() => {
@@ -1032,12 +1032,13 @@ function handleZoneSelect(zone: ZoneData) {
 async function handleZoneUpdate(zoneId: string, updates: Partial<ZoneData>) {
   const zoneIndex = zones.value.findIndex(z => z.id === zoneId);
   if (zoneIndex === -1) return;
-  
+
+  const existingZone = zones.value[zoneIndex];
   zones.value[zoneIndex] = {
-    ...zones.value[zoneIndex],
+    ...existingZone,
     ...updates,
-  };
-  
+  } as ZoneData;
+
   await saveZoneToFirestore(zones.value[zoneIndex]);
 }
 
@@ -1047,17 +1048,17 @@ async function handleZoneDelete(zoneId: string) {
     console.warn('Zone delete: zoneId mismatch or no zone selected');
     return;
   }
-  
+
   const zoneIndex = zones.value.findIndex(z => z.id === zoneId);
   if (zoneIndex === -1) {
     console.warn('Zone delete: zone not found in local state');
     return;
   }
-  
+
   // Remove from local state first
   zones.value.splice(zoneIndex, 1);
   selectedZoneId.value = null;
-  
+
   // Then delete from Firestore
   await deleteZoneFromFirestore(zoneId);
 }
@@ -1065,12 +1066,24 @@ async function handleZoneDelete(zoneId: string) {
 async function saveZoneToFirestore(zone: ZoneData) {
   try {
     console.log('Saving zone to Firestore:', zone);
-    await firestoreStore.saveWidget(zone.id, {
+    const widgetData: any = {
       entityName: zone.id,
       position: `${zone.x} ${zone.y}`,
       size: `${zone.width} ${zone.height}`,
       labelName: zone.label || 'Unnamed Zone',
-    });
+    };
+    // Only include locked if it's set
+    if (zone.locked !== undefined) {
+      widgetData.locked = zone.locked;
+    }
+    // Include shortcutKey if it's set and not empty, otherwise don't include it (clears it)
+    if (zone.shortcutKey !== undefined && zone.shortcutKey !== '') {
+      widgetData.shortcutKey = zone.shortcutKey;
+    } else if (zone.shortcutKey === '') {
+      // Explicitly clear shortcutKey by not including it (Firestore will remove it)
+      // We could also use deleteField, but for simplicity, just don't include it
+    }
+    await firestoreStore.saveWidget(zone.id, widgetData);
     console.log('Zone saved successfully');
   } catch (error) {
     console.error('Error saving zone to Firestore:', error);
@@ -1089,20 +1102,31 @@ async function loadZonesFromFirestore() {
   try {
     const widgets = firestoreStore.widgets;
     const loadedZones: ZoneData[] = [];
-    
+
     for (const [widgetId, widget] of Object.entries(widgets)) {
       // Only load zones (widgets that start with "zone_")
       if (widgetId.startsWith('zone_')) {
         const [x, y] = widget.position.split(' ').map(Number);
         const [width, height] = widget.size.split(' ').map(Number);
-        
+
+        // Extract locked and shortcutKey from widget data
+        const widgetData = widget as any;
+        const locked = widgetData.locked ?? false;
+        const shortcutKey = widgetData.shortcutKey;
+
         // Skip if we already have this zone (to avoid overwriting during updates)
         const existingZone = zones.value.find(z => z.id === widgetId);
         if (existingZone) {
           // Only update if the data actually changed
-          if (existingZone.x !== x || existingZone.y !== y || 
-              existingZone.width !== width || existingZone.height !== height ||
-              existingZone.label !== (widget.labelName || 'Unnamed Zone')) {
+          if (
+            existingZone.x !== x ||
+            existingZone.y !== y ||
+            existingZone.width !== width ||
+            existingZone.height !== height ||
+            existingZone.label !== (widget.labelName || 'Unnamed Zone') ||
+            existingZone.locked !== locked ||
+            existingZone.shortcutKey !== shortcutKey
+          ) {
             const index = zones.value.findIndex(z => z.id === widgetId);
             if (index !== -1) {
               zones.value[index] = {
@@ -1112,6 +1136,8 @@ async function loadZonesFromFirestore() {
                 y: y || 0,
                 width: width || 100,
                 height: height || 100,
+                locked,
+                shortcutKey,
               };
             }
           }
@@ -1123,23 +1149,25 @@ async function loadZonesFromFirestore() {
             y: y || 0,
             width: width || 100,
             height: height || 100,
+            locked,
+            shortcutKey,
           });
         }
       }
     }
-    
+
     // Add new zones that don't exist yet
     for (const zone of loadedZones) {
       if (!zones.value.find(z => z.id === zone.id)) {
         zones.value.push(zone);
       }
     }
-    
+
     // Remove zones that no longer exist in Firestore
     zones.value = zones.value.filter(zone => {
       return widgets[zone.id] || zone.id.startsWith('zone_');
     });
-    
+
     console.log(`Loaded ${zones.value.length} zones from Firestore`);
   } catch (error) {
     console.error('Error loading zones from Firestore:', error);
@@ -1253,65 +1281,72 @@ defineExpose({
     panX.value = newPanX;
     panY.value = newPanY;
   },
-  getZoomLevel: () => scale.value || 1,
-  zoomToLevel: (levelName: string) => {
-    const level = PREDEFINED_ZOOM_LEVELS[levelName];
-    if (!level) {
-      console.warn(`Zoom level "${levelName}" not found`);
-      return;
-    }
+  zoomToZone: (zone: ZoneData, padding: number = 50) => {
+    if (!dashboardWrapperRef.value) return;
+    const rect = dashboardWrapperRef.value.getBoundingClientRect();
+    const wrapperWidth = rect.width;
+    const wrapperHeight = rect.height;
 
-    // Convert percentages to actual values
-    // Scale: percentage to decimal (96.7% -> 0.967)
-    const targetScale = level.scalePercent / 100;
+    // Calculate zone center and dimensions with padding
+    const zoneCenterX = zone.x + zone.width / 2;
+    const zoneCenterY = zone.y + zone.height / 2;
+    const zoneWidthWithPadding = zone.width + padding * 2;
+    const zoneHeightWithPadding = zone.height + padding * 2;
 
-    // Pan: percentage of floorplan dimensions to pixels
-    // panXPercent of 13.53 means 13.53% of floorplan width
-    const targetPanX = (level.panXPercent / 100) * FLOORPLAN_WIDTH;
-    const targetPanY = (level.panYPercent / 100) * FLOORPLAN_HEIGHT;
+    // Calculate scale so the zone takes up about 60% of the viewport width and height
+    const scaleX = wrapperWidth / 1.67 / zoneWidthWithPadding;
+    const scaleY = wrapperHeight / 1.67 / zoneHeightWithPadding;
+    const targetScale = Math.min(scaleX, scaleY, maxScale);
+
+    // Calculate pan to center the zone in the viewport
+    const centerX = wrapperWidth / 2;
+    const centerY = wrapperHeight / 2;
+    const newPanX = centerX - zoneCenterX * targetScale;
+    const newPanY = centerY - zoneCenterY * targetScale;
 
     // Enable animation for smooth transition
     isAnimatingZoom.value = true;
 
     // Update local state immediately
     scale.value = targetScale;
-    panX.value = targetPanX;
-    panY.value = targetPanY;
+    panX.value = newPanX;
+    panY.value = newPanY;
 
     // Disable animation after transition completes
     setTimeout(() => {
       isAnimatingZoom.value = false;
-    }, 400); // Match the transition duration
+    }, 400);
   },
+  getZoomLevel: () => scale.value || 1,
   addEntity: (entity: EntityData) => {
     if (!placedEntityIds.value.includes(entity.key)) {
       setPlacedEntityIds([...placedEntityIds.value, entity.key]);
     }
   },
   addEntityAtViewportCenter: async (entity: EntityData) => {
-    if (!dashboardWrapperRef.value) return;
-    
+    if (!dashboardWrapperRef.value) return Promise.resolve();
+
     const rect = dashboardWrapperRef.value.getBoundingClientRect();
     const currentScale = scale.value || 1;
-    
+
     // Calculate center of viewport in wrapper coordinates
     const viewportCenterX = rect.width / 2;
     const viewportCenterY = rect.height / 2;
-    
+
     // Convert to diagram coordinates (accounting for pan and scale)
     const x = (viewportCenterX - panX.value) / currentScale;
     const y = (viewportCenterY - panY.value) / currentScale;
-    
+
     // Add entity to placed entities if not already there
     if (!placedEntityIds.value.includes(entity.key)) {
       await setPlacedEntityIds([...placedEntityIds.value, entity.key]);
     }
-    
+
     // Save position at viewport center
     const newPositions = { ...positions.value };
     newPositions[entity.key] = `${x} ${y}`;
     await setPositions(newPositions);
-    
+
     // Select the newly added entity so user can see it
     setSelectedEntity(entity);
   },

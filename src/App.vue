@@ -16,11 +16,10 @@
 
     <div class="flex flex-1 overflow-hidden relative">
        <Dashboard ref="dashboardRef" class="flex-1 bg-[#1a1a1a] overflow-hidden" /> <NumericValues />
-      <Sidebar v-if="sidebarVisible" /> <ZoomControls />       <AddButton
+      <Sidebar v-if="sidebarVisible" /> <ZoomControls /> <AddButton
         @add-action-button="handleAddActionButton"
         @add-zone="handleAddZone"
-      />
-      <ToastContainer />
+      /> <ToastContainer />
     </div>
 
   </div>
@@ -65,62 +64,6 @@ useHotkeys([
     preventDefault: true,
   },
   {
-    key: 'k',
-    handler: () => {
-      dashboardRef.value?.zoomToLevel('kitchen');
-    },
-    description: 'Zoom to Kitchen',
-    preventDefault: true,
-  },
-  {
-    key: 'c',
-    handler: () => {
-      dashboardRef.value?.zoomToLevel('cellar');
-    },
-    description: 'Zoom to Cellar',
-    preventDefault: true,
-  },
-  {
-    key: 's',
-    handler: () => {
-      dashboardRef.value?.zoomToLevel('sara');
-    },
-    description: 'Zoom to Sara',
-    preventDefault: true,
-  },
-  {
-    key: 'p',
-    handler: () => {
-      dashboardRef.value?.zoomToLevel('paolo');
-    },
-    description: 'Zoom to Paolo',
-    preventDefault: true,
-  },
-  {
-    key: 'b',
-    handler: () => {
-      dashboardRef.value?.zoomToLevel('bedroom');
-    },
-    description: 'Zoom to Bedroom',
-    preventDefault: true,
-  },
-  {
-    key: 'g',
-    handler: () => {
-      dashboardRef.value?.zoomToLevel('garden');
-    },
-    description: 'Zoom to Garden',
-    preventDefault: true,
-  },
-  {
-    key: 'l',
-    handler: () => {
-      dashboardRef.value?.zoomToLevel('livingroom');
-    },
-    description: 'Zoom to Living Room',
-    preventDefault: true,
-  },
-  {
     key: '+',
     handler: () => {
       dashboardRef.value?.zoomIn();
@@ -155,11 +98,13 @@ onMounted(() => {
     window.zoomReset = () => dashboardRef.value?.zoomReset();
     window.zoomFitToWidth = () => dashboardRef.value?.zoomFitToWidth();
     window.zoomToEntity = (x: number, y: number) => dashboardRef.value?.zoomToEntity(x, y);
+    window.zoomToZone = (zone: any, padding?: number) =>
+      dashboardRef.value?.zoomToZone(zone, padding);
     window.getZoomLevel = () => dashboardRef.value?.getZoomLevel() ?? 1;
     window.addEntity = (entity: any) => dashboardRef.value?.addEntity(entity);
-    window.addEntityAtViewportCenter = (entity: any) => dashboardRef.value?.addEntityAtViewportCenter(entity);
+    window.addEntityAtViewportCenter = (entity: any) =>
+      dashboardRef.value?.addEntityAtViewportCenter(entity) ?? Promise.resolve();
   }
-
 });
 
 function handleAddActionButton() {
