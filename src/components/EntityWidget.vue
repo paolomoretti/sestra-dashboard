@@ -20,6 +20,7 @@
        <button
         class="action-button"
         :class="{ selected: isSelected }"
+        :style="actionButtonStyle"
         @click.stop="handleActionButtonClick"
         @mousedown.stop="handleActionButtonMouseDown"
       >
@@ -59,7 +60,9 @@
         @mousedown.stop="handleIconMouseDown"
         @contextmenu.stop="handleIconRightClick"
       /> <!-- State value display (numeric or string) -->
-      <div v-if="stateDisplay" class="temperature-display"> {{ stateDisplay }} </div>
+      <div v-if="stateDisplay" class="temperature-display" :style="stateDisplayStyle">
+         {{ stateDisplay }}
+      </div>
        <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
         >
         <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
@@ -75,8 +78,9 @@
      <!-- Entity Label - positioned relative to wrapper (only for non-action buttons) -->
     <div
       v-if="!entity.isActionButton"
-      v-show="showLabel && !isSelected && !isPanelOpen"
+      v-show="showLabel && !isSelected"
       class="entity-label"
+      :style="labelStyle"
       :title="displayLabel"
       @click.stop="handleLabelClick"
       @mousedown.stop="handleLabelMouseDown"
@@ -85,508 +89,22 @@
        <span class="label-text">{{ displayLabel }}</span
       >
     </div>
-     <!-- Entity Info Panel - positioned at label location -->
-    <div
+     <!-- Entity Info Panel - positioned at label location --> <EntityInfoPanel
       v-if="isPanelOpen"
-      ref="panelRef"
-      class="entity-info-panel"
-      :class="{ expanded: isExpanded }"
-      @mousedown.stop
-      @click.stop
-    >
-       <!-- Label/Header - always visible, clickable to collapse/expand -->
-      <div
-        class="panel-header"
-        :class="{ collapsed: !isExpanded, expanded: isExpanded }"
-        @click="toggleExpanded"
-      >
-         <span class="panel-title">{{ displayLabel }}</span
-        > <span class="expand-indicator" v-if="isExpanded">▲</span>
-      </div>
-       <!-- Expandable content --> <transition name="expand"
-        >
-        <div v-if="isExpanded">
-           <!-- Divider -->
-          <div class="panel-divider"></div>
-           <!-- Tabs -->
-          <div class="panel-tabs">
-             <button
-              class="panel-tab"
-              :class="{ active: activeTab === 'general' }"
-              @click.stop="activeTab = 'general'"
-              @mousedown.stop
-            >
-               General </button
-            > <button
-              class="panel-tab"
-              :class="{ active: activeTab === 'style' }"
-              @click.stop="activeTab = 'style'"
-              @mousedown.stop
-            >
-               Style </button
-            >
-          </div>
-           <!-- Entity details -->
-          <div class="panel-content">
-             <!-- General Tab -->
-            <div v-show="activeTab === 'general'" class="tab-content">
-               <!-- Label Override -->
-              <div class="detail-row">
-                 <span class="detail-label">Label:</span> <input
-                  type="text"
-                  v-model="labelOverrideInput"
-                  @blur="handleLabelOverrideBlur"
-                  @mousedown.stop
-                  @click.stop
-                  class="text-input"
-                  placeholder="Custom label (leave empty for default)"
-                />
-              </div>
-
-              <div class="detail-row">
-                 <span class="detail-label">Entity ID:</span> <span
-                  class="detail-value entity-id-value"
-                  >{{ entity.key || 'N/A' }}</span
-                >
-              </div>
-
-              <div class="detail-row">
-                 <span class="detail-label">State:</span> <span class="detail-value state-value">{{
-                  entity.state || 'unknown'
-                }}</span
-                >
-              </div>
-
-              <div class="detail-row">
-                 <span class="detail-label">Category:</span> <span class="detail-value">{{
-                  entity.category || 'sensor'
-                }}</span
-                >
-              </div>
-               <!-- HA Action (for action buttons) -->
-              <div v-if="entity.isActionButton" class="detail-row">
-                 <span class="detail-label">HA Action:</span>
-                <div class="ha-action-selector-wrapper">
-                   <input
-                    type="text"
-                    :value="haActionSearchQuery || (currentHAAction ? currentHAActionLabel : '')"
-                    @input="
-                      e => {
-                        haActionSearchQuery = (e.target as HTMLInputElement).value;
-                      }
-                    "
-                    @mousedown.stop
-                    @click.stop
-                    @focus="
-                      () => {
-                        if (currentHAAction) haActionSearchQuery = '';
-                      }
-                    "
-                    @keydown="handleHAActionSearchKeydown"
-                    :placeholder="currentHAAction ? currentHAActionLabel : 'Search actions...'"
-                    class="icon-search-input"
-                  />
-                  <div
-                    class="icon-dropdown ha-action-dropdown"
-                    @mousedown.stop
-                    @click.stop
-                    v-show="haActionSearchQuery.trim().length > 0"
-                  >
-
-                    <div
-                      v-for="service in filteredHAActions"
-                      :key="service.service"
-                      class="icon-option"
-                      :class="{ 'icon-option-selected': currentHAAction === service.service }"
-                      @click="selectHAAction(service.service)"
-                    >
-                       <span class="icon-option-label">{{ service.label }}</span
-                      >
-                    </div>
-
-                    <div
-                      v-if="filteredHAActions.length === 0 && !isLoadingHAActions"
-                      class="icon-search-hint"
-                    >
-                       No actions found
-                    </div>
-
-                    <div v-if="isLoadingHAActions" class="icon-loading"> Loading actions... </div>
-
-                  </div>
-
-                  <div
-                    v-if="currentHAActionLabel && !haActionSearchQuery.trim()"
-                    class="ha-action-selected"
-                  >
-                     Selected: {{ currentHAActionLabel }}
-                  </div>
-                   <!-- Automation selector (shown when automation.trigger is selected) -->
-                  <div v-if="currentHAAction === 'automation.trigger'" class="automation-selector">
-
-                    <div class="detail-label" style="margin-bottom: 6px">Automation:</div>
-                     <select
-                      :value="selectedAutomation"
-                      @change="handleAutomationChange"
-                      @mousedown.stop
-                      @click.stop
-                      class="icon-select"
-                    >
-
-                      <option value="">Select automation...</option>
-
-                      <option
-                        v-for="automation in automations"
-                        :key="automation.entity_id"
-                        :value="automation.entity_id"
-                      >
-                         {{ automation.name }}
-                      </option>
-                       </select
-                    >
-                    <div v-if="isLoadingAutomations" class="icon-loading">
-                       Loading automations...
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </div>
-               <!-- Tap Action (for regular entities) -->
-              <div v-if="!entity.isActionButton" class="detail-row">
-                 <span class="detail-label">Tap Action:</span> <select
-                  :value="currentTapAction"
-                  @change="handleTapActionChange"
-                  @mousedown.stop
-                  @click.stop
-                  class="icon-select"
-                >
-
-                  <option value="">None</option>
-
-                  <option value="toggle">Toggle</option>
-
-                  <option value="more-info">More Info</option>
-
-                  <option value="navigate">Navigate</option>
-                   </select
-                >
-              </div>
-               <!-- Navigation Path (only show if navigate is selected) -->
-              <div
-                v-if="!entity.isActionButton && currentTapAction === 'navigate'"
-                class="detail-row"
-              >
-                 <span class="detail-label">Navigation Path:</span> <input
-                  type="text"
-                  :value="currentNavigationPath"
-                  @input="handleNavigationPathChange"
-                  @mousedown.stop
-                  @click.stop
-                  class="text-input"
-                  placeholder="/dashboard/living-room"
-                />
-              </div>
-               <!-- Long Press Action (for regular entities) -->
-              <div v-if="!entity.isActionButton" class="detail-row">
-                 <span class="detail-label">Long Press Action:</span> <select
-                  :value="currentLongPressAction"
-                  @change="handleLongPressActionChange"
-                  @mousedown.stop
-                  @click.stop
-                  class="icon-select"
-                >
-
-                  <option value="">None</option>
-
-                  <option value="toggle">Toggle</option>
-
-                  <option value="more-info">More Info</option>
-
-                  <option value="navigate">Navigate</option>
-                   </select
-                >
-              </div>
-               <!-- Long Press Navigation Path (only show if navigate is selected) -->
-              <div
-                v-if="!entity.isActionButton && currentLongPressAction === 'navigate'"
-                class="detail-row"
-              >
-                 <span class="detail-label">Long Press Nav Path:</span> <input
-                  type="text"
-                  :value="currentLongPressNavigationPath"
-                  @input="handleLongPressNavigationPathChange"
-                  @mousedown.stop
-                  @click.stop
-                  class="text-input"
-                  placeholder="/dashboard/living-room"
-                />
-              </div>
-               <!-- Delete Button -->
-              <div class="detail-row delete-row">
-                 <button
-                  @click.stop="handleDelete"
-                  @mousedown.stop
-                  class="delete-button"
-                  title="Delete widget (or press Backspace)"
-                >
-                   🗑️ Delete Widget </button
-                >
-              </div>
-
-            </div>
-             <!-- Style Tab -->
-            <div v-show="activeTab === 'style'" class="tab-content">
-               <!-- Label Visibility -->
-              <div class="detail-row">
-                 <span class="detail-label">Show Label:</span> <label class="toggle-switch"
-                  > <input
-                    type="checkbox"
-                    :checked="widgetLabelVisible"
-                    @change="handleLabelVisibilityChange"
-                    @mousedown.stop
-                    @click.stop
-                  /> <span class="toggle-slider"></span> </label
-                >
-              </div>
-               <!-- State Visibility -->
-              <div class="detail-row" v-if="entity.state">
-                 <span class="detail-label">Show State:</span> <label class="toggle-switch"
-                  > <input
-                    type="checkbox"
-                    :checked="widgetStateVisible"
-                    @change="handleStateVisibilityChange"
-                    @mousedown.stop
-                    @click.stop
-                  /> <span class="toggle-slider"></span> </label
-                >
-              </div>
-               <!-- Value Prefix -->
-              <div class="detail-row" v-if="isNumericEntity">
-                 <span class="detail-label">Value Prefix:</span> <input
-                  type="text"
-                  :value="entity.valuePrefix || ''"
-                  @input="handleValuePrefixChange"
-                  @mousedown.stop
-                  @click.stop
-                  class="text-input"
-                  placeholder="e.g., $, €"
-                />
-              </div>
-               <!-- Value Suffix -->
-              <div class="detail-row" v-if="isNumericEntity">
-                 <span class="detail-label">Value Suffix:</span> <input
-                  type="text"
-                  :value="entity.valueSuffix || ''"
-                  @input="handleValueSuffixChange"
-                  @mousedown.stop
-                  @click.stop
-                  class="text-input"
-                  placeholder="e.g., %, °C, W"
-                />
-              </div>
-               <!-- Icon selection -->
-              <div class="detail-row">
-                 <span class="detail-label">Icon:</span>
-                <div class="icon-selector-wrapper">
-
-                  <div class="icon-search-wrapper">
-                     <input
-                      type="text"
-                      v-model="iconSearchQuery"
-                      @mousedown.stop
-                      @click.stop
-                      @input.stop
-                      @keydown="handleIconSearchKeydown"
-                      @focus="handleIconSearchFocus"
-                      placeholder="Search icons..."
-                      class="icon-search-input"
-                      ref="iconSearchInputRef"
-                    />
-                  </div>
-
-                  <div
-                    class="icon-dropdown"
-                    @mousedown.stop
-                    @click.stop
-                    @keydown="handleIconDropdownKeydown"
-                    @focus="handleIconDropdownFocus"
-                    tabindex="0"
-                    ref="iconDropdownRef"
-                  >
-                     <!-- Only show options if debounced search has at least 1 character -->
-                    <template v-if="debouncedIconSearchQuery.trim().length > 0"
-                      >
-                      <div
-                        class="icon-option"
-                        :class="{
-                          'icon-option-selected': currentIcon === '',
-                          'icon-option-highlighted': highlightedIndex === 0,
-                        }"
-                        @click="selectIcon('')"
-                        @mouseenter="highlightedIndex = 0"
-                      >
-                         <span class="icon-option-label">(Use HA default)</span>
-                      </div>
-
-                      <div v-if="isLoadingIcons" class="icon-loading"> Loading icons... </div>
-
-                      <div
-                        v-for="(icon, index) in filteredIconOptions"
-                        :key="icon.value"
-                        class="icon-option"
-                        :class="{
-                          'icon-option-selected': currentIcon === icon.value,
-                          'icon-option-highlighted': highlightedIndex === index + 1,
-                        }"
-                        :ref="
-                          el => {
-                            if (el) iconOptionRefs[index] = el as HTMLElement;
-                          }
-                        "
-                        @click="selectIcon(icon.value)"
-                        @mouseenter="highlightedIndex = index + 1"
-                      >
-                         <img
-                          v-if="getIconPreview(icon.value)"
-                          :src="getIconPreview(icon.value) ?? ''"
-                          class="icon-preview"
-                          alt=""
-                        /> <span class="icon-option-label">{{ icon.label }}</span
-                        >
-                      </div>
-                       </template
-                    >
-                    <div
-                      v-if="
-                        iconSearchQuery.trim().length > 0 &&
-                        debouncedIconSearchQuery.trim().length === 0
-                      "
-                      class="icon-search-hint"
-                    >
-                       Searching...
-                    </div>
-
-                    <div
-                      v-else-if="
-                        debouncedIconSearchQuery.trim().length > 0 &&
-                        filteredIconOptions.length === 0 &&
-                        !isLoadingIcons
-                      "
-                      class="icon-search-hint"
-                    >
-                       No icons found
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </div>
-               <!-- Icon Color Overrides -->
-              <div class="detail-row">
-                 <span class="detail-label">Icon Color (On):</span>
-                <div class="color-input-wrapper">
-                   <input
-                    type="color"
-                    :value="entity.iconColorOn || '#FFC107'"
-                    @input="handleIconColorOnChange"
-                    @mousedown.stop
-                    @click.stop
-                    class="color-input"
-                  /> <input
-                    type="text"
-                    :value="entity.iconColorOn || '#FFC107'"
-                    @input="handleIconColorOnTextChange"
-                    @mousedown.stop
-                    @click.stop
-                    class="text-input color-text-input"
-                    placeholder="#FFC107"
-                    pattern="^#[0-9A-Fa-f]{6}$"
-                  />
-                </div>
-
-              </div>
-               <!-- Icon Color Off -->
-              <div class="detail-row">
-                 <span class="detail-label">Icon Color (Off):</span>
-                <div class="color-input-wrapper">
-                   <input
-                    type="color"
-                    :value="entity.iconColorOff || '#888888'"
-                    @input="handleIconColorOffChange"
-                    @mousedown.stop
-                    @click.stop
-                    class="color-input"
-                  /> <input
-                    type="text"
-                    :value="entity.iconColorOff || '#888888'"
-                    @input="handleIconColorOffTextChange"
-                    @mousedown.stop
-                    @click.stop
-                    class="text-input color-text-input"
-                    placeholder="#888888"
-                    pattern="^#[0-9A-Fa-f]{6}$"
-                  />
-                </div>
-
-              </div>
-               <!-- State Condition -->
-              <div class="detail-row" v-if="isNumericEntity">
-                 <span class="detail-label">Show State If:</span>
-                <div class="condition-controls">
-                   <select
-                    :value="stateConditionOperator"
-                    @change="handleStateConditionOperatorChange"
-                    @mousedown.stop
-                    @click.stop
-                    class="icon-select condition-operator"
-                  >
-
-                    <option value="">Always</option>
-
-                    <option value="equal">Equal (=)</option>
-
-                    <option value="greater">Greater (>)</option>
-
-                    <option value="lower">Lower (<)</option>
-
-                    <option value="greaterEqual">Greater or Equal (≥)</option>
-
-                    <option value="lowerEqual">Lower or Equal (≤)</option>
-                     </select
-                  > <input
-                    v-if="stateConditionOperator"
-                    type="number"
-                    step="any"
-                    :value="stateConditionValue"
-                    @input="handleStateConditionValueChange"
-                    @mousedown.stop
-                    @click.stop
-                    class="text-input condition-value"
-                    placeholder="Value"
-                  />
-                </div>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-         </transition
-      >
-    </div>
-
+      :entity="entity"
+      :is-open="isPanelOpen"
+      :scale="scale"
+      :display-label="displayLabel"
+      @update="(entityId, updates) => emit('update', entityId, updates)"
+      @delete="entityId => emit('delete', entityId)"
+      @close="isPanelOpen = false"
+    />
   </div>
 
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { debouncedRef } from '@vueuse/core';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useToast } from '../composables/useToast';
@@ -596,24 +114,12 @@ import {
   clearSelection,
   type EntityData,
 } from '../composables/useEntitySelection';
-import {
-  getMDIIconPath,
-  createIconSVG,
-  getIconColor,
-  extractIconFromHA,
-  getDefaultIcon,
-} from '../utils/iconUtils';
-import { executeTapAction, type TapAction } from '../utils/actionHandler';
+import { getMDIIconPath, createIconSVG, getIconColor } from '../utils/iconUtils';
+import { executeTapAction } from '../utils/actionHandler';
 import { useUIStore } from '../stores/ui';
-import { getAllMDIIcons, COMMON_MDI_ICONS } from '../utils/mdiIconList';
 import { haConfig } from '../../config';
-import {
-  fetchHAServices,
-  getAllServices,
-  fetchAutomations,
-  getApiBaseUrl,
-  type HAService,
-} from '../utils/haServices';
+import { getApiBaseUrl } from '../utils/haServices';
+import EntityInfoPanel from './EntityInfoPanel.vue';
 
 interface Props {
   entity: EntityData;
@@ -628,14 +134,11 @@ const emit = defineEmits<{
 }>();
 
 const widgetRef = ref<HTMLElement>();
-const panelRef = ref<HTMLElement>();
 const isResizing = ref(false);
 const isDragging = ref(false);
 const hasDragged = ref(false);
 const hasDraggedFromLabel = ref(false);
 const isPanelOpen = ref(false);
-const isExpanded = ref(false);
-const activeTab = ref<'general' | 'style'>('general');
 
 // Position in diagram coordinates (not screen coordinates)
 const initialPos = parsePosition(props.entity.loc);
@@ -714,6 +217,69 @@ const iconStyle = computed(() => ({
   height: '100%',
   objectFit: 'contain' as const,
 }));
+
+// Helper to compute scale factor for label scaling (using square root for gradual scaling)
+const labelScaleFactor = computed(() => {
+  const scale = uiScale.value ?? props.scale ?? 1;
+  // Clamp scale to prevent division by zero or extreme values
+  // Minimum scale of 0.1 to prevent labels from becoming too large
+  const clampedScale = Math.max(0.1, scale);
+  // Use square root for more gradual scaling - labels will scale but not as dramatically
+  return Math.sqrt(clampedScale);
+});
+
+// Label style - scales inversely with zoom to stay readable
+const labelStyle = computed(() => {
+  const scaleFactor = labelScaleFactor.value;
+  // Base font-size is 1.5rem
+  // At scale 0.5: fontSize = 1.5 / sqrt(0.5) ≈ 2.12rem (instead of 3rem linear)
+  // At scale 2: fontSize = 1.5 / sqrt(2) ≈ 1.06rem (instead of 0.75rem linear)
+  const fontSize = 1.5 / scaleFactor;
+  // Also scale padding and other dimensions proportionally
+  const padding = `${4 / scaleFactor}px ${8 / scaleFactor}px`;
+  const marginTop = `${4 / scaleFactor}px`;
+  const borderRadius = `${3 / scaleFactor}px`;
+  const maxWidth = `${250 / scaleFactor}px`;
+
+  return {
+    fontSize: `${fontSize}rem`,
+    padding,
+    marginTop,
+    borderRadius,
+    maxWidth,
+  };
+});
+
+// State display style (temperature, humidity, power, etc.) - scales with zoom
+const stateDisplayStyle = computed(() => {
+  const scaleFactor = labelScaleFactor.value;
+  // Base font-size is 2rem
+  const fontSize = 2 / scaleFactor;
+  // Scale padding and other dimensions proportionally
+  const padding = `${6 / scaleFactor}px ${12 / scaleFactor}px`;
+  const borderRadius = `${8 / scaleFactor}px`;
+  const marginLeft = `${8 / scaleFactor}px`;
+
+  return {
+    fontSize: `${fontSize}rem`,
+    padding,
+    borderRadius,
+    marginLeft,
+  };
+});
+
+// Action button style - scales entire button with zoom using transform
+const actionButtonStyle = computed(() => {
+  const scaleFactor = labelScaleFactor.value;
+  // Scale the entire button inversely to zoom (when zoomed out, button gets bigger)
+  // scaleFactor is sqrt(zoom), so we scale by 1/scaleFactor
+  const scale = 1 / scaleFactor;
+
+  return {
+    transform: `scale(${scale})`,
+    transformOrigin: 'center center',
+  };
+});
 
 // Temperature display for temperature sensors
 const isTemperatureSensor = computed(() => {
@@ -999,7 +565,7 @@ function handleResizeEnd() {
 
 // Labels visibility
 const uiStore = useUIStore();
-const { labelsVisible } = storeToRefs(uiStore);
+const { labelsVisible, scale: uiScale } = storeToRefs(uiStore);
 
 // Widget-specific label visibility (from Firestore, default to true)
 const widgetLabelVisible = computed(() => {
@@ -1049,30 +615,11 @@ const actionButtonLabel = computed(() => {
   return props.entity.name || props.entity.key;
 });
 
-// State condition settings (stored per entity)
+// State condition settings (stored per entity) - only read values, setters are in panel
 const stateConditionOperatorKey = `ha_dashboard_state_condition_operator_${props.entity.key}`;
 const stateConditionValueKey = `ha_dashboard_state_condition_value_${props.entity.key}`;
-const [stateConditionOperator, setStateConditionOperator] = useLocalStorage<string>(
-  stateConditionOperatorKey,
-  ''
-);
-const [stateConditionValue, setStateConditionValue] = useLocalStorage<number | null>(
-  stateConditionValueKey,
-  null
-);
-
-// Check if entity has numeric state
-const isNumericEntity = computed(() => {
-  const state = props.entity.state;
-  if (!state) return false;
-  const trimmedState = state.trim();
-  if (!trimmedState || trimmedState === 'unknown' || trimmedState === 'unavailable') return false;
-
-  // Try to parse as number (handles temperature, humidity, power, etc.)
-  const numericMatch = trimmedState.match(/^(-?\d+\.?\d*)/);
-  if (!numericMatch?.[1]) return false;
-  return !isNaN(parseFloat(numericMatch[1]));
-});
+const [stateConditionOperator] = useLocalStorage<string>(stateConditionOperatorKey, '');
+const [stateConditionValue] = useLocalStorage<number | null>(stateConditionValueKey, null);
 
 // Parse numeric value from state (handles temperature, humidity, power, etc.)
 function parseNumericState(state: string | undefined): number | null {
@@ -1123,6 +670,8 @@ function handleClick() {
     return;
   }
   emit('select', props.entity);
+  // Toggle panel - if open, close it; if closed, open it
+  isPanelOpen.value = !isPanelOpen.value;
   // Zoom to entity position
   if (window.zoomToEntity) {
     window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
@@ -1204,8 +753,9 @@ async function handleIconClick(e: MouseEvent) {
     return;
   }
 
-  // Otherwise, select entity and zoom
+  // Otherwise, select entity, open panel, and zoom
   emit('select', props.entity);
+  isPanelOpen.value = true;
   if (window.zoomToEntity) {
     window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
   }
@@ -1270,7 +820,6 @@ function handleIconRightClick(e: MouseEvent) {
   // Always select the entity and open the panel, regardless of any conditions
   emit('select', props.entity);
   isPanelOpen.value = true;
-  isExpanded.value = true;
 
   // Zoom to entity position (center of widget)
   if (window.zoomToEntity) {
@@ -1341,7 +890,6 @@ function handleActionButtonRightClick(e: MouseEvent) {
   // Always select the entity and open the panel
   emit('select', props.entity);
   isPanelOpen.value = true;
-  isExpanded.value = true;
 
   // Zoom to entity position
   if (window.zoomToEntity) {
@@ -1510,8 +1058,10 @@ function handleLabelClick() {
     hasDragged.value = false;
     return;
   }
-  // Select the entity (don't open panel on click, only on right-click)
+  // Select the entity and toggle panel
   emit('select', props.entity);
+  // Toggle panel - if open, close it; if closed, open it
+  isPanelOpen.value = !isPanelOpen.value;
   // Zoom to entity position (center of widget)
   if (window.zoomToEntity) {
     window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
@@ -1524,649 +1074,13 @@ function handleLabelRightClick(e: MouseEvent) {
   e.preventDefault();
   e.stopPropagation();
 
-  // Always select the entity and open the panel, regardless of any conditions
+  // Always select the entity and open the panel (don't toggle, always open)
   emit('select', props.entity);
   isPanelOpen.value = true;
-  isExpanded.value = true;
 
   // Zoom to entity position (center of widget)
   if (window.zoomToEntity) {
     window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
-  }
-}
-
-function toggleExpanded() {
-  isExpanded.value = !isExpanded.value;
-}
-
-// Icon options - only load when panel is expanded
-const iconSearchQuery = ref('');
-// Debounced search query - only updates after 500ms of no typing
-const debouncedIconSearchQuery = debouncedRef(iconSearchQuery, 500);
-const highlightedIndex = ref(-1);
-const iconDropdownRef = ref<HTMLElement>();
-const iconSearchInputRef = ref<HTMLInputElement>();
-const iconOptionRefs = ref<(HTMLElement | null)[]>([]);
-
-// Icon options - load asynchronously to avoid blocking UI
-const iconOptions = ref<typeof COMMON_MDI_ICONS | ReturnType<typeof getAllMDIIcons>>(
-  COMMON_MDI_ICONS
-);
-const isLoadingIcons = ref(false);
-
-// Only compute icon options when panel is expanded, and load asynchronously
-watch(isExpanded, expanded => {
-  if (expanded && iconOptions.value.length <= COMMON_MDI_ICONS.length) {
-    // Start with common icons, then load all asynchronously
-    isLoadingIcons.value = true;
-    // Use setTimeout to defer to next event loop to avoid blocking UI
-    setTimeout(() => {
-      try {
-        iconOptions.value = getAllMDIIcons();
-      } catch (error) {
-        console.error('Error loading all icons:', error);
-        // Fallback to common icons on error
-      } finally {
-        isLoadingIcons.value = false;
-      }
-    }, 0);
-  }
-});
-
-// Filter icons based on debounced search query
-const filteredIconOptions = computed(() => {
-  // Only show if debounced search has at least 1 character
-  if (debouncedIconSearchQuery.value.trim().length === 0) {
-    return [];
-  }
-  // Don't filter if panel is not expanded
-  if (!isExpanded.value || iconOptions.value.length === 0) {
-    return [];
-  }
-  const query = debouncedIconSearchQuery.value.toLowerCase();
-  return iconOptions.value.filter(
-    icon => icon.label.toLowerCase().includes(query) || icon.value.toLowerCase().includes(query)
-  );
-});
-
-// Get all visible options for keyboard navigation (includes "Use HA default")
-const allVisibleOptions = computed(() => {
-  const options: Array<{ value: string; label: string }> = [];
-  // Only include options if debounced search has at least 1 character
-  if (debouncedIconSearchQuery.value.trim().length > 0 && isExpanded.value) {
-    options.push({ value: '', label: '(Use HA default)' });
-    options.push(...filteredIconOptions.value);
-  }
-  return options;
-});
-
-// Handle keyboard navigation in icon dropdown
-function handleIconDropdownKeydown(e: KeyboardEvent) {
-  if (!isExpanded.value) return;
-
-  const options = allVisibleOptions.value;
-  const totalOptions = options.length;
-  if (totalOptions === 0) return;
-
-  // Initialize highlighted index if not set and user presses Enter
-  if (e.key === 'Enter' && highlightedIndex.value < 0 && totalOptions > 0) {
-    // If no item is highlighted, select the first one (index 0)
-    highlightedIndex.value = 0;
-  }
-
-  switch (e.key) {
-    case 'ArrowDown':
-      e.preventDefault();
-      highlightedIndex.value =
-        highlightedIndex.value < totalOptions - 1 ? highlightedIndex.value + 1 : 0;
-      scrollToHighlighted();
-      break;
-    case 'ArrowUp':
-      e.preventDefault();
-      highlightedIndex.value =
-        highlightedIndex.value <= 0 ? totalOptions - 1 : highlightedIndex.value - 1;
-      scrollToHighlighted();
-      break;
-    case 'Enter':
-      e.preventDefault();
-      if (highlightedIndex.value >= 0 && highlightedIndex.value < totalOptions) {
-        const option = options[highlightedIndex.value];
-        if (option) {
-          selectIcon(option.value);
-        }
-      }
-      break;
-    case 'Escape':
-      e.preventDefault();
-      isExpanded.value = false;
-      isPanelOpen.value = false;
-      break;
-  }
-}
-
-// Scroll to highlighted option
-function scrollToHighlighted() {
-  void nextTick(() => {
-    if (highlightedIndex.value === 0) {
-      // Scroll to "Use HA default" option
-      const defaultOption = iconDropdownRef.value?.querySelector(
-        '.icon-option:first-child'
-      ) as HTMLElement;
-      defaultOption?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    } else if (highlightedIndex.value > 0) {
-      // Scroll to filtered icon option (index is 1-based in allVisibleOptions, but 0-based in iconOptionRefs)
-      const optionIndex = highlightedIndex.value - 1;
-      if (iconOptionRefs.value[optionIndex]) {
-        iconOptionRefs.value[optionIndex]?.scrollIntoView({
-          block: 'nearest',
-          behavior: 'smooth',
-        });
-      }
-    }
-  });
-}
-
-// Handle keyboard navigation in search input
-function handleIconSearchKeydown(e: KeyboardEvent) {
-  // If user types ArrowDown/ArrowUp in search, focus dropdown and navigate
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    if (allVisibleOptions.value.length > 0) {
-      // Initialize highlighted index when transitioning from search to dropdown
-      if (highlightedIndex.value < 0) {
-        highlightedIndex.value = e.key === 'ArrowDown' ? 0 : allVisibleOptions.value.length - 1;
-      }
-      iconDropdownRef.value?.focus();
-    }
-  }
-  // If Escape, close panel
-  if (e.key === 'Escape') {
-    isExpanded.value = false;
-    isPanelOpen.value = false;
-  }
-}
-
-// Handle focus on search input
-function handleIconSearchFocus() {
-  // Reset highlighted when focusing search
-  highlightedIndex.value = -1;
-}
-
-// Handle focus on dropdown
-function handleIconDropdownFocus() {
-  // Initialize highlighted index to first option when dropdown gets focus
-  if (highlightedIndex.value < 0 && allVisibleOptions.value.length > 0) {
-    highlightedIndex.value = 0;
-  }
-}
-
-// Reset highlighted index when search changes
-watch(iconSearchQuery, () => {
-  highlightedIndex.value = -1;
-});
-
-// Get icon preview for display
-function getIconPreview(iconName: string): string | null {
-  if (!iconName) return null;
-  const path = getMDIIconPath(iconName);
-  if (!path) return null;
-  return createIconSVG(path, '#ffffff', 20);
-}
-
-// Current icon value
-const currentIcon = computed(() => {
-  if (props.entity.icon) {
-    return props.entity.icon;
-  }
-  if (props.entity.category === 'door') {
-    return 'door';
-  } else if (props.entity.category === 'camera') {
-    return 'camera';
-  }
-  return 'radar';
-});
-
-// Current tap action value
-const currentTapAction = computed(() => {
-  return props.entity.tapAction?.action ?? '';
-});
-
-// Current navigation path
-const currentNavigationPath = computed(() => {
-  return props.entity.tapAction?.navigation_path ?? '';
-});
-
-// Current long press action value
-const currentLongPressAction = computed(() => {
-  return props.entity.holdAction?.action ?? '';
-});
-
-// Current long press navigation path
-const currentLongPressNavigationPath = computed(() => {
-  return props.entity.holdAction?.navigation_path ?? '';
-});
-
-// Label override for action buttons
-const labelOverride = computed(() => {
-  return props.entity.labelOverride ?? props.entity.name ?? '';
-});
-
-// HA Action for action buttons
-const currentHAAction = computed(() => {
-  return props.entity.haAction?.service ?? '';
-});
-
-// Get the label for the current HA action
-const currentHAActionLabel = computed(() => {
-  if (!currentHAAction.value) return '';
-  const allServices = getAllServices(haServices.value);
-  const service = allServices.find(s => s.service === currentHAAction.value);
-  return service?.label ?? currentHAAction.value;
-});
-
-// HA Services state
-const haServices = ref<HAService[]>([]);
-const haActionSearchQuery = ref('');
-const isLoadingHAActions = ref(false);
-const debouncedHAActionSearchQuery = debouncedRef(haActionSearchQuery, 500);
-
-// Automations state (for automation.trigger service)
-const automations = ref<Array<{ entity_id: string; name: string }>>([]);
-const isLoadingAutomations = ref(false);
-const selectedAutomation = computed(() => {
-  return (
-    (props.entity.haAction?.serviceData as { entity_id?: string } | undefined)?.entity_id ?? ''
-  );
-});
-
-// Filtered HA actions
-const filteredHAActions = computed(() => {
-  if (debouncedHAActionSearchQuery.value.trim().length === 0) {
-    return [];
-  }
-  const allServices = getAllServices(haServices.value);
-  const query = debouncedHAActionSearchQuery.value.toLowerCase();
-  return allServices.filter(
-    service =>
-      service.service.toLowerCase().includes(query) || service.label.toLowerCase().includes(query)
-  );
-});
-
-// Load HA services when panel is expanded for action button
-watch(isExpanded, async expanded => {
-  if (expanded && props.entity.isActionButton && haServices.value.length === 0) {
-    isLoadingHAActions.value = true;
-    try {
-      haServices.value = await fetchHAServices(haConfig);
-    } catch (error) {
-      console.error('Error loading HA services:', error);
-    } finally {
-      isLoadingHAActions.value = false;
-    }
-  }
-});
-
-// Load automations when automation.trigger service is selected
-watch(
-  currentHAAction,
-  async service => {
-    if (service === 'automation.trigger' && automations.value.length === 0) {
-      isLoadingAutomations.value = true;
-      try {
-        automations.value = await fetchAutomations(haConfig);
-      } catch (error) {
-        console.error('Error loading automations:', error);
-      } finally {
-        isLoadingAutomations.value = false;
-      }
-    }
-  },
-  { immediate: true }
-);
-
-// Handle icon selection
-function selectIcon(iconValue: string) {
-  handleIconChangeDirect(iconValue);
-}
-
-// Handle icon change directly (for new selector)
-function handleIconChangeDirect(newIcon: string) {
-  if (newIcon === '') {
-    // Clear custom icon to use HA default
-    const entityInfo = window.allEntities?.find(e => e.entityId === props.entity.key);
-    let haIcon = 'radar'; // Default fallback
-
-    if (entityInfo?.state) {
-      haIcon =
-        extractIconFromHA(entityInfo.state) ??
-        getDefaultIcon(entityInfo.domain, entityInfo.state.attributes?.device_class);
-    }
-
-    // Update entity - this will trigger reactive update via handleEntityUpdate
-    emit('update', props.entity.key, { icon: haIcon });
-  } else {
-    // Update entity - this will trigger reactive update via handleEntityUpdate
-    emit('update', props.entity.key, { icon: newIcon });
-  }
-}
-
-// Handle tap action change
-function handleTapActionChange(event: Event) {
-  const target = event.target as HTMLSelectElement;
-  const actionType = target.value;
-
-  let tapAction: TapAction | null = null;
-  if (
-    actionType &&
-    (actionType === 'toggle' ||
-      actionType === 'more-info' ||
-      actionType === 'navigate' ||
-      actionType === 'call-service')
-  ) {
-    tapAction = { action: actionType } as TapAction;
-    // If navigate, preserve navigation path if it exists
-    if (actionType === 'navigate' && props.entity.tapAction?.navigation_path) {
-      tapAction.navigation_path = props.entity.tapAction.navigation_path;
-    }
-  }
-
-  emit('update', props.entity.key, { tapAction });
-
-  // Save actions to localStorage
-  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
-  if (tapAction || props.entity.holdAction) {
-    actions[props.entity.key] = {
-      tapAction: tapAction ?? null,
-      holdAction: props.entity.holdAction ?? null,
-    };
-  } else {
-    delete actions[props.entity.key];
-  }
-  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
-}
-
-// Local ref for label override input (to avoid saving on every keystroke)
-const labelOverrideInput = ref<string>(labelOverride.value);
-
-// Sync local ref with prop when it changes externally
-watch(
-  labelOverride,
-  newValue => {
-    labelOverrideInput.value = newValue;
-  },
-  { immediate: true }
-);
-
-// Handle label override blur (save when user leaves the field)
-function handleLabelOverrideBlur() {
-  const newLabel = labelOverrideInput.value.trim();
-
-  emit('update', props.entity.key, { labelOverride: newLabel });
-
-  // Save label override to localStorage
-  const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
-  if (newLabel) {
-    labelOverrides[props.entity.key] = newLabel;
-  } else {
-    delete labelOverrides[props.entity.key];
-  }
-  localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
-}
-
-// Handle HA action selection (for action buttons)
-function selectHAAction(service: string) {
-  // Preserve existing serviceData if it exists and service is the same
-  const existingServiceData =
-    props.entity.haAction?.service === service ? props.entity.haAction.serviceData : undefined;
-
-  const haAction = {
-    service,
-    ...(existingServiceData ? { serviceData: existingServiceData } : {}),
-  };
-
-  emit('update', props.entity.key, { haAction });
-
-  // Update tapAction to call-service
-  const tapAction = {
-    action: 'call-service' as const,
-    service,
-  };
-  emit('update', props.entity.key, { tapAction });
-
-  // Save HA action to localStorage
-  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
-  haActions[props.entity.key] = haAction;
-  localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
-
-  // Save tap action
-  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
-  if (!actions[props.entity.key]) actions[props.entity.key] = {};
-  actions[props.entity.key].tapAction = tapAction;
-  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
-
-  // Clear search query to show selected action in the input
-  haActionSearchQuery.value = '';
-}
-
-// Handle automation selection change
-function handleAutomationChange(event: Event) {
-  const target = event.target as HTMLSelectElement;
-  const automationEntityId = target.value;
-
-  // Update haAction with the automation entity_id
-  const haAction = {
-    service: 'automation.trigger',
-    serviceData: {
-      entity_id: automationEntityId,
-    },
-  };
-
-  emit('update', props.entity.key, { haAction });
-
-  // Save to localStorage
-  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
-  haActions[props.entity.key] = haAction;
-  localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
-}
-
-// Handle HA action search keydown
-function handleHAActionSearchKeydown() {
-  // Could implement keyboard navigation for HA actions if needed
-}
-
-// Handle navigation path change
-function handleLabelVisibilityChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  // Save to Firestore via emit update
-  emit('update', props.entity.key, { labelVisible: target.checked });
-}
-
-function handleStateVisibilityChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  // Save to Firestore via emit update
-  emit('update', props.entity.key, { stateVisible: target.checked });
-}
-
-function handleIconColorOnChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const color = target.value;
-  // Save to Firestore via emit update
-  emit('update', props.entity.key, { iconColorOn: color });
-}
-
-function handleIconColorOnTextChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  let color = target.value.trim();
-  // Ensure it starts with # and is valid hex
-  if (color && !color.startsWith('#')) {
-    color = `#${color}`;
-  }
-  // Validate hex color format
-  if (color && /^#[0-9A-Fa-f]{6}$/.test(color)) {
-    emit('update', props.entity.key, { iconColorOn: color });
-  } else if (color === '' || color === '#') {
-    // Allow clearing the field
-    emit('update', props.entity.key, { iconColorOn: undefined });
-  }
-}
-
-function handleIconColorOffChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const color = target.value;
-  // Save to Firestore via emit update
-  emit('update', props.entity.key, { iconColorOff: color });
-}
-
-function handleIconColorOffTextChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  let color = target.value.trim();
-  // Ensure it starts with # and is valid hex
-  if (color && !color.startsWith('#')) {
-    color = `#${color}`;
-  }
-  // Validate hex color format
-  if (color && /^#[0-9A-Fa-f]{6}$/.test(color)) {
-    emit('update', props.entity.key, { iconColorOff: color });
-  } else if (color === '' || color === '#') {
-    // Allow clearing the field
-    emit('update', props.entity.key, { iconColorOff: undefined });
-  }
-}
-
-function handleValuePrefixChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const prefix = target.value.trim();
-  // Always emit the value explicitly, even if empty string
-  // This ensures the update is always sent, even when clearing the field
-  emit('update', props.entity.key, { valuePrefix: prefix });
-}
-
-function handleValueSuffixChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const suffix = target.value.trim();
-  // Always emit the value explicitly, even if empty string
-  // This ensures the update is always sent, even when clearing the field
-  emit('update', props.entity.key, { valueSuffix: suffix });
-}
-
-function handleStateConditionOperatorChange(event: Event) {
-  const target = event.target as HTMLSelectElement;
-  const operator = target.value;
-  setStateConditionOperator(operator);
-
-  // Clear value if operator is removed
-  if (!operator) {
-    setStateConditionValue(null);
-  }
-}
-
-function handleStateConditionValueChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const value = target.value ? parseFloat(target.value) : null;
-  setStateConditionValue(value);
-}
-
-function handleNavigationPathChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const path = target.value;
-
-  const tapAction: TapAction = props.entity.tapAction ?? { action: 'navigate' };
-  tapAction.navigation_path = path;
-
-  emit('update', props.entity.key, { tapAction });
-
-  // Save actions
-  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
-  actions[props.entity.key] = {
-    tapAction,
-    holdAction: props.entity.holdAction ?? null,
-  };
-  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
-}
-
-// Handle long press action change
-function handleLongPressActionChange(event: Event) {
-  const target = event.target as HTMLSelectElement;
-  const actionType = target.value;
-
-  let holdAction: TapAction | null = null;
-  if (
-    actionType &&
-    (actionType === 'toggle' ||
-      actionType === 'more-info' ||
-      actionType === 'navigate' ||
-      actionType === 'call-service')
-  ) {
-    holdAction = { action: actionType } as TapAction;
-    // If navigate, preserve navigation path if it exists
-    if (actionType === 'navigate' && props.entity.holdAction?.navigation_path) {
-      holdAction.navigation_path = props.entity.holdAction.navigation_path;
-    }
-  }
-
-  emit('update', props.entity.key, { holdAction });
-
-  // Save actions to localStorage
-  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
-  if (holdAction || props.entity.tapAction) {
-    actions[props.entity.key] = {
-      tapAction: props.entity.tapAction ?? null,
-      holdAction: holdAction ?? null,
-    };
-  } else {
-    delete actions[props.entity.key];
-  }
-  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
-}
-
-// Handle long press navigation path change
-function handleLongPressNavigationPathChange(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const path = target.value;
-
-  const holdAction: TapAction = props.entity.holdAction ?? { action: 'navigate' };
-  holdAction.navigation_path = path;
-
-  emit('update', props.entity.key, { holdAction });
-
-  // Save actions
-  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
-  actions[props.entity.key] = {
-    tapAction: props.entity.tapAction ?? null,
-    holdAction,
-  };
-  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
-}
-
-// Handle delete button click
-function handleDelete() {
-  if (confirm('Are you sure you want to delete this widget?')) {
-    const entityName = displayLabel.value;
-    emit('delete', props.entity.key);
-    // Clear selection after deletion
-    clearSelection();
-    // Close panel
-    isPanelOpen.value = false;
-    isExpanded.value = false;
-    // Show success toast
-    const { success } = useToast();
-    success(`Widget deleted: ${entityName}`);
-  }
-}
-
-// Click outside handler
-function handleClickOutside(event: MouseEvent) {
-  if (isPanelOpen.value && panelRef.value && widgetRef.value) {
-    const target = event.target as HTMLElement;
-    // Don't close if clicking on select options (they're rendered outside the panel)
-    if (target.tagName === 'OPTION' || target.closest('select')) {
-      return;
-    }
-    // Close if clicking outside both panel and widget
-    if (!panelRef.value.contains(target) && !widgetRef.value.contains(target)) {
-      isPanelOpen.value = false;
-      isExpanded.value = false;
-    }
   }
 }
 
@@ -2560,7 +1474,7 @@ function handleTouchEnd(e: TouchEvent) {
     const clickedOnLabel = target.closest('.entity-label') !== null;
     if (clickedOnLabel) {
       // Trigger label click
-      handleLabelClick(e as any);
+      handleLabelClick();
       return;
     }
 
@@ -2569,13 +1483,13 @@ function handleTouchEnd(e: TouchEvent) {
       target.closest('.entity-icon') !== null || target.closest('.action-button-icon') !== null;
     if (clickedOnIcon) {
       // Trigger icon click
-      handleIconClick(e as any);
+      void handleIconClick(e as any);
       return;
     }
 
     // Otherwise, trigger widget click (for action buttons)
     if (props.entity.isActionButton) {
-      handleActionButtonClick(e as any);
+      void handleActionButtonClick(e as any);
     } else {
       // For regular widgets, select them
       emit('select', props.entity);
@@ -2627,12 +1541,37 @@ onMounted(() => {
     if (e.key === 'Escape') {
       if (isPanelOpen.value) {
         isPanelOpen.value = false;
-        isExpanded.value = false;
       }
       // Clear selection on Escape
       clearSelection();
     }
   };
+
+  const handleClickOutside = (e: MouseEvent) => {
+    // Don't close if clicking on the panel or widget
+    const target = e.target as HTMLElement;
+    if (!target) return;
+
+    // Don't close if clicking on select options (they're rendered outside the panel)
+    if (target.tagName === 'OPTION' || target.closest('select')) {
+      return;
+    }
+
+    // Don't close if clicking on the widget, panel, or label
+    if (
+      widgetRef.value?.contains(target) ||
+      target.closest('.entity-info-panel') ||
+      target.closest('.entity-label')
+    ) {
+      return;
+    }
+
+    // Close panel if clicking outside
+    if (isPanelOpen.value) {
+      isPanelOpen.value = false;
+    }
+  };
+
   document.addEventListener('keydown', handleKeyDown);
   document.addEventListener('click', handleClickOutside);
   onUnmounted(() => {
@@ -2757,7 +1696,7 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 }
 
 .action-button-label {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   text-align: left;
   white-space: nowrap;
@@ -2888,586 +1827,6 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.entity-info-panel {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 4px;
-  min-width: 200px;
-  max-width: 400px;
-  background-color: #2a2a2a;
-  border: 1px solid #4a4a4a;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  z-index: 20001; /* Above selected widget (20000), below dragging widget (20002) */
-  pointer-events: auto;
-  overflow: visible;
-}
-
-.entity-info-panel.expanded {
-  min-width: 280px;
-}
-
-.entity-info-panel:not(.expanded) {
-  min-width: auto;
-  max-width: 200px;
-}
-
-@media (max-width: 768px) {
-  .entity-info-panel {
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    min-width: calc(100vw - 32px);
-    max-width: calc(100vw - 32px);
-    width: calc(100vw - 32px);
-  }
-  
-  .entity-info-panel.expanded {
-    min-width: calc(100vw - 32px);
-    max-width: calc(100vw - 32px);
-  }
-  
-  .entity-info-panel:not(.expanded) {
-    min-width: calc(100vw - 32px);
-    max-width: calc(100vw - 32px);
-  }
-}
-
-.panel-header {
-  background-color: #333333;
-  padding: 10px 14px;
-  border-radius: 4px 4px 0 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: none;
-}
-
-.panel-header.collapsed {
-  background-color: rgba(42, 42, 42, 0.9);
-  padding: 4px 8px;
-  border-radius: 3px;
-  border: 1px solid #4a4a4a;
-  font-size: 11px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.panel-header.collapsed:hover {
-  background-color: rgba(51, 51, 51, 0.95);
-  border-color: #5a5a5a;
-}
-
-.panel-header.expanded {
-  border-radius: 4px 4px 0 0;
-}
-
-.panel-header.expanded:hover {
-  background-color: #3a3a3a;
-}
-
-.expand-indicator {
-  font-size: 10px;
-  color: #aaaaaa;
-  flex-shrink: 0;
-}
-
-.panel-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: bold;
-  color: #ffffff;
-  line-height: 1.4;
-  word-wrap: break-word;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (max-width: 768px) {
-  .panel-title {
-    font-size: 18px;
-  }
-  
-  .panel-header {
-    padding: 12px 16px;
-    min-height: 44px;
-  }
-}
-
-.panel-header.collapsed .panel-title {
-  font-size: 11px;
-  font-weight: normal;
-}
-
-.panel-divider {
-  height: 1px;
-  background-color: #4a4a4a;
-  margin: 4px 0;
-}
-
-.panel-tabs {
-  display: flex;
-  border-bottom: 1px solid #4a4a4a;
-  margin: 0;
-  padding: 0;
-}
-
-.panel-tab {
-  flex: 1;
-  padding: 6px 8px;
-  background-color: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: #aaaaaa;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: center;
-}
-
-@media (max-width: 768px) {
-  .panel-tab {
-    padding: 10px 8px;
-    font-size: 14px;
-    min-height: 44px;
-  }
-}
-
-.panel-tab:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
-}
-
-.panel-tab.active {
-  color: #ffffff;
-  border-bottom-color: #2d5aa0;
-  background-color: rgba(45, 90, 160, 0.1);
-}
-
-.tab-content {
-  min-height: 50px;
-}
-
-.panel-content {
-  padding: 8px 14px 10px;
-  overflow: visible;
-}
-
-@media (max-width: 768px) {
-  .panel-content {
-    padding: 12px 16px 14px;
-  }
-}
-
-.detail-row {
-  display: flex;
-  margin-bottom: 4px;
-  align-items: flex-start;
-}
-
-.detail-row:last-child {
-  margin-bottom: 0;
-}
-
-.delete-row {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #3a3a3a;
-}
-
-.delete-button {
-  width: 100%;
-  background-color: #d32f2f;
-  border: 1px solid #b71c1c;
-  border-radius: 3px;
-  color: #ffffff;
-  font-size: 11px;
-  padding: 6px 12px;
-  cursor: pointer;
-  outline: none;
-  transition: background-color 0.2s ease;
-}
-
-@media (max-width: 768px) {
-  .delete-button {
-    font-size: 15px;
-    padding: 12px 16px;
-    min-height: 44px;
-  }
-}
-
-.delete-button:hover {
-  background-color: #c62828;
-}
-
-.delete-button:active {
-  background-color: #b71c1c;
-}
-
-.detail-label {
-  font-size: 11px;
-  color: #aaaaaa;
-  min-width: 90px;
-  margin-right: 8px;
-  flex-shrink: 0;
-}
-
-.detail-value {
-  font-size: 11px;
-  color: #ffffff;
-  flex: 1;
-  word-break: break-word;
-}
-
-@media (max-width: 768px) {
-  .detail-label {
-    font-size: 13px;
-    min-width: 100px;
-  }
-  
-  .detail-value {
-    font-size: 13px;
-  }
-}
-
-.detail-value.state-value {
-  font-weight: bold;
-  color: #4CAF50;
-}
-
-.detail-value.entity-id-value {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 10px;
-  color: #cccccc;
-}
-
-.icon-select {
-  flex: 1;
-  background-color: #333333;
-  border: 1px solid #4a4a4a;
-  border-radius: 3px;
-  color: #ffffff;
-  font-size: 11px;
-  padding: 4px 8px;
-  cursor: pointer;
-  outline: none;
-  z-index: 10001;
-  position: relative;
-}
-
-@media (max-width: 768px) {
-  .icon-select {
-    font-size: 16px;
-    padding: 8px 12px;
-    min-height: 44px;
-  }
-}
-
-.icon-select:hover {
-  border-color: #5a5a5a;
-}
-
-.icon-select:focus {
-  border-color: #2196F3;
-}
-
-/* Icon selector with search and preview */
-.icon-selector-wrapper {
-  flex: 1;
-  position: relative;
-}
-
-.icon-search-wrapper {
-  margin-bottom: 6px;
-}
-
-.icon-search-input {
-  width: 100%;
-  background-color: #333333;
-  border: 1px solid #4a4a4a;
-  border-radius: 3px;
-  color: #ffffff;
-  font-size: 11px;
-  padding: 4px 8px;
-  outline: none;
-}
-
-@media (max-width: 768px) {
-  .icon-search-input {
-    font-size: 16px;
-    padding: 8px 12px;
-    min-height: 44px;
-  }
-}
-
-.icon-search-input:focus {
-  border-color: #2196F3;
-}
-
-.icon-dropdown {
-  max-height: 200px;
-  overflow-y: auto;
-  background-color: #2a2a2a;
-  border: 1px solid #4a4a4a;
-  border-radius: 3px;
-  z-index: 10002;
-  position: relative;
-}
-
-.icon-option {
-  display: flex;
-  align-items: center;
-  padding: 6px 8px;
-  cursor: pointer;
-  border-bottom: 1px solid #3a3a3a;
-  transition: background-color 0.15s;
-}
-
-.icon-option:last-child {
-  border-bottom: none;
-}
-
-.icon-option:hover {
-  background-color: #3a3a3a;
-}
-
-.icon-option-selected {
-  background-color: #2196f3;
-}
-
-.icon-option-selected:hover {
-  background-color: #2196f3;
-}
-
-.icon-option-highlighted {
-  background-color: #3a3a3a;
-}
-
-.icon-option-highlighted.icon-option-selected {
-  background-color: #2196f3;
-}
-
-.icon-search-hint {
-  padding: 12px;
-  text-align: center;
-  color: #888888;
-  font-size: 11px;
-  font-style: italic;
-}
-
-.ha-action-selector-wrapper {
-  position: relative;
-  flex: 1;
-}
-
-.ha-action-selected {
-  margin-top: 4px;
-  padding: 4px 8px;
-  background-color: rgba(45, 90, 160, 0.2);
-  border: 1px solid rgba(45, 90, 160, 0.4);
-  border-radius: 4px;
-  color: #ffffff;
-  font-size: 12px;
-}
-
-.automation-selector {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #4a4a4a;
-}
-
-.icon-preview {
-  width: 20px;
-  height: 20px;
-  margin-right: 8px;
-  flex-shrink: 0;
-}
-
-.icon-option-label {
-  font-size: 11px;
-  color: #ffffff;
-  flex: 1;
-}
-
-.icon-loading {
-  padding: 12px;
-  text-align: center;
-  color: #888888;
-  font-size: 11px;
-  font-style: italic;
-}
-
-.text-input {
-  flex: 1;
-  background-color: #333333;
-  border: 1px solid #4a4a4a;
-  border-radius: 3px;
-  color: #ffffff;
-  font-size: 11px;
-  padding: 4px 8px;
-  outline: none;
-}
-
-@media (max-width: 768px) {
-  .text-input {
-    font-size: 16px;
-    padding: 8px 12px;
-    min-height: 44px;
-  }
-}
-
-.text-input:hover {
-  border-color: #5a5a5a;
-}
-
-.text-input:focus {
-  border-color: #2196F3;
-}
-
-/* Condition controls */
-.condition-controls {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex: 1;
-}
-
-.condition-operator {
-  flex: 0 0 auto;
-  min-width: 120px;
-}
-
-.condition-value {
-  flex: 0 0 auto;
-  width: 80px;
-}
-
-/* Color input wrapper */
-.color-input-wrapper {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex: 1;
-}
-
-.color-input {
-  width: 40px;
-  height: 30px;
-  border: 1px solid #4a4a4a;
-  border-radius: 3px;
-  cursor: pointer;
-  background: none;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.color-input::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.color-input::-webkit-color-swatch {
-  border: none;
-  border-radius: 2px;
-}
-
-.color-text-input {
-  flex: 1;
-  min-width: 0;
-}
-
-@media (max-width: 768px) {
-  .condition-controls {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
-  
-  .condition-operator {
-    min-width: 100%;
-    width: 100%;
-  }
-  
-  .condition-value {
-    width: 100%;
-  }
-}
-
-/* Expand/collapse animation */
-.expand-enter-active,
-.expand-leave-active {
-  transition: none;
-  overflow: visible;
-}
-
-.expand-enter-from,
-.expand-leave-to {
-  opacity: 0;
-  max-height: 0;
-}
-
-.expand-enter-to,
-.expand-leave-from {
-  opacity: 1;
-  max-height: 500px;
-}
-
-/* Toggle switch for label visibility */
-.toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 36px;
-  height: 20px;
-}
-
-.toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #555;
-  transition: 0.3s;
-  border-radius: 20px;
-}
-
-.toggle-slider:before {
-  position: absolute;
-  content: '';
-  height: 14px;
-  width: 14px;
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: 0.3s;
-  border-radius: 50%;
-}
-
-.toggle-switch input:checked + .toggle-slider {
-  background-color: #2d5aa0;
-}
-
-.toggle-switch input:checked + .toggle-slider:before {
-  transform: translateX(16px);
-}
-
-.toggle-switch input:focus + .toggle-slider {
-  box-shadow: 0 0 1px #2d5aa0;
 }
 </style>
 

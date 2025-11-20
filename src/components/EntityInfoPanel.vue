@@ -1,425 +1,1158 @@
 <template>
+
   <div
-    v-if="selectedEntity"
+    v-if="isOpen"
     ref="panelRef"
     class="entity-info-panel"
-    :class="{ 'expanded': isExpanded }"
-    :style="panelStyle"
+    :class="{ expanded: isExpanded }"
+    :style="infoPanelStyle"
+    @mousedown.stop
+    @click.stop
   >
-    <!-- Label/Header - always visible, clickable to collapse/expand -->
-    <div 
+     <!-- Label/Header - always visible, clickable to collapse/expand -->
+    <div
       class="panel-header"
-      :class="{ 'collapsed': !isExpanded, 'expanded': isExpanded }"
+      :class="{ collapsed: !isExpanded, expanded: isExpanded }"
       @click="toggleExpanded"
     >
-      <span class="panel-title">{{ selectedEntity.name || 'Unknown Entity' }}</span>
-      <span class="expand-indicator" v-if="isExpanded">▲</span>
+       <span class="panel-title">{{ displayLabel }}</span
+      > <span class="expand-indicator" v-if="isExpanded">▲</span>
     </div>
-
-    <!-- Expandable content -->
-    <transition name="expand">
+     <!-- Expandable content --> <transition name="expand"
+      >
       <div v-if="isExpanded">
-        <!-- Divider -->
+         <!-- Divider -->
         <div class="panel-divider"></div>
-
-        <!-- Entity details -->
-        <div class="panel-content">
-          <div class="detail-row">
-            <span class="detail-label">Entity ID:</span>
-            <span class="detail-value entity-id-value">{{ selectedEntity.key || 'N/A' }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">State:</span>
-            <span class="detail-value state-value">{{ selectedEntity.state || 'unknown' }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Category:</span>
-            <span class="detail-value">{{ selectedEntity.category || 'sensor' }}</span>
-          </div>
-          
-          <!-- Icon selection -->
-          <div class="detail-row">
-            <span class="detail-label">Icon:</span>
-            <select 
-              :value="currentIcon"
-              @change="handleIconChange"
-              @click.stop
-              class="icon-select"
-            >
-              <option value="">(Use HA default)</option>
-              <option 
-                v-for="icon in iconOptions" 
-                :key="icon.value" 
-                :value="icon.value"
-              >
-                {{ icon.label }}
-              </option>
-            </select>
-          </div>
-          
-          <!-- Tap Action -->
-          <div class="detail-row">
-            <span class="detail-label">Tap Action:</span>
-            <select 
-              :value="currentTapAction"
-              @change="handleTapActionChange"
-              @click.stop
-              class="icon-select"
-            >
-              <option value="">None</option>
-              <option value="toggle">Toggle</option>
-              <option value="more-info">More Info</option>
-              <option value="navigate">Navigate</option>
-            </select>
-          </div>
-          
-          <!-- Navigation Path (only show if navigate is selected) -->
-          <div v-if="currentTapAction === 'navigate'" class="detail-row">
-            <span class="detail-label">Navigation Path:</span>
-            <input
-              type="text"
-              :value="currentNavigationPath"
-              @input="handleNavigationPathChange"
-              @click.stop
-              class="text-input"
-              placeholder="/dashboard/living-room"
-            />
-          </div>
+         <!-- Tabs -->
+        <div class="panel-tabs">
+           <button
+            class="panel-tab"
+            :class="{ active: activeTab === 'general' }"
+            @click.stop="activeTab = 'general'"
+            @mousedown.stop
+          >
+             General </button
+          > <button
+            class="panel-tab"
+            :class="{ active: activeTab === 'style' }"
+            @click.stop="activeTab = 'style'"
+            @mousedown.stop
+          >
+             Style </button
+          >
         </div>
+         <!-- Entity details -->
+        <div class="panel-content">
+           <!-- General Tab -->
+          <div v-show="activeTab === 'general'" class="tab-content">
+             <!-- Label Override -->
+            <div class="detail-row">
+               <span class="detail-label">Label:</span> <input
+                type="text"
+                v-model="labelOverrideInput"
+                @blur="handleLabelOverrideBlur"
+                @mousedown.stop
+                @click.stop
+                class="text-input"
+                placeholder="Custom label (leave empty for default)"
+              />
+            </div>
+
+            <div class="detail-row">
+               <span class="detail-label">Entity ID:</span> <span
+                class="detail-value entity-id-value"
+                >{{ entity.key || 'N/A' }}</span
+              >
+            </div>
+
+            <div class="detail-row">
+               <span class="detail-label">State:</span> <span class="detail-value state-value">{{
+                entity.state || 'unknown'
+              }}</span
+              >
+            </div>
+
+            <div class="detail-row">
+               <span class="detail-label">Category:</span> <span class="detail-value">{{
+                entity.category || 'sensor'
+              }}</span
+              >
+            </div>
+             <!-- HA Action (for action buttons) -->
+            <div v-if="entity.isActionButton" class="detail-row">
+               <span class="detail-label">HA Action:</span>
+              <div class="ha-action-selector-wrapper">
+                 <input
+                  type="text"
+                  :value="haActionSearchQuery || (currentHAAction ? currentHAActionLabel : '')"
+                  @input="
+                    e => {
+                      haActionSearchQuery = (e.target as HTMLInputElement).value;
+                    }
+                  "
+                  @mousedown.stop
+                  @click.stop
+                  @focus="
+                    () => {
+                      if (currentHAAction) haActionSearchQuery = '';
+                    }
+                  "
+                  @keydown="handleHAActionSearchKeydown"
+                  :placeholder="currentHAAction ? currentHAActionLabel : 'Search actions...'"
+                  class="icon-search-input"
+                />
+                <div
+                  class="icon-dropdown ha-action-dropdown"
+                  @mousedown.stop
+                  @click.stop
+                  v-show="haActionSearchQuery.trim().length > 0"
+                >
+
+                  <div
+                    v-for="service in filteredHAActions"
+                    :key="service.service"
+                    class="icon-option"
+                    :class="{ 'icon-option-selected': currentHAAction === service.service }"
+                    @click="selectHAAction(service.service)"
+                  >
+                     <span class="icon-option-label">{{ service.label }}</span
+                    >
+                  </div>
+
+                  <div
+                    v-if="filteredHAActions.length === 0 && !isLoadingHAActions"
+                    class="icon-search-hint"
+                  >
+                     No actions found
+                  </div>
+
+                  <div v-if="isLoadingHAActions" class="icon-loading">Loading actions...</div>
+
+                </div>
+
+                <div
+                  v-if="currentHAActionLabel && !haActionSearchQuery.trim()"
+                  class="ha-action-selected"
+                >
+                   Selected: {{ currentHAActionLabel }}
+                </div>
+                 <!-- Automation selector (shown when automation.trigger is selected) -->
+                <div v-if="currentHAAction === 'automation.trigger'" class="automation-selector">
+
+                  <div class="detail-label" style="margin-bottom: 6px">Automation:</div>
+                   <select
+                    :value="selectedAutomation"
+                    @change="handleAutomationChange"
+                    @mousedown.stop
+                    @click.stop
+                    class="icon-select"
+                  >
+
+                    <option value="">Select automation...</option>
+
+                    <option
+                      v-for="automation in automations"
+                      :key="automation.entity_id"
+                      :value="automation.entity_id"
+                    >
+                       {{ automation.name }}
+                    </option>
+                     </select
+                  >
+                  <div v-if="isLoadingAutomations" class="icon-loading">
+                     Loading automations...
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+             <!-- Tap Action (for regular entities) -->
+            <div v-if="!entity.isActionButton" class="detail-row">
+               <span class="detail-label">Tap Action:</span> <select
+                :value="currentTapAction"
+                @change="handleTapActionChange"
+                @mousedown.stop
+                @click.stop
+                class="icon-select"
+              >
+
+                <option value="">None</option>
+
+                <option value="toggle">Toggle</option>
+
+                <option value="more-info">More Info</option>
+
+                <option value="navigate">Navigate</option>
+                 </select
+              >
+            </div>
+             <!-- Navigation Path (only show if navigate is selected) -->
+            <div
+              v-if="!entity.isActionButton && currentTapAction === 'navigate'"
+              class="detail-row"
+            >
+               <span class="detail-label">Navigation Path:</span> <input
+                type="text"
+                :value="currentNavigationPath"
+                @input="handleNavigationPathChange"
+                @mousedown.stop
+                @click.stop
+                class="text-input"
+                placeholder="/dashboard/living-room"
+              />
+            </div>
+             <!-- Long Press Action (for regular entities) -->
+            <div v-if="!entity.isActionButton" class="detail-row">
+               <span class="detail-label">Long Press Action:</span> <select
+                :value="currentLongPressAction"
+                @change="handleLongPressActionChange"
+                @mousedown.stop
+                @click.stop
+                class="icon-select"
+              >
+
+                <option value="">None</option>
+
+                <option value="toggle">Toggle</option>
+
+                <option value="more-info">More Info</option>
+
+                <option value="navigate">Navigate</option>
+                 </select
+              >
+            </div>
+             <!-- Long Press Navigation Path (only show if navigate is selected) -->
+            <div
+              v-if="!entity.isActionButton && currentLongPressAction === 'navigate'"
+              class="detail-row"
+            >
+               <span class="detail-label">Long Press Nav Path:</span> <input
+                type="text"
+                :value="currentLongPressNavigationPath"
+                @input="handleLongPressNavigationPathChange"
+                @mousedown.stop
+                @click.stop
+                class="text-input"
+                placeholder="/dashboard/living-room"
+              />
+            </div>
+             <!-- Delete Button -->
+            <div class="detail-row delete-row">
+               <button
+                @click.stop="handleDelete"
+                @mousedown.stop
+                class="delete-button"
+                title="Delete widget (or press Backspace)"
+              >
+                 🗑️ Delete Widget </button
+              >
+            </div>
+
+          </div>
+           <!-- Style Tab -->
+          <div v-show="activeTab === 'style'" class="tab-content">
+             <!-- Label Visibility -->
+            <div class="detail-row">
+               <span class="detail-label">Show Label:</span> <label class="toggle-switch"
+                > <input
+                  type="checkbox"
+                  :checked="widgetLabelVisible"
+                  @change="handleLabelVisibilityChange"
+                  @mousedown.stop
+                  @click.stop
+                /> <span class="toggle-slider"></span> </label
+              >
+            </div>
+             <!-- State Visibility -->
+            <div class="detail-row" v-if="entity.state">
+               <span class="detail-label">Show State:</span> <label class="toggle-switch"
+                > <input
+                  type="checkbox"
+                  :checked="widgetStateVisible"
+                  @change="handleStateVisibilityChange"
+                  @mousedown.stop
+                  @click.stop
+                /> <span class="toggle-slider"></span> </label
+              >
+            </div>
+             <!-- Value Prefix -->
+            <div class="detail-row" v-if="isNumericEntity">
+               <span class="detail-label">Value Prefix:</span> <input
+                type="text"
+                :value="entity.valuePrefix || ''"
+                @input="handleValuePrefixChange"
+                @mousedown.stop
+                @click.stop
+                class="text-input"
+                placeholder="e.g., $, €"
+              />
+            </div>
+             <!-- Value Suffix -->
+            <div class="detail-row" v-if="isNumericEntity">
+               <span class="detail-label">Value Suffix:</span> <input
+                type="text"
+                :value="entity.valueSuffix || ''"
+                @input="handleValueSuffixChange"
+                @mousedown.stop
+                @click.stop
+                class="text-input"
+                placeholder="e.g., %, °C, W"
+              />
+            </div>
+             <!-- Icon selection -->
+            <div class="detail-row">
+               <span class="detail-label">Icon:</span>
+              <div class="icon-selector-wrapper">
+
+                <div class="icon-search-wrapper">
+                   <input
+                    type="text"
+                    v-model="iconSearchQuery"
+                    @mousedown.stop
+                    @click.stop
+                    @input.stop
+                    @keydown="handleIconSearchKeydown"
+                    @focus="handleIconSearchFocus"
+                    placeholder="Search icons..."
+                    class="icon-search-input"
+                    ref="iconSearchInputRef"
+                  />
+                </div>
+
+                <div
+                  class="icon-dropdown"
+                  @mousedown.stop
+                  @click.stop
+                  @keydown="handleIconDropdownKeydown"
+                  @focus="handleIconDropdownFocus"
+                  tabindex="0"
+                  ref="iconDropdownRef"
+                >
+                   <!-- Only show options if debounced search has at least 1 character --> <template
+                    v-if="debouncedIconSearchQuery.trim().length > 0"
+                    >
+                    <div
+                      class="icon-option"
+                      :class="{
+                        'icon-option-selected': currentIcon === '',
+                        'icon-option-highlighted': highlightedIndex === 0,
+                      }"
+                      @click="selectIcon('')"
+                      @mouseenter="highlightedIndex = 0"
+                    >
+                       <span class="icon-option-label">(Use HA default)</span>
+                    </div>
+
+                    <div v-if="isLoadingIcons" class="icon-loading">Loading icons...</div>
+
+                    <div
+                      v-for="(icon, index) in filteredIconOptions"
+                      :key="icon.value"
+                      class="icon-option"
+                      :class="{
+                        'icon-option-selected': currentIcon === icon.value,
+                        'icon-option-highlighted': highlightedIndex === index + 1,
+                      }"
+                      :ref="
+                        el => {
+                          if (el) iconOptionRefs[index] = el as HTMLElement;
+                        }
+                      "
+                      @click="selectIcon(icon.value)"
+                      @mouseenter="highlightedIndex = index + 1"
+                    >
+                       <img
+                        v-if="getIconPreview(icon.value)"
+                        :src="getIconPreview(icon.value) ?? ''"
+                        class="icon-preview"
+                        alt=""
+                      /> <span class="icon-option-label">{{ icon.label }}</span
+                      >
+                    </div>
+                     </template
+                  >
+                  <div
+                    v-if="
+                      iconSearchQuery.trim().length > 0 &&
+                      debouncedIconSearchQuery.trim().length === 0
+                    "
+                    class="icon-search-hint"
+                  >
+                     Searching...
+                  </div>
+
+                  <div
+                    v-else-if="
+                      debouncedIconSearchQuery.trim().length > 0 &&
+                      filteredIconOptions.length === 0 &&
+                      !isLoadingIcons
+                    "
+                    class="icon-search-hint"
+                  >
+                     No icons found
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+             <!-- Icon Color Overrides -->
+            <div class="detail-row">
+               <span class="detail-label">Icon Color (On):</span>
+              <div class="color-input-wrapper">
+                 <input
+                  type="color"
+                  :value="entity.iconColorOn || '#FFC107'"
+                  @input="handleIconColorOnChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="color-input"
+                /> <input
+                  type="text"
+                  :value="entity.iconColorOn || '#FFC107'"
+                  @input="handleIconColorOnTextChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input color-text-input"
+                  placeholder="#FFC107"
+                  pattern="^#[0-9A-Fa-f]{6}$"
+                />
+              </div>
+
+            </div>
+             <!-- Icon Color Off -->
+            <div class="detail-row">
+               <span class="detail-label">Icon Color (Off):</span>
+              <div class="color-input-wrapper">
+                 <input
+                  type="color"
+                  :value="entity.iconColorOff || '#888888'"
+                  @input="handleIconColorOffChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="color-input"
+                /> <input
+                  type="text"
+                  :value="entity.iconColorOff || '#888888'"
+                  @input="handleIconColorOffTextChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input color-text-input"
+                  placeholder="#888888"
+                  pattern="^#[0-9A-Fa-f]{6}$"
+                />
+              </div>
+
+            </div>
+             <!-- State Condition -->
+            <div class="detail-row" v-if="isNumericEntity">
+               <span class="detail-label">Show State If:</span>
+              <div class="condition-controls">
+                 <select
+                  :value="stateConditionOperator"
+                  @change="handleStateConditionOperatorChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="icon-select condition-operator"
+                >
+
+                  <option value="">Always</option>
+
+                  <option value="equal">Equal (=)</option>
+
+                  <option value="greater">Greater (>)</option>
+
+                  <option value="lower">Lower (<)</option>
+
+                  <option value="greaterEqual">Greater or Equal (≥)</option>
+
+                  <option value="lowerEqual">Lower or Equal (≤)</option>
+                   </select
+                > <input
+                  v-if="stateConditionOperator"
+                  type="number"
+                  step="any"
+                  :value="stateConditionValue"
+                  @input="handleStateConditionValueChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input condition-value"
+                  placeholder="Value"
+                />
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
       </div>
-    </transition>
+       </transition
+    >
   </div>
+
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
-import { selectedEntity, selectedEntityPosition } from '../composables/useEntitySelection';
-import { changeEntityIcon } from '../utils/entityUtils';
-import { ICON_OPTIONS } from '../utils/mdiIconList';
-import { extractIconFromHA, getDefaultIcon } from '../utils/iconUtils';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { debouncedRef } from '@vueuse/core';
+import { storeToRefs } from 'pinia';
+import { useLocalStorage } from '../composables/useLocalStorage';
+import { useToast } from '../composables/useToast';
+import { clearSelection, type EntityData } from '../composables/useEntitySelection';
+import {
+  getMDIIconPath,
+  createIconSVG,
+  extractIconFromHA,
+  getDefaultIcon,
+} from '../utils/iconUtils';
+import { type TapAction } from '../utils/actionHandler';
+import { useUIStore } from '../stores/ui';
+import { getAllMDIIcons, COMMON_MDI_ICONS } from '../utils/mdiIconList';
+import { haConfig } from '../../config';
+import {
+  fetchHAServices,
+  getAllServices,
+  fetchAutomations,
+  type HAService,
+} from '../utils/haServices';
 
-const panelRef = ref(null);
-const viewportUpdateTrigger = ref(0); // Trigger to force position recalculation
-const isExpanded = ref(false); // Panel expanded state
+interface Props {
+  entity: EntityData;
+  isOpen: boolean;
+  scale: number;
+  displayLabel: string;
+}
 
-// Icon options from dashboard
-const iconOptions = ICON_OPTIONS;
+const props = defineProps<Props>();
+const emit = defineEmits<{
+  update: [entityId: string, updates: Partial<EntityData>];
+  delete: [entityId: string];
+  close: [];
+}>();
 
-// Toggle panel expansion
+const panelRef = ref<HTMLElement>();
+const isExpanded = ref(false);
+const activeTab = ref<'general' | 'style'>('general');
+
+// Watch for panel open to auto-expand
+watch(
+  () => props.isOpen,
+  open => {
+    if (open) {
+      isExpanded.value = true;
+    }
+  },
+  { immediate: true }
+);
+
+// Panel style with scale transform
+const uiStore = useUIStore();
+const { scale: uiScale } = storeToRefs(uiStore);
+
+const infoPanelStyle = computed(() => {
+  const scale = 1 / (uiScale.value || 1);
+  return {
+    transform: `translateX(-50%) scale(${scale})`,
+    transformOrigin: 'top center',
+  };
+});
+
+// Widget-specific label visibility
+const widgetLabelVisible = computed(() => {
+  return props.entity.labelVisible !== undefined ? props.entity.labelVisible : true;
+});
+
+// Widget-specific state visibility
+const widgetStateVisible = computed(() => {
+  if (props.entity.stateVisible !== undefined) {
+    return props.entity.stateVisible;
+  }
+  const state = props.entity.state?.toLowerCase().trim();
+  if (state === 'on' || state === 'off') {
+    return false;
+  }
+  return true;
+});
+
+// State condition settings
+const stateConditionOperatorKey = `ha_dashboard_state_condition_operator_${props.entity.key}`;
+const stateConditionValueKey = `ha_dashboard_state_condition_value_${props.entity.key}`;
+const [stateConditionOperator, setStateConditionOperator] = useLocalStorage<string>(
+  stateConditionOperatorKey,
+  ''
+);
+const [stateConditionValue, setStateConditionValue] = useLocalStorage<number | null>(
+  stateConditionValueKey,
+  null
+);
+
+// Check if entity has numeric state
+const isNumericEntity = computed(() => {
+  const state = props.entity.state;
+  if (!state) return false;
+  const trimmedState = state.trim();
+  if (!trimmedState || trimmedState === 'unknown' || trimmedState === 'unavailable') return false;
+  const numericMatch = trimmedState.match(/^(-?\d+\.?\d*)/);
+  if (!numericMatch?.[1]) return false;
+  return !isNaN(parseFloat(numericMatch[1]));
+});
+
 function toggleExpanded() {
   isExpanded.value = !isExpanded.value;
 }
 
-// Watch for entity changes
-watch(selectedEntity, (newEntity) => {
-  if (newEntity) {
-    // Immediately expand when entity is selected (user clicked label)
-    isExpanded.value = true;
-  } else {
-    // Collapse when entity is deselected
-    isExpanded.value = false;
-  }
-}, { immediate: true });
+// Icon options
+const iconSearchQuery = ref('');
+const debouncedIconSearchQuery = debouncedRef(iconSearchQuery, 500);
+const highlightedIndex = ref(-1);
+const iconDropdownRef = ref<HTMLElement>();
+const iconSearchInputRef = ref<HTMLInputElement>();
+const iconOptionRefs = ref<(HTMLElement | null)[]>([]);
 
-// Current icon value for the selected entity
-const currentIcon = computed(() => {
-  // Return the icon from entity data, or a default based on category
-  if (selectedEntity.value?.icon) {
-    return selectedEntity.value.icon;
+const iconOptions = ref<typeof COMMON_MDI_ICONS | ReturnType<typeof getAllMDIIcons>>(
+  COMMON_MDI_ICONS
+);
+const isLoadingIcons = ref(false);
+
+watch(isExpanded, expanded => {
+  if (expanded && iconOptions.value.length <= COMMON_MDI_ICONS.length) {
+    isLoadingIcons.value = true;
+    setTimeout(() => {
+      try {
+        iconOptions.value = getAllMDIIcons();
+      } catch (error) {
+        console.error('Error loading all icons:', error);
+      } finally {
+        isLoadingIcons.value = false;
+      }
+    }, 0);
   }
-  // Default icons based on category
-  if (selectedEntity.value?.category === 'door') {
+});
+
+const filteredIconOptions = computed(() => {
+  if (debouncedIconSearchQuery.value.trim().length === 0) {
+    return [];
+  }
+  if (!isExpanded.value || iconOptions.value.length === 0) {
+    return [];
+  }
+  const query = debouncedIconSearchQuery.value.toLowerCase();
+  return iconOptions.value.filter(
+    icon => icon.label.toLowerCase().includes(query) || icon.value.toLowerCase().includes(query)
+  );
+});
+
+const allVisibleOptions = computed(() => {
+  const options: Array<{ value: string; label: string }> = [];
+  if (debouncedIconSearchQuery.value.trim().length > 0 && isExpanded.value) {
+    options.push({ value: '', label: '(Use HA default)' });
+    options.push(...filteredIconOptions.value);
+  }
+  return options;
+});
+
+function handleIconDropdownKeydown(e: KeyboardEvent) {
+  if (!isExpanded.value) return;
+
+  const options = allVisibleOptions.value;
+  const totalOptions = options.length;
+  if (totalOptions === 0) return;
+
+  if (e.key === 'Enter' && highlightedIndex.value < 0 && totalOptions > 0) {
+    highlightedIndex.value = 0;
+  }
+
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault();
+      highlightedIndex.value =
+        highlightedIndex.value < totalOptions - 1 ? highlightedIndex.value + 1 : 0;
+      scrollToHighlighted();
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      highlightedIndex.value =
+        highlightedIndex.value <= 0 ? totalOptions - 1 : highlightedIndex.value - 1;
+      scrollToHighlighted();
+      break;
+    case 'Enter':
+      e.preventDefault();
+      if (highlightedIndex.value >= 0 && highlightedIndex.value < totalOptions) {
+        const option = options[highlightedIndex.value];
+        if (option) {
+          selectIcon(option.value);
+        }
+      }
+      break;
+    case 'Escape':
+      e.preventDefault();
+      isExpanded.value = false;
+      emit('close');
+      break;
+  }
+}
+
+function scrollToHighlighted() {
+  void nextTick(() => {
+    if (highlightedIndex.value === 0) {
+      const defaultOption = iconDropdownRef.value?.querySelector(
+        '.icon-option:first-child'
+      ) as HTMLElement;
+      defaultOption?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else if (highlightedIndex.value > 0) {
+      const optionIndex = highlightedIndex.value - 1;
+      if (iconOptionRefs.value[optionIndex]) {
+        iconOptionRefs.value[optionIndex]?.scrollIntoView({
+          block: 'nearest',
+          behavior: 'smooth',
+        });
+      }
+    }
+  });
+}
+
+function handleIconSearchKeydown(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (allVisibleOptions.value.length > 0) {
+      if (highlightedIndex.value < 0) {
+        highlightedIndex.value = e.key === 'ArrowDown' ? 0 : allVisibleOptions.value.length - 1;
+      }
+      iconDropdownRef.value?.focus();
+    }
+  }
+  if (e.key === 'Escape') {
+    isExpanded.value = false;
+    emit('close');
+  }
+}
+
+function handleIconSearchFocus() {
+  highlightedIndex.value = -1;
+}
+
+function handleIconDropdownFocus() {
+  if (highlightedIndex.value < 0 && allVisibleOptions.value.length > 0) {
+    highlightedIndex.value = 0;
+  }
+}
+
+watch(iconSearchQuery, () => {
+  highlightedIndex.value = -1;
+});
+
+function getIconPreview(iconName: string): string | null {
+  if (!iconName) return null;
+  const path = getMDIIconPath(iconName);
+  if (!path) return null;
+  return createIconSVG(path, '#ffffff', 20);
+}
+
+const currentIcon = computed(() => {
+  if (props.entity.icon) {
+    return props.entity.icon;
+  }
+  if (props.entity.category === 'door') {
     return 'door';
-  } else if (selectedEntity.value?.category === 'camera') {
+  } else if (props.entity.category === 'camera') {
     return 'camera';
   }
-  return 'radar'; // Default for sensors
+  return 'radar';
 });
 
-// Current tap action value
 const currentTapAction = computed(() => {
-  return selectedEntity.value?.tapAction?.action || '';
+  return props.entity.tapAction?.action ?? '';
 });
 
-// Current navigation path
 const currentNavigationPath = computed(() => {
-  return selectedEntity.value?.tapAction?.navigation_path || '';
+  return props.entity.tapAction?.navigation_path ?? '';
 });
 
-// Handle icon change
-function handleIconChange(event) {
-  const newIcon = event.target.value;
-  if (selectedEntity.value && selectedEntity.value.key) {
-    if (newIcon === '') {
-      // Clear custom icon to use HA default
-      const entityId = selectedEntity.value.key;
-      // Find the original HA icon from allEntities
-      const entityInfo = window.allEntities?.find(e => e.entityId === entityId);
-      let haIcon = 'radar'; // Default fallback
-      
-      if (entityInfo?.state) {
-        haIcon = extractIconFromHA(entityInfo.state) || 
-                 getDefaultIcon(entityInfo.domain, entityInfo.state.attributes?.device_class);
-      }
-      
-      const nodeData = window.diagramInstance?.model?.findNodeDataForKey(entityId);
-      if (nodeData) {
-        window.diagramInstance.startTransaction('clearIcon');
-        window.diagramInstance.model.setDataProperty(nodeData, 'icon', haIcon);
-        window.diagramInstance.commitTransaction('clearIcon');
-        
-        // Remove from saved icons
-        const savedIcons = JSON.parse(localStorage.getItem('ha_dashboard_icons') || '{}');
-        delete savedIcons[entityId];
-        localStorage.setItem('ha_dashboard_icons', JSON.stringify(savedIcons));
-        
-        // Update the selected entity icon
-        selectedEntity.value.icon = haIcon;
-      }
-    } else {
-      changeEntityIcon(selectedEntity.value.key, newIcon);
+const currentLongPressAction = computed(() => {
+  return props.entity.holdAction?.action ?? '';
+});
+
+const currentLongPressNavigationPath = computed(() => {
+  return props.entity.holdAction?.navigation_path ?? '';
+});
+
+const labelOverride = computed(() => {
+  return props.entity.labelOverride ?? props.entity.name ?? '';
+});
+
+const currentHAAction = computed(() => {
+  return props.entity.haAction?.service ?? '';
+});
+
+const currentHAActionLabel = computed(() => {
+  if (!currentHAAction.value) return '';
+  const allServices = getAllServices(haServices.value);
+  const service = allServices.find(s => s.service === currentHAAction.value);
+  return service?.label ?? currentHAAction.value;
+});
+
+// HA Services state
+const haServices = ref<HAService[]>([]);
+const haActionSearchQuery = ref('');
+const isLoadingHAActions = ref(false);
+const debouncedHAActionSearchQuery = debouncedRef(haActionSearchQuery, 500);
+
+const automations = ref<Array<{ entity_id: string; name: string }>>([]);
+const isLoadingAutomations = ref(false);
+const selectedAutomation = computed(() => {
+  return (
+    (props.entity.haAction?.serviceData as { entity_id?: string } | undefined)?.entity_id ?? ''
+  );
+});
+
+const filteredHAActions = computed(() => {
+  if (debouncedHAActionSearchQuery.value.trim().length === 0) {
+    return [];
+  }
+  const allServices = getAllServices(haServices.value);
+  const query = debouncedHAActionSearchQuery.value.toLowerCase();
+  return allServices.filter(
+    service =>
+      service.service.toLowerCase().includes(query) || service.label.toLowerCase().includes(query)
+  );
+});
+
+watch(isExpanded, async expanded => {
+  if (expanded && props.entity.isActionButton && haServices.value.length === 0) {
+    isLoadingHAActions.value = true;
+    try {
+      haServices.value = await fetchHAServices(haConfig);
+    } catch (error) {
+      console.error('Error loading HA services:', error);
+    } finally {
+      isLoadingHAActions.value = false;
     }
+  }
+});
+
+watch(
+  currentHAAction,
+  async service => {
+    if (service === 'automation.trigger' && automations.value.length === 0) {
+      isLoadingAutomations.value = true;
+      try {
+        automations.value = await fetchAutomations(haConfig);
+      } catch (error) {
+        console.error('Error loading automations:', error);
+      } finally {
+        isLoadingAutomations.value = false;
+      }
+    }
+  },
+  { immediate: true }
+);
+
+function selectIcon(iconValue: string) {
+  handleIconChangeDirect(iconValue);
+}
+
+function handleIconChangeDirect(newIcon: string) {
+  if (newIcon === '') {
+    const entityInfo = window.allEntities?.find(e => e.entityId === props.entity.key);
+    let haIcon = 'radar';
+
+    if (entityInfo?.state) {
+      haIcon =
+        extractIconFromHA(entityInfo.state) ??
+        getDefaultIcon(entityInfo.domain, entityInfo.state.attributes?.device_class);
+    }
+
+    emit('update', props.entity.key, { icon: haIcon });
+  } else {
+    emit('update', props.entity.key, { icon: newIcon });
   }
 }
 
-// Handle tap action change
-function handleTapActionChange(event) {
-  const actionType = event.target.value;
-  const entityId = selectedEntity.value?.key;
-  if (!entityId || !window.diagramInstance) return;
-  
-  const nodeData = window.diagramInstance.model.findNodeDataForKey(entityId);
-  if (!nodeData) return;
-  
-  window.diagramInstance.startTransaction('updateTapAction');
-  
-  if (!actionType || actionType === '') {
-    // Remove tap action
-    window.diagramInstance.model.setDataProperty(nodeData, 'tapAction', null);
-    selectedEntity.value.tapAction = null;
-  } else {
-    // Set tap action
-    const tapAction = { action: actionType };
-    
-    // If navigate, preserve navigation path if it exists
-    if (actionType === 'navigate' && selectedEntity.value?.tapAction?.navigation_path) {
-      tapAction.navigation_path = selectedEntity.value.tapAction.navigation_path;
+function handleTapActionChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  const actionType = target.value;
+
+  let tapAction: TapAction | null = null;
+  if (
+    actionType &&
+    (actionType === 'toggle' ||
+      actionType === 'more-info' ||
+      actionType === 'navigate' ||
+      actionType === 'call-service')
+  ) {
+    tapAction = { action: actionType } as TapAction;
+    if (actionType === 'navigate' && props.entity.tapAction?.navigation_path) {
+      tapAction.navigation_path = props.entity.tapAction.navigation_path;
     }
-    
-    window.diagramInstance.model.setDataProperty(nodeData, 'tapAction', tapAction);
-    selectedEntity.value.tapAction = tapAction;
   }
-  
-  window.diagramInstance.commitTransaction('updateTapAction');
-  
-  // Save actions to localStorage
-  const actions = {};
-  window.diagramInstance.nodes.each(node => {
-    const data = node.data;
-    if (data?.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
-      if (data.tapAction || data.holdAction) {
-        actions[data.key] = {
-          tapAction: data.tapAction || null,
-          holdAction: data.holdAction || null
-        };
-      }
-    }
-  });
+
+  emit('update', props.entity.key, { tapAction });
+
+  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+  if (tapAction || props.entity.holdAction) {
+    actions[props.entity.key] = {
+      tapAction: tapAction ?? null,
+      holdAction: props.entity.holdAction ?? null,
+    };
+  } else {
+    delete actions[props.entity.key];
+  }
   localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
 }
 
-// Handle navigation path change
-function handleNavigationPathChange(event) {
-  const path = event.target.value;
-  const entityId = selectedEntity.value?.key;
-  if (!entityId || !window.diagramInstance) return;
-  
-  const nodeData = window.diagramInstance.model.findNodeDataForKey(entityId);
-  if (!nodeData) return;
-  
-  window.diagramInstance.startTransaction('updateNavigationPath');
-  
-  const tapAction = nodeData.tapAction || { action: 'navigate' };
-  tapAction.navigation_path = path;
-  
-  window.diagramInstance.model.setDataProperty(nodeData, 'tapAction', tapAction);
-  selectedEntity.value.tapAction = tapAction;
-  
-  window.diagramInstance.commitTransaction('updateNavigationPath');
-  
-  // Save actions
-  const actions = {};
-  window.diagramInstance.nodes.each(node => {
-    const data = node.data;
-    if (data?.key && typeof data.key === 'string' && !data.key.toString().startsWith('-')) {
-      if (data.tapAction || data.holdAction) {
-        actions[data.key] = {
-          tapAction: data.tapAction || null,
-          holdAction: data.holdAction || null
-        };
-      }
-    }
-  });
+const labelOverrideInput = ref<string>(labelOverride.value);
+
+watch(
+  labelOverride,
+  newValue => {
+    labelOverrideInput.value = newValue;
+  },
+  { immediate: true }
+);
+
+function handleLabelOverrideBlur() {
+  const newLabel = labelOverrideInput.value.trim();
+  emit('update', props.entity.key, { labelOverride: newLabel });
+
+  const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
+  if (newLabel) {
+    labelOverrides[props.entity.key] = newLabel;
+  } else {
+    delete labelOverrides[props.entity.key];
+  }
+  localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
+}
+
+function selectHAAction(service: string) {
+  const existingServiceData =
+    props.entity.haAction?.service === service ? props.entity.haAction.serviceData : undefined;
+
+  const haAction = {
+    service,
+    ...(existingServiceData ? { serviceData: existingServiceData } : {}),
+  };
+
+  emit('update', props.entity.key, { haAction });
+
+  const tapAction = {
+    action: 'call-service' as const,
+    service,
+  };
+  emit('update', props.entity.key, { tapAction });
+
+  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+  haActions[props.entity.key] = haAction;
+  localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+
+  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+  if (!actions[props.entity.key]) actions[props.entity.key] = {};
+  actions[props.entity.key].tapAction = tapAction;
+  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+
+  haActionSearchQuery.value = '';
+}
+
+function handleAutomationChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  const automationEntityId = target.value;
+
+  const haAction = {
+    service: 'automation.trigger',
+    serviceData: {
+      entity_id: automationEntityId,
+    },
+  };
+
+  emit('update', props.entity.key, { haAction });
+
+  const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+  haActions[props.entity.key] = haAction;
+  localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+}
+
+function handleHAActionSearchKeydown() {
+  // Could implement keyboard navigation for HA actions if needed
+}
+
+function handleLabelVisibilityChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  emit('update', props.entity.key, { labelVisible: target.checked });
+}
+
+function handleStateVisibilityChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  emit('update', props.entity.key, { stateVisible: target.checked });
+}
+
+function handleIconColorOnChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  emit('update', props.entity.key, { iconColorOn: target.value });
+}
+
+function handleIconColorOnTextChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  let color = target.value.trim();
+  if (color && !color.startsWith('#')) {
+    color = `#${color}`;
+  }
+  if (color && /^#[0-9A-Fa-f]{6}$/.test(color)) {
+    emit('update', props.entity.key, { iconColorOn: color });
+  } else if (color === '' || color === '#') {
+    // Omit the property instead of passing undefined
+    const updates: Partial<EntityData> = {};
+    emit('update', props.entity.key, updates);
+  }
+}
+
+function handleIconColorOffChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  emit('update', props.entity.key, { iconColorOff: target.value });
+}
+
+function handleIconColorOffTextChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  let color = target.value.trim();
+  if (color && !color.startsWith('#')) {
+    color = `#${color}`;
+  }
+  if (color && /^#[0-9A-Fa-f]{6}$/.test(color)) {
+    emit('update', props.entity.key, { iconColorOff: color });
+  } else if (color === '' || color === '#') {
+    // Omit the property instead of passing undefined
+    const updates: Partial<EntityData> = {};
+    emit('update', props.entity.key, updates);
+  }
+}
+
+function handleValuePrefixChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  emit('update', props.entity.key, { valuePrefix: target.value.trim() });
+}
+
+function handleValueSuffixChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  emit('update', props.entity.key, { valueSuffix: target.value.trim() });
+}
+
+function handleStateConditionOperatorChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  setStateConditionOperator(target.value);
+  if (!target.value) {
+    setStateConditionValue(null);
+  }
+}
+
+function handleStateConditionValueChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  setStateConditionValue(target.value ? parseFloat(target.value) : null);
+}
+
+function handleNavigationPathChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const tapAction: TapAction = props.entity.tapAction ?? { action: 'navigate' };
+  tapAction.navigation_path = target.value;
+
+  emit('update', props.entity.key, { tapAction });
+
+  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+  actions[props.entity.key] = {
+    tapAction,
+    holdAction: props.entity.holdAction ?? null,
+  };
   localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
 }
 
-/**
- * Convert dashboard coordinates to DOM pixel coordinates
- */
-function dashboardToDOM(x: number, y: number): { x: number; y: number } {
-  // Use the wrapper as reference, not the transformed container
-  const wrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!wrapper) return { x: 0, y: 0 };
+function handleLongPressActionChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  const actionType = target.value;
 
-  // Get dashboard transform
-  const scale = parseFloat(localStorage.getItem('ha_dashboard_scale') ?? '1');
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
+  let holdAction: TapAction | null = null;
+  if (
+    actionType &&
+    (actionType === 'toggle' ||
+      actionType === 'more-info' ||
+      actionType === 'navigate' ||
+      actionType === 'call-service')
+  ) {
+    holdAction = { action: actionType } as TapAction;
+    if (actionType === 'navigate' && props.entity.holdAction?.navigation_path) {
+      holdAction.navigation_path = props.entity.holdAction.navigation_path;
+    }
+  }
 
-  // Apply transform (scale first, then pan)
-  const transformedX = (x * scale) + panX;
-  const transformedY = (y * scale) + panY;
+  emit('update', props.entity.key, { holdAction });
 
-  // Get wrapper position relative to parent
-  const wrapperRect = wrapper.getBoundingClientRect();
-  const parentContainer = wrapper.parentElement;
-  if (!parentContainer) return { x: 0, y: 0 };
-
-  const parentRect = parentContainer.getBoundingClientRect();
-
-  // Position relative to parent container
-  return {
-    x: wrapperRect.left - parentRect.left + transformedX,
-    y: wrapperRect.top - parentRect.top + transformedY,
-  };
+  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+  if (holdAction || props.entity.tapAction) {
+    actions[props.entity.key] = {
+      tapAction: props.entity.tapAction ?? null,
+      holdAction: holdAction ?? null,
+    };
+  } else {
+    delete actions[props.entity.key];
+  }
+  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
 }
 
-/**
- * Get the position of the selected entity's label in DOM coordinates
- * Label is positioned below the widget, so we need widget position + widget height
- * We get position from localStorage to ensure we track the widget's actual position during drag
- */
-const domPosition = computed(() => {
-  void viewportUpdateTrigger.value; // Trigger reactivity
-  
-  if (!selectedEntity.value) {
-    return { x: 0, y: 0 };
-  }
+function handleLongPressNavigationPathChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const holdAction: TapAction = props.entity.holdAction ?? { action: 'navigate' };
+  holdAction.navigation_path = target.value;
 
-  // Get widget position from localStorage (updated during drag) or fallback to selectedEntityPosition
-  const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}');
-  const savedLoc = positions[selectedEntity.value.key];
-  let widgetX: number;
-  let widgetY: number;
-  
-  if (savedLoc) {
-    const [x, y] = savedLoc.split(' ').map(Number);
-    widgetX = Number.isNaN(x) ? 0 : x;
-    widgetY = Number.isNaN(y) ? 0 : y;
-  } else if (selectedEntityPosition.value) {
-    widgetX = selectedEntityPosition.value.x;
-    widgetY = selectedEntityPosition.value.y;
-  } else {
-    return { x: 0, y: 0 };
-  }
-  
-  // Get widget height from localStorage (to position label below widget)
-  const sizes = JSON.parse(localStorage.getItem('ha_dashboard_sizes') ?? '{}');
-  const entitySize = sizes[selectedEntity.value.key] || selectedEntity.value.size || '60 80';
-  const [entityWidth, entityHeight] = entitySize.split(' ').map(Number);
-  const widgetHeight = Number.isNaN(entityHeight) ? 80 : entityHeight;
-  
-  // Label position is at widget bottom + small offset
-  const labelY = widgetY + widgetHeight + 4; // 4px margin (matches label margin-top)
-  
-  // Get center X position of widget
-  const labelX = widgetX + (Number.isNaN(entityWidth) ? 60 : entityWidth) / 2;
-  
-  return dashboardToDOM(labelX, labelY);
-});
+  emit('update', props.entity.key, { holdAction });
 
-/**
- * Panel style with absolute positioning
- */
-const panelStyle = computed(() => {
-  if (!selectedEntity.value) {
-    return { display: 'none' };
-  }
-
-  const dashboardDiv = document.querySelector('.dashboard-container') as HTMLElement;
-  if (!dashboardDiv) return { display: 'none' };
-
-  const panelWidth = isExpanded.value ? 320 : 'auto'; // Auto width when collapsed (fits content)
-  
-  // Position relative to parent container (which has position: relative)
-  // domPosition is already in screen coordinates, so we need to convert relative to parent
-  const parentContainer = dashboardDiv.parentElement;
-  if (!parentContainer) return { display: 'none' };
-  
-  const parentRect = parentContainer.getBoundingClientRect();
-  // Center the panel horizontally on the label position
-  const panelWidthPx = typeof panelWidth === 'number' ? panelWidth : 150; // Estimate for collapsed
-  const left = domPosition.value.x - parentRect.left - (panelWidthPx / 2);
-  const top = domPosition.value.y - parentRect.top;
-
-  return {
-    position: 'absolute',
-    left: `${left}px`,
-    top: `${top}px`,
-    display: 'block',
-    zIndex: 1000,
-    pointerEvents: 'auto',
-    transition: 'none',
-    width: typeof panelWidth === 'number' ? `${panelWidth}px` : panelWidth
+  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
+  actions[props.entity.key] = {
+    tapAction: props.entity.tapAction ?? null,
+    holdAction,
   };
-});
+  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
+}
 
-// Update viewport trigger periodically when entity is selected (for zoom/pan tracking)
-let updateFrame = null;
+function handleDelete() {
+  if (confirm('Are you sure you want to delete this widget?')) {
+    emit('delete', props.entity.key);
+    clearSelection();
+    emit('close');
+    const { success } = useToast();
+    success(`Widget deleted: ${props.displayLabel}`);
+  }
+}
 
+// Handle Escape key
 onMounted(() => {
-  function updateViewport() {
-    if (selectedEntity.value && window.diagramInstance) {
-      // Force reactive update
-      viewportUpdateTrigger.value = Date.now();
-      updateFrame = requestAnimationFrame(updateViewport);
-    } else {
-      updateFrame = null;
-    }
-  }
-  
-  // Start update loop when entity is selected
-  const stopWatcher = () => {
-    if (selectedEntity.value) {
-      updateFrame = requestAnimationFrame(updateViewport);
-    } else if (updateFrame) {
-      cancelAnimationFrame(updateFrame);
-      updateFrame = null;
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && props.isOpen) {
+      emit('close');
     }
   };
-  
-  // Watch for selection changes
-  watch(selectedEntity, stopWatcher, { immediate: true });
-});
-
-onUnmounted(() => {
-  if (updateFrame) {
-    cancelAnimationFrame(updateFrame);
-  }
+  document.addEventListener('keydown', handleKeyDown);
+  onUnmounted(() => {
+    document.removeEventListener('keydown', handleKeyDown);
+  });
 });
 </script>
 
 <style scoped>
 .entity-info-panel {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-top: 4px;
   min-width: 200px;
   max-width: 400px;
   background-color: #2a2a2a;
   border: 1px solid #4a4a4a;
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  z-index: 1000;
+  z-index: 20001;
   pointer-events: auto;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .entity-info-panel.expanded {
@@ -429,6 +1162,27 @@ onUnmounted(() => {
 .entity-info-panel:not(.expanded) {
   min-width: auto;
   max-width: 200px;
+}
+
+@media (max-width: 768px) {
+  .entity-info-panel {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    min-width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+    width: calc(100vw - 32px);
+  }
+
+  .entity-info-panel.expanded {
+    min-width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+  }
+
+  .entity-info-panel:not(.expanded) {
+    min-width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+  }
 }
 
 .panel-header {
@@ -479,10 +1233,21 @@ onUnmounted(() => {
   line-height: 1.4;
   word-wrap: break-word;
   flex: 1;
-  min-width: 0; /* Allow text to shrink */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .panel-title {
+    font-size: 18px;
+  }
+
+  .panel-header {
+    padding: 12px 16px;
+    min-height: 44px;
+  }
 }
 
 .panel-header.collapsed .panel-title {
@@ -496,8 +1261,59 @@ onUnmounted(() => {
   margin: 4px 0;
 }
 
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid #4a4a4a;
+  margin: 0;
+  padding: 0;
+}
+
+.panel-tab {
+  flex: 1;
+  padding: 6px 8px;
+  background-color: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #aaaaaa;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .panel-tab {
+    padding: 10px 8px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+}
+
+.panel-tab:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+.panel-tab.active {
+  color: #ffffff;
+  border-bottom-color: #2d5aa0;
+  background-color: rgba(45, 90, 160, 0.1);
+}
+
+.tab-content {
+  min-height: 50px;
+}
+
 .panel-content {
   padding: 8px 14px 10px;
+  overflow: visible;
+}
+
+@media (max-width: 768px) {
+  .panel-content {
+    padding: 12px 16px 14px;
+  }
 }
 
 .detail-row {
@@ -508,6 +1324,41 @@ onUnmounted(() => {
 
 .detail-row:last-child {
   margin-bottom: 0;
+}
+
+.delete-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #3a3a3a;
+}
+
+.delete-button {
+  width: 100%;
+  background-color: #d32f2f;
+  border: 1px solid #b71c1c;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 11px;
+  padding: 6px 12px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.2s ease;
+}
+
+@media (max-width: 768px) {
+  .delete-button {
+    font-size: 15px;
+    padding: 12px 16px;
+    min-height: 44px;
+  }
+}
+
+.delete-button:hover {
+  background-color: #c62828;
+}
+
+.delete-button:active {
+  background-color: #b71c1c;
 }
 
 .detail-label {
@@ -525,15 +1376,26 @@ onUnmounted(() => {
   word-break: break-word;
 }
 
-.detail-value.entity-id-value {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 10px;
-  color: #cccccc;
+@media (max-width: 768px) {
+  .detail-label {
+    font-size: 13px;
+    min-width: 100px;
+  }
+
+  .detail-value {
+    font-size: 13px;
+  }
 }
 
 .detail-value.state-value {
   font-weight: bold;
-  color: #4CAF50;
+  color: #4caf50;
+}
+
+.detail-value.entity-id-value {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 10px;
+  color: #cccccc;
 }
 
 .icon-select {
@@ -546,6 +1408,16 @@ onUnmounted(() => {
   padding: 4px 8px;
   cursor: pointer;
   outline: none;
+  z-index: 10001;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .icon-select {
+    font-size: 16px;
+    padding: 8px 12px;
+    min-height: 44px;
+  }
 }
 
 .icon-select:hover {
@@ -553,14 +1425,231 @@ onUnmounted(() => {
 }
 
 .icon-select:focus {
-  border-color: #2196F3;
+  border-color: #2196f3;
 }
 
-/* Expand/collapse animation */
+.icon-selector-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.icon-search-wrapper {
+  margin-bottom: 6px;
+}
+
+.icon-search-input {
+  width: 100%;
+  background-color: #333333;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 11px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+@media (max-width: 768px) {
+  .icon-search-input {
+    font-size: 16px;
+    padding: 8px 12px;
+    min-height: 44px;
+  }
+}
+
+.icon-search-input:focus {
+  border-color: #2196f3;
+}
+
+.icon-dropdown {
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: #2a2a2a;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  z-index: 10002;
+  position: relative;
+}
+
+.icon-option {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #3a3a3a;
+  transition: background-color 0.15s;
+}
+
+.icon-option:last-child {
+  border-bottom: none;
+}
+
+.icon-option:hover {
+  background-color: #3a3a3a;
+}
+
+.icon-option-selected {
+  background-color: #2196f3;
+}
+
+.icon-option-selected:hover {
+  background-color: #2196f3;
+}
+
+.icon-option-highlighted {
+  background-color: #3a3a3a;
+}
+
+.icon-option-highlighted.icon-option-selected {
+  background-color: #2196f3;
+}
+
+.icon-search-hint {
+  padding: 12px;
+  text-align: center;
+  color: #888888;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.ha-action-selector-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.ha-action-selected {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background-color: rgba(45, 90, 160, 0.2);
+  border: 1px solid rgba(45, 90, 160, 0.4);
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.automation-selector {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #4a4a4a;
+}
+
+.icon-preview {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.icon-option-label {
+  font-size: 11px;
+  color: #ffffff;
+  flex: 1;
+}
+
+.icon-loading {
+  padding: 12px;
+  text-align: center;
+  color: #888888;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.text-input {
+  flex: 1;
+  background-color: #333333;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 11px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+@media (max-width: 768px) {
+  .text-input {
+    font-size: 16px;
+    padding: 8px 12px;
+    min-height: 44px;
+  }
+}
+
+.text-input:hover {
+  border-color: #5a5a5a;
+}
+
+.text-input:focus {
+  border-color: #2196f3;
+}
+
+.condition-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1;
+}
+
+.condition-operator {
+  flex: 0 0 auto;
+  min-width: 120px;
+}
+
+.condition-value {
+  flex: 0 0 auto;
+  width: 80px;
+}
+
+.color-input-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1;
+}
+
+.color-input {
+  width: 40px;
+  height: 30px;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+.color-text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .condition-controls {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .condition-operator {
+    min-width: 100%;
+    width: 100%;
+  }
+
+  .condition-value {
+    width: 100%;
+  }
+}
+
 .expand-enter-active,
 .expand-leave-active {
   transition: none;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .expand-enter-from,
@@ -573,6 +1662,55 @@ onUnmounted(() => {
 .expand-leave-from {
   opacity: 1;
   max-height: 500px;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #555;
+  transition: 0.3s;
+  border-radius: 20px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: '';
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #2d5aa0;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(16px);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 1px #2d5aa0;
 }
 </style>
 
