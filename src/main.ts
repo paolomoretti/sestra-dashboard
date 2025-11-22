@@ -45,8 +45,9 @@ window.pinia = pinia;
 
 app.mount('#app');
 
-// Register Service Worker for PWA
-if ('serviceWorker' in navigator) {
+// Register Service Worker for PWA (only in production)
+// In development, skip service worker to avoid aggressive caching
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js')
@@ -56,6 +57,15 @@ if ('serviceWorker' in navigator) {
       .catch(error => {
         console.warn('⚠️ Service Worker registration failed:', error);
       });
+  });
+} else if ('serviceWorker' in navigator && import.meta.env.DEV) {
+  // In development, unregister any existing service workers to prevent caching issues
+  navigator.serviceWorker.getRegistrations().then(registrations => {
+    registrations.forEach(registration => {
+      registration.unregister().then(() => {
+        console.log('🔧 Unregistered service worker for development');
+      });
+    });
   });
 }
 

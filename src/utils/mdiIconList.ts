@@ -99,6 +99,10 @@ export function getAllMDIIcons(): MDIIconOption[] {
   // Cache the result
   cachedAllMDIIcons = icons;
   
+  // Log icon count for debugging
+  // eslint-disable-next-line no-console
+  console.log(`[MDI Icons] Loaded ${icons.length} icons from @mdi/js package`);
+  
   return icons;
 }
 

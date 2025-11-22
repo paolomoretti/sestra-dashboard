@@ -105,6 +105,8 @@
                   class="icon-dropdown ha-action-dropdown"
                   @mousedown.stop
                   @click.stop
+                  @wheel="handleIconDropdownWheel"
+                  @touchmove="handleIconDropdownTouchMove"
                   v-show="haActionSearchQuery.trim().length > 0"
                 >
 
@@ -325,6 +327,8 @@
                   class="icon-dropdown"
                   @mousedown.stop
                   @click.stop
+                  @wheel="handleIconDropdownWheel"
+                  @touchmove="handleIconDropdownTouchMove"
                   @keydown="handleIconDropdownKeydown"
                   @focus="handleIconDropdownFocus"
                   tabindex="0"
@@ -392,6 +396,21 @@
                     class="icon-search-hint"
                   >
                      No icons found
+                  </div>
+
+                  <div
+                    v-else-if="
+                      debouncedIconSearchQuery.trim().length === 0 &&
+                      iconSearchQuery.trim().length === 0 &&
+                      isExpanded
+                    "
+                    class="icon-search-hint"
+                  >
+                     Type to search {{
+                      iconOptions.length > COMMON_MDI_ICONS.length
+                        ? `${iconOptions.length.toLocaleString()}`
+                        : 'thousands of'
+                    }} available icons
                   </div>
 
                 </div>
@@ -619,18 +638,64 @@ const iconOptions = ref<typeof COMMON_MDI_ICONS | ReturnType<typeof getAllMDIIco
 );
 const isLoadingIcons = ref(false);
 
-watch(isExpanded, expanded => {
-  if (expanded && iconOptions.value.length <= COMMON_MDI_ICONS.length) {
+// eslint-disable-next-line no-console
+console.log(
+  '[Icon Panel] Initialized with',
+  COMMON_MDI_ICONS.length,
+  'common icons, iconOptions has',
+  iconOptions.value.length
+);
+
+// Function to load all icons (defined after iconOptions)
+function loadAllIcons() {
+  if (iconOptions.value.length <= COMMON_MDI_ICONS.length) {
+    // eslint-disable-next-line no-console
+    console.log('[Icon Panel] Loading all icons...');
     isLoadingIcons.value = true;
     setTimeout(() => {
       try {
-        iconOptions.value = getAllMDIIcons();
+        const allIcons = getAllMDIIcons();
+        iconOptions.value = allIcons;
+        // eslint-disable-next-line no-console
+        console.log(`[Icon Panel] ✅ Loaded ${allIcons.length} icons from MDI library`);
       } catch (error) {
-        console.error('Error loading all icons:', error);
+        console.error('[Icon Panel] ❌ Error loading all icons:', error);
+        // If loading fails, at least keep the common icons
+        iconOptions.value = COMMON_MDI_ICONS;
       } finally {
         isLoadingIcons.value = false;
       }
     }, 0);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log('[Icon Panel] Icons already loaded, count:', iconOptions.value.length);
+  }
+}
+
+// Watch for panel open to trigger icon loading (after iconOptions is defined)
+watch(
+  () => props.isOpen,
+  open => {
+    if (open) {
+      // Load icons when panel opens
+      loadAllIcons();
+    }
+  },
+  { immediate: true }
+);
+
+// Watch for panel expansion
+watch(isExpanded, expanded => {
+  // eslint-disable-next-line no-console
+  console.log(
+    '[Icon Panel] Panel expanded:',
+    expanded,
+    'Current icon count:',
+    iconOptions.value.length
+  );
+  if (expanded) {
+    // Also try loading icons when expanded (in case they weren't loaded on open)
+    loadAllIcons();
   }
 });
 
@@ -740,6 +805,31 @@ function handleIconDropdownFocus() {
   if (highlightedIndex.value < 0 && allVisibleOptions.value.length > 0) {
     highlightedIndex.value = 0;
   }
+}
+
+function handleIconDropdownWheel(e: WheelEvent) {
+  const dropdown = e.currentTarget as HTMLElement;
+  if (!dropdown) return;
+
+  const { scrollTop, scrollHeight, clientHeight } = dropdown;
+  const isAtTop = scrollTop === 0;
+  const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1;
+
+  // If we're at the boundaries and trying to scroll further, prevent default to stop page zoom
+  // Otherwise, allow the dropdown to scroll normally
+  if ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0)) {
+    // At boundary, prevent default and stop propagation to prevent page zoom
+    e.preventDefault();
+    e.stopPropagation();
+  } else {
+    // Not at boundary, allow dropdown scrolling but stop propagation to prevent page zoom
+    e.stopPropagation();
+  }
+}
+
+function handleIconDropdownTouchMove(e: TouchEvent) {
+  // Stop propagation to prevent page panning when scrolling the dropdown
+  e.stopPropagation();
 }
 
 watch(iconSearchQuery, () => {

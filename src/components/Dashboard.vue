@@ -7,6 +7,10 @@
     @touchstart.prevent="handleTouchStart"
     @touchmove.prevent="handleTouchMove"
     @touchend.prevent="handleTouchEnd"
+    @mousedown="handleMouseDown"
+    @mousemove="handleMouseMove"
+    @mouseup="handleMouseUp"
+    @mouseleave="handleMouseUp"
   >
 
     <div
@@ -14,10 +18,6 @@
       class="dashboard-container"
       :class="{ 'drawing-mode': isDrawingRectangle }"
       :style="containerStyle"
-      @mousedown="handleMouseDown"
-      @mousemove="handleMouseMove"
-      @mouseup="handleMouseUp"
-      @mouseleave="handleMouseUp"
     >
        <!-- Background image --> <img
         :src="floorplanImage"
@@ -500,15 +500,23 @@ let initialTouchDistance = 0;
 let isPinching = false;
 
 function handleMouseDown(e: MouseEvent) {
-  // Only pan if clicking on background or container (not on entity)
-  const target = e.target as HTMLElement;
-  if (
-    target.classList.contains('dashboard-container') ||
-    target.classList.contains('dashboard-background') ||
-    target.classList.contains('dashboard-wrapper')
-  ) {
-    if (!dashboardWrapperRef.value) return;
+  if (!dashboardWrapperRef.value) return;
 
+  const target = e.target as HTMLElement;
+  
+  // Check if clicking on an interactive element (entity widget, zone, etc.)
+  // If so, don't start panning - let the element handle the event
+  const isInteractiveElement =
+    target.closest('.entity-widget-wrapper') ||
+    target.closest('.entity-widget') ||
+    target.closest('.zone-rectangle-wrapper') ||
+    target.closest('.zone-label') ||
+    target.closest('.zone-edit-panel') ||
+    target.closest('.entity-info-panel') ||
+    target.closest('.drop-zone-overlay');
+
+  // Only pan if NOT clicking on an interactive element
+  if (!isInteractiveElement) {
     // If in rectangle drawing mode, start drawing
     if (isDrawingRectangle.value) {
       const rect = dashboardWrapperRef.value.getBoundingClientRect();
@@ -604,13 +612,18 @@ function handleMouseUp(e: MouseEvent) {
 
   isPanning = false;
 
-  // Deselect if clicking on empty space (not on an entity)
+  // Deselect if clicking on empty space (not on an interactive element)
   const target = e.target as HTMLElement;
-  if (
-    target.classList.contains('dashboard-container') ||
-    target.classList.contains('dashboard-background') ||
-    target.classList.contains('dashboard-wrapper')
-  ) {
+  const isInteractiveElement =
+    target.closest('.entity-widget-wrapper') ||
+    target.closest('.entity-widget') ||
+    target.closest('.zone-rectangle-wrapper') ||
+    target.closest('.zone-label') ||
+    target.closest('.zone-edit-panel') ||
+    target.closest('.entity-info-panel') ||
+    target.closest('.drop-zone-overlay');
+
+  if (!isInteractiveElement) {
     clearSelection();
     selectedZoneId.value = null;
   }

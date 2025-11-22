@@ -9,7 +9,8 @@
       <h1 class="m-0 text-lg sm:text-2xl">🏠 Sestra Dashboard</h1>
 
       <div class="flex items-center gap-2 sm:gap-3">
-         <LabelToggleButton /> <SidebarToggleButton />
+        <SidebarToggleButton />
+        <SettingsButton @open="openSettings" />
       </div>
 
     </header>
@@ -20,6 +21,7 @@
         @add-action-button="handleAddActionButton"
         @add-zone="handleAddZone"
       /> <ToastContainer />
+      <SettingsPanel :is-open="settingsOpen" @close="closeSettings" />
     </div>
 
   </div>
@@ -35,8 +37,9 @@ import Dashboard from './components/Dashboard.vue';
 import Sidebar from './components/Sidebar.vue';
 import ZoomControls from './components/ZoomControls.vue';
 import NumericValues from './components/NumericValues.vue';
-import LabelToggleButton from './components/LabelToggleButton.vue';
 import SidebarToggleButton from './components/SidebarToggleButton.vue';
+import SettingsButton from './components/SettingsButton.vue';
+import SettingsPanel from './components/SettingsPanel.vue';
 import AddButton from './components/AddButton.vue';
 import ToastContainer from './components/ToastContainer.vue';
 import './style.css';
@@ -44,6 +47,15 @@ import './style.css';
 const uiStore = useUIStore();
 const { sidebarVisible } = storeToRefs(uiStore);
 const dashboardRef = ref<InstanceType<typeof Dashboard>>();
+const settingsOpen = ref(false);
+
+function openSettings() {
+  settingsOpen.value = true;
+}
+
+function closeSettings() {
+  settingsOpen.value = false;
+}
 
 // Setup hotkeys
 useHotkeys([

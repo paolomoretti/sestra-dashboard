@@ -6,7 +6,7 @@
     :data-zone-id="zone.id"
     :style="rectangleStyle"
     @click.stop="handleClick"
-    @mousedown.stop="handleMouseDown"
+    @mousedown="handleMouseDown"
     @contextmenu.stop="handleRightClick"
   >
      <!-- Rectangle -->
@@ -18,13 +18,16 @@
       <div
         v-if="showLabel"
         class="zone-label"
+        :class="{ 'zone-label-locked': zone.locked }"
         :title="zone.label || 'Unnamed Zone'"
-        :style="{ pointerEvents: 'auto' }"
+        :style="{ ...labelStyle, pointerEvents: 'auto' }"
         @click.stop="handleLabelClick"
         @mousedown.stop="handleLabelMouseDown"
         @contextmenu.stop="handleLabelRightClick"
       >
-         <span class="label-text">{{ zone.label || 'Unnamed Zone' }}</span
+         <span class="label-icon" v-if="zone.locked">🔒</span> <span class="label-text">{{
+          zone.label || 'Unnamed Zone'
+        }}</span
         >
       </div>
 
@@ -128,7 +131,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { storeToRefs } from 'pinia';
 import { clearSelection } from '../composables/useEntitySelection';
+import { useUIStore } from '../stores/ui';
 
 export interface ZoneData {
   id: string;
@@ -155,6 +160,9 @@ const emit = defineEmits<{
   delete: [zoneId: string];
 }>();
 
+const uiStore = useUIStore();
+const { scale: uiScale } = storeToRefs(uiStore);
+
 const rectangleRef = ref<HTMLElement>();
 const panelRef = ref<HTMLElement>();
 const labelInputRef = ref<HTMLInputElement>();
@@ -174,6 +182,36 @@ const height = ref(props.zone.height);
 
 // Label input
 const labelInput = ref(props.zone.label || '');
+
+// Helper to compute scale factor for label scaling (using square root for gradual scaling)
+const labelScaleFactor = computed(() => {
+  const scale = uiScale.value ?? props.scale ?? 1;
+  // Clamp scale to prevent division by zero or extreme values
+  // Minimum scale of 0.1 to prevent labels from becoming too large
+  const clampedScale = Math.max(0.1, scale);
+  // Use square root for more gradual scaling - labels will scale but not as dramatically
+  return Math.sqrt(clampedScale);
+});
+
+// Label style - scales inversely with zoom to stay readable (same as entity labels)
+const labelStyle = computed(() => {
+  const scaleFactor = labelScaleFactor.value;
+  // Base font-size is 1.5rem (same as entity labels)
+  // At scale 0.5: fontSize = 1.5 / sqrt(0.5) ≈ 2.12rem (instead of 3rem linear)
+  // At scale 2: fontSize = 1.5 / sqrt(2) ≈ 1.06rem (instead of 0.75rem linear)
+  const fontSize = 1.5 / scaleFactor;
+  // Also scale padding and other dimensions proportionally (same base values as entity labels)
+  const padding = `${4 / scaleFactor}px ${8 / scaleFactor}px`;
+  const borderRadius = `${3 / scaleFactor}px`;
+  const maxWidth = `${250 / scaleFactor}px`;
+
+  return {
+    fontSize: `${fontSize}rem`,
+    padding,
+    borderRadius,
+    maxWidth,
+  };
+});
 
 // Styles
 const rectangleStyle = computed(() => {
@@ -196,10 +234,12 @@ const rectangleStyle = computed(() => {
     top: `${y.value}px`,
     cursor: isSelected ? 'move' : 'default',
     zIndex,
-    // Allow pointer events to pass through when not selected/interacting
-    // This ensures widgets behind the zone can be clicked
+    // Allow pointer events to pass through when not selected/interacting or when locked
+    // This ensures widgets behind the zone can be clicked and dashboard can be panned
     pointerEvents:
-      isSelected || isDragging.value || isResizing.value ? ('auto' as const) : ('none' as const),
+      props.zone.locked || (!isSelected && !isDragging.value && !isResizing.value)
+        ? ('none' as const)
+        : ('auto' as const),
   };
 });
 
@@ -338,6 +378,10 @@ function handleLabelClick() {
   isPanelOpen.value = true;
   isExpanded.value = true;
   emit('select', props.zone);
+  // Zoom to zone
+  if (window.zoomToZone) {
+    window.zoomToZone(props.zone, 50);
+  }
   // Focus the input after opening
   void nextTick(() => {
     if (labelInputRef.value) {
@@ -353,6 +397,10 @@ function handleLabelRightClick(e: MouseEvent) {
   isPanelOpen.value = true;
   isExpanded.value = true;
   emit('select', props.zone);
+  // Zoom to zone
+  if (window.zoomToZone) {
+    window.zoomToZone(props.zone, 50);
+  }
   // Focus the input after opening
   void nextTick(() => {
     if (labelInputRef.value) {
@@ -369,6 +417,10 @@ function handleRightClick(e: MouseEvent) {
   isPanelOpen.value = true;
   isExpanded.value = true;
   emit('select', props.zone);
+  // Zoom to zone
+  if (window.zoomToZone) {
+    window.zoomToZone(props.zone, 50);
+  }
 }
 
 function toggleExpanded() {
@@ -526,6 +578,10 @@ watch(
       // Auto-open panel when zone becomes selected (e.g., after creation)
       isPanelOpen.value = true;
       isExpanded.value = true;
+      // Zoom to zone
+      if (window.zoomToZone) {
+        window.zoomToZone(props.zone, 50);
+      }
       // Focus the input after opening
       void nextTick(() => {
         setTimeout(() => {
@@ -663,31 +719,58 @@ onUnmounted(() => {
   top: 4px;
   left: 4px;
   pointer-events: auto;
-  background-color: rgba(42, 42, 42, 0.95);
-  border: 1px solid #4a4a4a;
-  border-radius: 3px;
-  padding: 4px 8px;
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.9) 0%, rgba(25, 118, 210, 0.9) 100%);
+  border: 1px solid rgba(33, 150, 243, 1);
   cursor: pointer;
-  transition: background-color 0.1s ease, border-color 0.1s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
-  font-size: 12px;
+  font-weight: 600;
   color: #ffffff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  max-width: 200px;
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   text-overflow: ellipsis;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  /* font-size, padding, border-radius, and max-width are set dynamically via labelStyle (same as entity labels) */
 }
 
 .zone-label:hover {
-  background-color: rgba(51, 51, 51, 0.95);
-  border-color: #5a5a5a;
+  background: linear-gradient(135deg, rgba(33, 150, 243, 1) 0%, rgba(25, 118, 210, 1) 100%);
+  border-color: rgba(66, 165, 245, 1);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.zone-label-locked {
+  background: linear-gradient(135deg, rgba(158, 158, 158, 0.9) 0%, rgba(117, 117, 117, 0.9) 100%);
+  border-style: solid;
+  border-color: rgba(158, 158, 158, 1);
+  box-shadow: 0 2px 8px rgba(158, 158, 158, 0.3), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.zone-label-locked:hover {
+  background: linear-gradient(135deg, rgba(158, 158, 158, 1) 0%, rgba(117, 117, 117, 1) 100%);
+  border-color: rgba(189, 189, 189, 1);
+  box-shadow: 0 4px 12px rgba(158, 158, 158, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.label-icon {
+  display: inline-flex;
+  line-height: 1;
+  flex-shrink: 0;
+  /* font-size is set dynamically via inline style */
 }
 
 .label-text {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
 .resize-handle {
@@ -728,10 +811,9 @@ onUnmounted(() => {
 
 .zone-edit-panel {
   position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 4px;
+  top: 0;
+  left: 0;
+  margin-top: 32px;
   min-width: 200px;
   max-width: 400px;
   background-color: #2a2a2a;

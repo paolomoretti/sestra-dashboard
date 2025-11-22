@@ -1,5 +1,7 @@
 // Service Worker for Sestra Dashboard
-const CACHE_NAME = 'sestra-dashboard-v1';
+// Use timestamp-based cache name for better invalidation
+const CACHE_VERSION = 'v1';
+const CACHE_NAME = `sestra-dashboard-${CACHE_VERSION}`;
 const urlsToCache = [
   '/',
   '/index.html',
@@ -65,44 +67,78 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        if (response) {
-          return response;
-        }
-        
-        // Fetch from network and cache for future use (for static assets)
-        return fetch(event.request).then((response) => {
-          // Only cache successful GET requests
-          // Skip caching if the request URL has an unsupported scheme
-          if (response.status === 200 && event.request.method === 'GET' &&
-              !event.request.url.startsWith('chrome-extension://') &&
-              !event.request.url.startsWith('moz-extension://') &&
-              !event.request.url.startsWith('safari-extension://')) {
-            try {
-              const responseToCache = response.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, responseToCache).catch((err) => {
-                  // Silently ignore cache errors (e.g., for unsupported schemes)
-                  console.debug('Cache put failed (non-critical):', err);
-                });
+  // Use network-first strategy for HTML files (better for development)
+  // Cache-first for static assets (images, icons, etc.)
+  const isHTMLRequest = event.request.headers.get('accept')?.includes('text/html') || 
+                        event.request.mode === 'navigate';
+  
+  if (isHTMLRequest) {
+    // Network-first for HTML: try network first, fallback to cache
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // If network succeeds, update cache and return response
+          if (response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache).catch((err) => {
+                console.debug('Cache put failed (non-critical):', err);
               });
-            } catch (err) {
-              // Silently ignore cache errors
-              console.debug('Cache error (non-critical):', err);
-            }
+            });
           }
           return response;
-        });
-      })
-      .catch(() => {
-        // If both cache and network fail, return offline page for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
-      })
-  );
+        })
+        .catch(() => {
+          // Network failed, try cache
+          return caches.match(event.request).then((cachedResponse) => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            // If both fail, return offline page for navigation requests
+            if (event.request.mode === 'navigate') {
+              return caches.match('/index.html');
+            }
+          });
+        })
+    );
+  } else {
+    // Cache-first for static assets (images, CSS, JS, etc.)
+    event.respondWith(
+      caches.match(event.request)
+        .then((response) => {
+          // Return cached version if available
+          if (response) {
+            return response;
+          }
+          
+          // Fetch from network and cache for future use
+          return fetch(event.request).then((response) => {
+            // Only cache successful GET requests
+            if (response.status === 200 && event.request.method === 'GET' &&
+                !event.request.url.startsWith('chrome-extension://') &&
+                !event.request.url.startsWith('moz-extension://') &&
+                !event.request.url.startsWith('safari-extension://')) {
+              try {
+                const responseToCache = response.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                  cache.put(event.request, responseToCache).catch((err) => {
+                    console.debug('Cache put failed (non-critical):', err);
+                  });
+                });
+              } catch (err) {
+                console.debug('Cache error (non-critical):', err);
+              }
+            }
+            return response;
+          });
+        })
+        .catch(() => {
+          // If both cache and network fail, return offline page for navigation requests
+          if (event.request.mode === 'navigate') {
+            return caches.match('/index.html');
+          }
+        })
+    );
+  }
 });
 
