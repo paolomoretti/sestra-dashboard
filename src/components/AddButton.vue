@@ -19,6 +19,13 @@
       </button>
       <button
         class="add-menu-item"
+        @click="handleAddImageWidget"
+      >
+        <span class="menu-icon">🖼️</span>
+        <span class="menu-label">Image Widget</span>
+      </button>
+      <button
+        class="add-menu-item"
         @click="handleAddZone"
       >
         <span class="menu-icon">⬜</span>
@@ -33,6 +40,7 @@ import { ref } from 'vue';
 
 const emit = defineEmits<{
   addActionButton: [];
+  addImageWidget: [];
   addZone: [];
 }>();
 
@@ -44,6 +52,11 @@ function toggleMenu() {
 
 function handleAddActionButton() {
   emit('addActionButton');
+  isMenuOpen.value = false;
+}
+
+function handleAddImageWidget() {
+  emit('addImageWidget');
   isMenuOpen.value = false;
 }
 

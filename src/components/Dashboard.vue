@@ -164,10 +164,11 @@ const placedEntities = computed(() => {
 
   return placedEntityIds.value
     .map(entityId => {
-      // Check if this is an action button
+      // Check if this is an action button or image widget
       const isActionButton = entityId.startsWith('action_button_');
+      const isImageWidget = entityId.startsWith('image_widget_');
 
-      // Find entity in store (or create synthetic entity for action buttons)
+      // Find entity in store (or create synthetic entity for action buttons/image widgets)
       let entity: EntityData | null =
         entitiesStore.allEntities.find(e => e.key === entityId) ?? null;
 
@@ -185,6 +186,26 @@ const placedEntities = computed(() => {
           tapAction: actionsData[entityId]?.tapAction || { action: 'call-service', service: '' },
           labelOverride: labelOverridesData[entityId] || 'Action Button',
           haAction: haActionsData[entityId] || { service: '' },
+        };
+      }
+
+      // If not found and it's an image widget, create a synthetic entity
+      if (!entity && isImageWidget) {
+        const widgetData = firestoreStore.widgets[entityId] as any;
+        entity = {
+          key: entityId,
+          isImageWidget: true,
+          category: 'image',
+          name: labelOverridesData[entityId] || 'Image Widget',
+          state: 'idle',
+          icon: 'image',
+          loc: positionsData[entityId] || '0 0',
+          size: sizesData[entityId] || '200 150',
+          labelOverride: labelOverridesData[entityId] || 'Image Widget',
+          imageUrl: widgetData?.imageUrl || '',
+          linkedEntityId: widgetData?.linkedEntityId || '',
+          imageConditionOperator: widgetData?.imageConditionOperator,
+          imageConditionValue: widgetData?.imageConditionValue,
         };
       }
 
@@ -207,6 +228,17 @@ const placedEntities = computed(() => {
         iconColorOn: (firestoreStore.widgets[entityId] as any)?.iconColorOn ?? entity.iconColorOn,
         iconColorOff:
           (firestoreStore.widgets[entityId] as any)?.iconColorOff ?? entity.iconColorOff,
+        isImageWidget:
+          (firestoreStore.widgets[entityId] as any)?.isImageWidget ?? entity.isImageWidget,
+        imageUrl: (firestoreStore.widgets[entityId] as any)?.imageUrl ?? entity.imageUrl,
+        linkedEntityId:
+          (firestoreStore.widgets[entityId] as any)?.linkedEntityId ?? entity.linkedEntityId,
+        imageConditionOperator:
+          (firestoreStore.widgets[entityId] as any)?.imageConditionOperator ??
+          entity.imageConditionOperator,
+        imageConditionValue:
+          (firestoreStore.widgets[entityId] as any)?.imageConditionValue ??
+          entity.imageConditionValue,
         haAction: haActionsData[entityId] ?? entity.haAction,
       } as EntityData;
     })
@@ -503,7 +535,7 @@ function handleMouseDown(e: MouseEvent) {
   if (!dashboardWrapperRef.value) return;
 
   const target = e.target as HTMLElement;
-  
+
   // Check if clicking on an interactive element (entity widget, zone, etc.)
   // If so, don't start panning - let the element handle the event
   const isInteractiveElement =
@@ -841,6 +873,31 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
   if ('iconColorOff' in updates) {
     await firestoreStore.updateWidget(entityId, { iconColorOff: updates.iconColorOff });
   }
+
+  // Image widget properties
+  if ('imageUrl' in updates) {
+    await firestoreStore.updateWidget(entityId, { imageUrl: updates.imageUrl });
+  }
+
+  if ('linkedEntityId' in updates) {
+    await firestoreStore.updateWidget(entityId, { linkedEntityId: updates.linkedEntityId });
+  }
+
+  if ('imageConditionOperator' in updates) {
+    await firestoreStore.updateWidget(entityId, {
+      imageConditionOperator: updates.imageConditionOperator,
+    });
+  }
+
+  if ('imageConditionValue' in updates) {
+    await firestoreStore.updateWidget(entityId, {
+      imageConditionValue: updates.imageConditionValue,
+    });
+  }
+
+  if ('isImageWidget' in updates) {
+    await firestoreStore.updateWidget(entityId, { isImageWidget: updates.isImageWidget });
+  }
 }
 
 async function handleEntityDelete(entityId: string) {
@@ -978,6 +1035,76 @@ async function createActionButton() {
   // Select the newly created button
   setTimeout(() => {
     setSelectedEntity(actionButton, { x: diagramX, y: diagramY });
+  }, 100);
+}
+
+// Create image widget
+async function createImageWidget() {
+  if (!dashboardWrapperRef.value) {
+    return;
+  }
+
+  // Calculate center position in diagram coordinates
+  const rect = dashboardWrapperRef.value.getBoundingClientRect();
+  const wrapperWidth = rect.width;
+  const wrapperHeight = rect.height;
+
+  // Center of viewport in wrapper coordinates
+  const centerX = wrapperWidth / 2;
+  const centerY = wrapperHeight / 2;
+
+  // Convert to diagram coordinates
+  const currentScale = scale.value || 1;
+  const diagramX = (centerX - panX.value) / currentScale;
+  const diagramY = (centerY - panY.value) / currentScale;
+
+  // Generate unique key for image widget
+  const imageWidgetKey = `image_widget_${Date.now()}`;
+
+  // Create image widget entity
+  const imageWidget: EntityData = {
+    key: imageWidgetKey,
+    isImageWidget: true,
+    category: 'image',
+    name: 'Image Widget',
+    labelOverride: 'Image Widget',
+    state: 'idle',
+    icon: 'image',
+    loc: `${diagramX} ${diagramY}`,
+    size: '200 150',
+    imageUrl: '',
+    linkedEntityId: '',
+  };
+
+  // Add to placed entities
+  if (!placedEntityIds.value.includes(imageWidgetKey)) {
+    await setPlacedEntityIds([...placedEntityIds.value, imageWidgetKey]);
+  }
+
+  // Save position and size
+  const newPositions = { ...positions.value };
+  newPositions[imageWidgetKey] = `${diagramX} ${diagramY}`;
+  await setPositions(newPositions);
+
+  const newSizes = { ...sizes.value };
+  newSizes[imageWidgetKey] = '200 150';
+  await setSizes(newSizes);
+
+  // Save label override
+  const newLabelOverrides = { ...labelOverrides.value };
+  newLabelOverrides[imageWidgetKey] = 'Image Widget';
+  await setLabelOverrides(newLabelOverrides);
+
+  // Save image widget properties to Firestore
+  await firestoreStore.updateWidget(imageWidgetKey, {
+    isImageWidget: true,
+    imageUrl: '',
+    linkedEntityId: '',
+  });
+
+  // Select the newly created widget
+  setTimeout(() => {
+    setSelectedEntity(imageWidget, { x: diagramX, y: diagramY });
   }, 100);
 }
 
@@ -1198,6 +1325,7 @@ function setRectangleDrawingMode(enabled: boolean) {
 // Expose functions for external use
 defineExpose({
   createActionButton,
+  createImageWidget,
   setRectangleDrawingMode,
   zoomIn: () => {
     if (!dashboardWrapperRef.value) return;

@@ -41,6 +41,47 @@
          </template
       >
     </div>
+     <!-- Image Widget Style -->
+    <div
+      v-else-if="entity.isImageWidget"
+      class="entity-widget image-widget"
+      :class="{ selected: isSelected, resizing: isResizing, dragging: isDragging }"
+      @touchstart="handleTouchStart"
+      @touchmove="handleTouchMove"
+      @touchend="handleTouchEnd"
+    >
+       <!-- Image --> <img
+        v-if="shouldShowImage && imageUrl"
+        :src="imageUrl"
+        class="image-widget-image"
+        :style="imageStyle"
+        draggable="false"
+        @click.stop="handleIconClick"
+        @mousedown.stop="handleIconMouseDown"
+        @contextmenu.stop="handleIconRightClick"
+      /> <!-- Placeholder when no image or condition not met -->
+      <div
+        v-else
+        class="image-widget-placeholder"
+        @click.stop="handleIconClick"
+        @mousedown.stop="handleIconMouseDown"
+        @contextmenu.stop="handleIconRightClick"
+      >
+         <span class="placeholder-text">{{ imageUrl ? 'Condition not met' : 'No image' }}</span
+        >
+      </div>
+       <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
+        >
+        <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
+
+        <div class="resize-handle resize-handle-sw" @mousedown.stop="startResize('sw', $event)" />
+
+        <div class="resize-handle resize-handle-ne" @mousedown.stop="startResize('ne', $event)" />
+
+        <div class="resize-handle resize-handle-nw" @mousedown.stop="startResize('nw', $event)" />
+         </template
+      >
+    </div>
      <!-- Regular Entity Widget Style -->
     <div
       v-else
@@ -99,6 +140,15 @@
       @delete="entityId => emit('delete', entityId)"
       @close="isPanelOpen = false"
     />
+     <!-- Camera Modal --> <CameraModal
+      v-if="entity.category === 'camera'"
+      :is-open="isCameraModalOpen"
+      :entity-id="entity.key"
+      :entity-name="displayLabel"
+      :video-url="entity.videoUrl"
+      :entity-picture="entity.entityPicture"
+      @close="isCameraModalOpen = false"
+    />
   </div>
 
 </template>
@@ -117,9 +167,11 @@ import {
 import { getMDIIconPath, createIconSVG, getIconColor } from '../utils/iconUtils';
 import { executeTapAction } from '../utils/actionHandler';
 import { useUIStore } from '../stores/ui';
+import { useEntitiesStore } from '../stores/entities';
 import { haConfig } from '../../config';
 import { getApiBaseUrl } from '../utils/haServices';
 import EntityInfoPanel from './EntityInfoPanel.vue';
+import CameraModal from './CameraModal.vue';
 
 interface Props {
   entity: EntityData;
@@ -139,6 +191,7 @@ const isDragging = ref(false);
 const hasDragged = ref(false);
 const hasDraggedFromLabel = ref(false);
 const isPanelOpen = ref(false);
+const isCameraModalOpen = ref(false);
 
 // Position in diagram coordinates (not screen coordinates)
 const initialPos = parsePosition(props.entity.loc);
@@ -217,6 +270,102 @@ const iconStyle = computed(() => ({
   height: '100%',
   objectFit: 'contain' as const,
 }));
+
+// Image widget properties
+const imageUrl = computed(() => props.entity.imageUrl || '');
+const imageStyle = computed(() => ({
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover' as const,
+}));
+
+// Get linked entity state for condition checking
+const entitiesStore = useEntitiesStore();
+const linkedEntityState = computed(() => {
+  if (!props.entity.linkedEntityId) return null;
+  const linkedEntity = entitiesStore.allEntities.find(e => e.key === props.entity.linkedEntityId);
+  return linkedEntity?.state || null;
+});
+
+// Image condition settings (stored per entity) - only read values, setters are in panel
+const imageConditionOperatorKey = `ha_dashboard_image_condition_operator_${props.entity.key}`;
+const imageConditionValueKey = `ha_dashboard_image_condition_value_${props.entity.key}`;
+const [imageConditionOperator] = useLocalStorage<string>(
+  imageConditionOperatorKey,
+  props.entity.imageConditionOperator || ''
+);
+const [imageConditionValue] = useLocalStorage<string | null>(
+  imageConditionValueKey,
+  props.entity.imageConditionValue !== undefined && props.entity.imageConditionValue !== null
+    ? String(props.entity.imageConditionValue)
+    : null
+);
+
+// Check if image condition is met
+const shouldShowImage = computed(() => {
+  // If no image URL, don't show
+  if (!imageUrl.value || imageUrl.value.trim() === '') {
+    return false;
+  }
+
+  // If no condition is set, always show if image URL exists
+  if (!imageConditionOperator.value || imageConditionValue.value === null) {
+    return true;
+  }
+
+  // If no linked entity, don't show
+  if (!props.entity.linkedEntityId || !linkedEntityState.value) {
+    return false;
+  }
+
+  const state = linkedEntityState.value.trim();
+  if (!state || state === 'unknown' || state === 'unavailable') {
+    return false;
+  }
+
+  // Check if condition value is numeric
+  const conditionValue = imageConditionValue.value;
+  
+  // Try to parse condition value as number
+  const numConditionValue = Number.parseFloat(String(conditionValue));
+  const isNumericCondition = !isNaN(numConditionValue);
+
+  if (isNumericCondition) {
+    // Numeric comparison
+    const numericValue = parseNumericState(state);
+    if (numericValue === null) return false;
+
+    const threshold = numConditionValue;
+
+    switch (imageConditionOperator.value) {
+      case 'equal':
+        return Math.abs(numericValue - threshold) < 0.001;
+      case 'greater':
+        return numericValue > threshold;
+      case 'lower':
+        return numericValue < threshold;
+      case 'greaterEqual':
+        return numericValue >= threshold;
+      case 'lowerEqual':
+        return numericValue <= threshold;
+      default:
+        return true;
+    }
+  } else {
+    // String comparison
+    const conditionState = String(conditionValue).trim().toLowerCase();
+    const entityState = state.toLowerCase();
+
+    switch (imageConditionOperator.value) {
+      case 'equal':
+        return entityState === conditionState;
+      case 'notEqual':
+        return entityState !== conditionState;
+      default:
+        return true;
+    }
+  }
+});
 
 // Helper to compute scale factor for label scaling (using square root for gradual scaling)
 const labelScaleFactor = computed(() => {
@@ -600,6 +749,13 @@ const displayLabel = computed(() => {
   return props.entity.name || props.entity.key;
 });
 
+// Check if this is a Ring camera
+const isRingCamera = computed(() => {
+  if (props.entity.category !== 'camera') return false;
+  const entityIdLower = props.entity.key.toLowerCase();
+  return entityIdLower.includes('ring') || entityIdLower.includes('doorbell');
+});
+
 // Action button label: show label if set, hide if explicitly empty string
 const actionButtonLabel = computed(() => {
   if (!props.entity.isActionButton) return '';
@@ -688,15 +844,9 @@ async function handleIconClick(e: MouseEvent) {
     return;
   }
 
-  // For cameras, open video_url in a new tab if available
-  if (props.entity.category === 'camera' && props.entity.videoUrl) {
-    let videoUrl = props.entity.videoUrl;
-    // video_url might be relative or absolute
-    if (videoUrl.startsWith('/')) {
-      // Relative URL - prepend Home Assistant base URL
-      videoUrl = `${haConfig.address}${videoUrl}`;
-    }
-    window.open(videoUrl, '_blank');
+  // For all cameras, open modal (Ring cameras will have recording support)
+  if (props.entity.category === 'camera') {
+    isCameraModalOpen.value = true;
     return;
   }
 
@@ -1705,6 +1855,42 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
   flex: 1;
   line-height: 1.3;
   min-width: 0;
+}
+
+/* Image Widget Styles */
+.image-widget {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(42, 42, 42, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.image-widget-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: auto;
+}
+
+.image-widget-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(42, 42, 42, 0.8);
+  border: 2px dashed #4a4a4a;
+  border-radius: 4px;
+  pointer-events: auto;
+}
+
+.placeholder-text {
+  color: #888;
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 8px;
 }
 
 .entity-icon {

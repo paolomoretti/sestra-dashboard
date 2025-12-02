@@ -33,6 +33,12 @@ export interface EntityData {
   // Camera-specific fields
   entityPicture?: string; // URL to entity picture (for cameras)
   videoUrl?: string; // URL to video stream (for cameras)
+  // Image widget fields
+  isImageWidget?: boolean;
+  imageUrl?: string; // URL to the image to display
+  linkedEntityId?: string; // Entity ID to check state for conditional display
+  imageConditionOperator?: string; // Condition operator for showing image (equal, greater, lower, etc.)
+  imageConditionValue?: number | string; // Condition value for showing image
 }
 
 export interface Position {

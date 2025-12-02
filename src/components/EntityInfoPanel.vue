@@ -78,6 +78,96 @@
               }}</span
               >
             </div>
+             <!-- Entity Selector (for image widgets) -->
+            <div v-if="entity.isImageWidget" class="detail-row">
+               <span class="detail-label">Linked Entity:</span>
+              <div class="entity-selector-wrapper">
+
+                <div class="icon-search-wrapper">
+                   <input
+                    type="text"
+                    :value="
+                      entitySearchQuery || (currentLinkedEntityId ? currentLinkedEntityName : '')
+                    "
+                    @input="
+                      e => {
+                        entitySearchQuery = (e.target as HTMLInputElement).value;
+                      }
+                    "
+                    @mousedown.stop
+                    @click.stop
+                    @focus="
+                      () => {
+                        if (currentLinkedEntityId) entitySearchQuery = '';
+                      }
+                    "
+                    @keydown="handleEntitySearchKeydown"
+                    :placeholder="
+                      currentLinkedEntityId ? currentLinkedEntityName : 'Search entities...'
+                    "
+                    class="icon-search-input"
+                  />
+                </div>
+
+                <div
+                  class="icon-dropdown entity-dropdown"
+                  @mousedown.stop
+                  @click.stop
+                  @wheel="handleIconDropdownWheel"
+                  @touchmove="handleIconDropdownTouchMove"
+                  v-show="entitySearchQuery.trim().length > 0"
+                >
+
+                  <div
+                    class="icon-option"
+                    :class="{
+                      'icon-option-selected': currentLinkedEntityId === '',
+                      'icon-option-highlighted': entityHighlightedIndex === 0,
+                    }"
+                    @click="selectLinkedEntity('')"
+                    @mouseenter="entityHighlightedIndex = 0"
+                  >
+                     <span class="icon-option-label">None (always show)</span>
+                  </div>
+
+                  <div
+                    v-for="(entityOption, index) in filteredEntities"
+                    :key="entityOption.key"
+                    class="icon-option"
+                    :class="{
+                      'icon-option-selected': currentLinkedEntityId === entityOption.key,
+                      'icon-option-highlighted': entityHighlightedIndex === index + 1,
+                    }"
+                    :ref="
+                      el => {
+                        if (el) entityOptionRefs[index] = el as HTMLElement;
+                      }
+                    "
+                    @click="selectLinkedEntity(entityOption.key)"
+                    @mouseenter="entityHighlightedIndex = index + 1"
+                  >
+                     <span class="icon-option-label">{{
+                      entityOption.name || entityOption.key
+                    }}</span
+                    >
+                  </div>
+
+                  <div v-if="filteredEntities.length === 0" class="icon-search-hint">
+                     No entities found
+                  </div>
+
+                </div>
+
+                <div
+                  v-if="currentLinkedEntityName && !entitySearchQuery.trim()"
+                  class="ha-action-selected"
+                >
+                   Selected: {{ currentLinkedEntityName }}
+                </div>
+
+              </div>
+
+            </div>
              <!-- HA Action (for action buttons) -->
             <div v-if="entity.isActionButton" class="detail-row">
                <span class="detail-label">HA Action:</span>
@@ -267,8 +357,69 @@
                 /> <span class="toggle-slider"></span> </label
               >
             </div>
+             <!-- Image URL (for image widgets) -->
+            <div v-if="entity.isImageWidget" class="detail-row">
+               <span class="detail-label">Image URL:</span>
+              <div class="image-url-wrapper">
+                 <input
+                  type="text"
+                  :value="currentImageUrl"
+                  @input="handleImageUrlChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input"
+                  placeholder="Enter image URL or path"
+                /> <button
+                  @click.stop="handleImageFileSelect"
+                  @mousedown.stop
+                  class="image-select-button"
+                >
+                   Select Image File </button
+                >
+              </div>
+
+            </div>
+             <!-- Image Condition (for image widgets) -->
+            <div v-if="entity.isImageWidget && entity.linkedEntityId" class="detail-row">
+               <span class="detail-label">Show Image If:</span>
+              <div class="condition-controls">
+                 <select
+                  :value="imageConditionOperator"
+                  @change="handleImageConditionOperatorChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="icon-select condition-operator"
+                >
+
+                  <option value="">Always</option>
+
+                  <option value="equal">Equal (=)</option>
+
+                  <option value="notEqual">Not Equal (≠)</option>
+
+                  <option value="greater">Greater (>)</option>
+
+                  <option value="lower">Lower (<)</option>
+
+                  <option value="greaterEqual">Greater or Equal (≥)</option>
+
+                  <option value="lowerEqual">Lower or Equal (≤)</option>
+                   </select
+                > <input
+                  v-if="imageConditionOperator"
+                  type="text"
+                  :value="imageConditionValue"
+                  @input="handleImageConditionValueChange"
+                  @mousedown.stop
+                  @click.stop
+                  class="text-input condition-value"
+                  placeholder="Value or state"
+                />
+              </div>
+
+            </div>
              <!-- State Visibility -->
-            <div class="detail-row" v-if="entity.state">
+            <div class="detail-row" v-if="entity.state && !entity.isImageWidget">
                <span class="detail-label">Show State:</span> <label class="toggle-switch"
                 > <input
                   type="checkbox"
@@ -304,7 +455,7 @@
               />
             </div>
              <!-- Icon selection -->
-            <div class="detail-row">
+            <div class="detail-row" v-if="!entity.isImageWidget">
                <span class="detail-label">Icon:</span>
               <div class="icon-selector-wrapper">
 
@@ -531,6 +682,7 @@ import {
 } from '../utils/iconUtils';
 import { type TapAction } from '../utils/actionHandler';
 import { useUIStore } from '../stores/ui';
+import { useEntitiesStore } from '../stores/entities';
 import { getAllMDIIcons, COMMON_MDI_ICONS } from '../utils/mdiIconList';
 import { haConfig } from '../../config';
 import {
@@ -609,6 +761,45 @@ const [stateConditionValue, setStateConditionValue] = useLocalStorage<number | n
   stateConditionValueKey,
   null
 );
+
+// Image condition settings
+const imageConditionOperatorKey = `ha_dashboard_image_condition_operator_${props.entity.key}`;
+const imageConditionValueKey = `ha_dashboard_image_condition_value_${props.entity.key}`;
+const [imageConditionOperator, setImageConditionOperator] = useLocalStorage<string>(
+  imageConditionOperatorKey,
+  props.entity.imageConditionOperator || ''
+);
+const [imageConditionValue, setImageConditionValue] = useLocalStorage<string | null>(
+  imageConditionValueKey,
+  props.entity.imageConditionValue !== undefined && props.entity.imageConditionValue !== null
+    ? String(props.entity.imageConditionValue)
+    : null
+);
+
+// Sync with entity data
+watch(
+  () => props.entity.imageConditionOperator,
+  newValue => {
+    if (newValue !== undefined) {
+      setImageConditionOperator(newValue || '');
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => props.entity.imageConditionValue,
+  newValue => {
+    if (newValue !== undefined && newValue !== null) {
+      setImageConditionValue(String(newValue));
+    }
+  },
+  { immediate: true }
+);
+
+const currentImageUrl = computed(() => {
+  return props.entity.imageUrl || '';
+});
 
 // Check if entity has numeric state
 const isNumericEntity = computed(() => {
@@ -879,6 +1070,39 @@ const currentHAAction = computed(() => {
   return props.entity.haAction?.service ?? '';
 });
 
+// Entity selector for image widgets
+const entitiesStore = useEntitiesStore();
+const availableEntities = computed(() => {
+  return entitiesStore.allEntities.filter(e => !e.isActionButton && !e.isImageWidget);
+});
+
+const currentLinkedEntityId = computed(() => {
+  return props.entity.linkedEntityId || '';
+});
+
+const currentLinkedEntityName = computed(() => {
+  if (!currentLinkedEntityId.value) return '';
+  const entity = availableEntities.value.find(e => e.key === currentLinkedEntityId.value);
+  return entity?.name || entity?.key || '';
+});
+
+// Entity search state
+const entitySearchQuery = ref('');
+const debouncedEntitySearchQuery = debouncedRef(entitySearchQuery, 300);
+const entityHighlightedIndex = ref(-1);
+const entityOptionRefs = ref<(HTMLElement | null)[]>([]);
+
+const filteredEntities = computed(() => {
+  if (debouncedEntitySearchQuery.value.trim().length === 0) {
+    return [];
+  }
+  const query = debouncedEntitySearchQuery.value.toLowerCase();
+  return availableEntities.value.filter(
+    entity =>
+      (entity.name || '').toLowerCase().includes(query) || entity.key.toLowerCase().includes(query)
+  );
+});
+
 const currentHAActionLabel = computed(() => {
   if (!currentHAAction.value) return '';
   const allServices = getAllServices(haServices.value);
@@ -1067,6 +1291,114 @@ function handleAutomationChange(event: Event) {
 
 function handleHAActionSearchKeydown() {
   // Could implement keyboard navigation for HA actions if needed
+}
+
+function selectLinkedEntity(entityId: string) {
+  emit('update', props.entity.key, { linkedEntityId: entityId });
+  entitySearchQuery.value = '';
+  entityHighlightedIndex.value = -1;
+}
+
+function handleEntitySearchKeydown(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const options = ['', ...filteredEntities.value.map(e => e.key)];
+    if (options.length > 0) {
+      if (entityHighlightedIndex.value < 0) {
+        entityHighlightedIndex.value = e.key === 'ArrowDown' ? 0 : options.length - 1;
+      } else {
+        if (e.key === 'ArrowDown') {
+          entityHighlightedIndex.value =
+            entityHighlightedIndex.value < options.length - 1
+              ? entityHighlightedIndex.value + 1
+              : 0;
+        } else {
+          entityHighlightedIndex.value =
+            entityHighlightedIndex.value > 0
+              ? entityHighlightedIndex.value - 1
+              : options.length - 1;
+        }
+      }
+      scrollToHighlightedEntity();
+    }
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const options = ['', ...filteredEntities.value.map(e => e.key)];
+    if (entityHighlightedIndex.value >= 0 && entityHighlightedIndex.value < options.length) {
+      const selectedOption = options[entityHighlightedIndex.value];
+      if (selectedOption !== undefined) {
+        selectLinkedEntity(selectedOption);
+      }
+    }
+  }
+  if (e.key === 'Escape') {
+    entitySearchQuery.value = '';
+    entityHighlightedIndex.value = -1;
+  }
+}
+
+function scrollToHighlightedEntity() {
+  void nextTick(() => {
+    if (entityHighlightedIndex.value === 0) {
+      const defaultOption = document.querySelector(
+        '.entity-dropdown .icon-option:first-child'
+      ) as HTMLElement;
+      if (defaultOption) {
+        defaultOption.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    } else if (entityHighlightedIndex.value > 0) {
+      const optionIndex = entityHighlightedIndex.value - 1;
+      if (entityOptionRefs.value[optionIndex]) {
+        const ref = entityOptionRefs.value[optionIndex];
+        if (ref) {
+          ref.scrollIntoView({
+            block: 'nearest',
+            behavior: 'smooth',
+          });
+        }
+      }
+    }
+  });
+}
+
+function handleImageUrlChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const imageUrl = target.value.trim();
+  emit('update', props.entity.key, { imageUrl });
+}
+
+function handleImageFileSelect() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (file) {
+      // Create a local file URL
+      const imageUrl = URL.createObjectURL(file);
+      emit('update', props.entity.key, { imageUrl });
+    }
+  };
+  input.click();
+}
+
+function handleImageConditionOperatorChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  const operator = target.value || '';
+  setImageConditionOperator(operator);
+  emit('update', props.entity.key, { imageConditionOperator: operator });
+}
+
+function handleImageConditionValueChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const value = target.value.trim();
+  setImageConditionValue(value || null);
+  // Try to parse as number, otherwise keep as string
+  const numValue = Number.parseFloat(value);
+  const finalValue = isNaN(numValue) ? value : numValue;
+  emit('update', props.entity.key, { imageConditionValue: finalValue });
 }
 
 function handleLabelVisibilityChange(event: Event) {
@@ -1685,6 +2017,38 @@ onMounted(() => {
 .condition-value {
   flex: 0 0 auto;
   width: 80px;
+}
+
+.image-url-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1;
+}
+
+.image-select-button {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  background-color: #2d5aa0;
+  border: 1px solid #3a6bc0;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.image-select-button:hover {
+  background-color: #3a6bc0;
+}
+
+.image-select-button:active {
+  background-color: #1e3f73;
+}
+
+.entity-selector-wrapper {
+  flex: 1;
 }
 
 .color-input-wrapper {

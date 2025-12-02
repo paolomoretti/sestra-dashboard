@@ -65,11 +65,27 @@ export function clearConfigFromLocalStorage(): void {
 // Load config with priority: localStorage > env vars > defaults
 const localStorageConfig = loadConfigFromLocalStorage();
 
+// Extend Window interface for runtime config
+declare global {
+  interface Window {
+    env?: {
+      HA_ADDRESS?: string;
+      HA_ACCESS_TOKEN?: string;
+    };
+  }
+}
+
 export const haConfig: HAConfig = {
   address:
-    localStorageConfig.address ?? import.meta.env['VITE_HA_ADDRESS'] ?? 'http://halaptop:8123',
+    localStorageConfig.address ??
+    window.env?.HA_ADDRESS ??
+    import.meta.env['VITE_HA_ADDRESS'] ??
+    (window.location.pathname.includes('/local/')
+      ? window.location.origin
+      : 'http://halaptop:8123'),
   accessToken:
     localStorageConfig.accessToken ??
+    window.env?.HA_ACCESS_TOKEN ??
     import.meta.env['VITE_HA_ACCESS_TOKEN'] ??
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhMzMyODIyODFmZjk0NGM2ODRhZjMxYWY4NjBlYTk1ZiIsImlhdCI6MTc2MTk5NDQ4OSwiZXhwIjoyMDc3MzU0NDg5fQ.3avq_pp9bDfmzaP-aXtwIW8i2HP4310709UuZqQ3THI',
 };

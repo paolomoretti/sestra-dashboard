@@ -17,8 +17,9 @@
 
     <div class="flex flex-1 overflow-hidden relative">
        <Dashboard ref="dashboardRef" class="flex-1 bg-[#1a1a1a] overflow-hidden" /> <NumericValues />
-      <Sidebar v-if="sidebarVisible" /> <ZoomControls /> <AddButton
+      <Sidebar v-if="sidebarVisible" /> <ZoomControls />       <AddButton
         @add-action-button="handleAddActionButton"
+        @add-image-widget="handleAddImageWidget"
         @add-zone="handleAddZone"
       /> <ToastContainer />
       <SettingsPanel :is-open="settingsOpen" @close="closeSettings" />
@@ -121,6 +122,10 @@ onMounted(() => {
 
 function handleAddActionButton() {
   dashboardRef.value?.createActionButton();
+}
+
+function handleAddImageWidget() {
+  dashboardRef.value?.createImageWidget();
 }
 
 function handleAddZone() {

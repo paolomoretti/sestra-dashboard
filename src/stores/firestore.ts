@@ -35,6 +35,12 @@ export interface WidgetData {
   valueSuffix?: string; // Suffix to display after the numeric value
   iconColorOn?: string; // Custom color for icon when state is "on" (hex color, e.g., "#FFC107")
   iconColorOff?: string; // Custom color for icon when state is "off" or default (hex color, e.g., "#888888")
+  // Image widget fields
+  isImageWidget?: boolean;
+  imageUrl?: string; // URL to the image to display
+  linkedEntityId?: string; // Entity ID to check state for conditional display
+  imageConditionOperator?: string; // Condition operator for showing image (equal, greater, lower, etc.)
+  imageConditionValue?: number | string; // Condition value for showing image
 }
 
 export interface UIData {
