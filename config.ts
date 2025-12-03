@@ -78,14 +78,14 @@ declare global {
 export const haConfig: HAConfig = {
   address:
     localStorageConfig.address ??
-    window.env?.HA_ADDRESS ??
+    (window.env?.HA_ADDRESS || null) ??
     import.meta.env['VITE_HA_ADDRESS'] ??
     (window.location.pathname.includes('/local/')
       ? window.location.origin
       : 'http://halaptop:8123'),
   accessToken:
     localStorageConfig.accessToken ??
-    window.env?.HA_ACCESS_TOKEN ??
+    (window.env?.HA_ACCESS_TOKEN || null) ??
     import.meta.env['VITE_HA_ACCESS_TOKEN'] ??
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhMzMyODIyODFmZjk0NGM2ODRhZjMxYWY4NjBlYTk1ZiIsImlhdCI6MTc2MTk5NDQ4OSwiZXhwIjoyMDc3MzU0NDg5fQ.3avq_pp9bDfmzaP-aXtwIW8i2HP4310709UuZqQ3THI',
 };
