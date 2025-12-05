@@ -1,44 +1,36 @@
 <template>
+
   <div class="add-button-container">
-    <button
+     <button
       class="add-button"
       :class="{ active: isMenuOpen }"
       @click="toggleMenu"
       title="Add widget"
     >
-      <span class="add-icon">{{ isMenuOpen ? '✕' : '+' }}</span>
-    </button>
-    
+       <span class="add-icon">{{ isMenuOpen ? '✕' : '+' }}</span
+      > </button
+    >
     <div v-if="isMenuOpen" class="add-menu">
-      <button
-        class="add-menu-item"
-        @click="handleAddActionButton"
+       <button class="add-menu-item" @click="handleAddEntity">
+         <span class="menu-icon">📋</span> <span class="menu-label">Add Entity</span> </button
+      > <button class="add-menu-item" @click="handleAddActionButton">
+         <span class="menu-icon">⚡</span> <span class="menu-label">Action Button</span> </button
+      > <button class="add-menu-item" @click="handleAddImageWidget">
+         <span class="menu-icon">🖼️</span> <span class="menu-label">Image Widget</span> </button
+      > <button class="add-menu-item" @click="handleAddZone">
+         <span class="menu-icon">⬜</span> <span class="menu-label">Zone Rectangle</span> </button
       >
-        <span class="menu-icon">⚡</span>
-        <span class="menu-label">Action Button</span>
-      </button>
-      <button
-        class="add-menu-item"
-        @click="handleAddImageWidget"
-      >
-        <span class="menu-icon">🖼️</span>
-        <span class="menu-label">Image Widget</span>
-      </button>
-      <button
-        class="add-menu-item"
-        @click="handleAddZone"
-      >
-        <span class="menu-icon">⬜</span>
-        <span class="menu-label">Zone Rectangle</span>
-      </button>
     </div>
+
   </div>
+
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 
 const emit = defineEmits<{
+  addEntity: [];
   addActionButton: [];
   addImageWidget: [];
   addZone: [];
@@ -48,6 +40,11 @@ const isMenuOpen = ref(false);
 
 function toggleMenu() {
   isMenuOpen.value = !isMenuOpen.value;
+}
+
+function handleAddEntity() {
+  emit('addEntity');
+  isMenuOpen.value = false;
 }
 
 function handleAddActionButton() {
@@ -73,7 +70,6 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
-import { onMounted, onUnmounted } from 'vue';
 onMounted(() => {
   document.addEventListener('click', handleClickOutside);
 });
@@ -162,3 +158,4 @@ onUnmounted(() => {
   flex: 1;
 }
 </style>
+

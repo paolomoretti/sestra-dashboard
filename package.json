@@ -15,7 +15,8 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,vue,css}\" \"*.{ts,js,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,vue,css}\" \"*.{ts,js,json}\"",
     "check": "npm run type-check && npm run lint:check && npm run format:check",
-    "fix": "npm run lint && npm run format"
+    "fix": "npm run lint && npm run format",
+    "docker:push": "docker buildx build --platform linux/amd64,linux/arm64 -t littlebrown/sestra-dashboard:latest --push ."
   },
   "keywords": [
     "home-assistant",

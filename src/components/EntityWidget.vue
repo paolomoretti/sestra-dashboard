@@ -139,8 +139,7 @@
       @update="(entityId, updates) => emit('update', entityId, updates)"
       @delete="entityId => emit('delete', entityId)"
       @close="isPanelOpen = false"
-    />
-     <!-- Camera Modal --> <CameraModal
+    /> <!-- Camera Modal --> <CameraModal
       v-if="entity.category === 'camera'"
       :is-open="isCameraModalOpen"
       :entity-id="entity.key"
@@ -239,6 +238,11 @@ const iconUrl = computed(() => {
   return createIconSVG(path, color, iconSize);
 });
 
+// Watch for selection changes to toggle panel
+watch(isSelected, newVal => {
+  isPanelOpen.value = newVal;
+});
+
 // Styles
 const isSelected = computed(() => selectedEntity.value?.key === props.entity.key);
 const widgetStyle = computed(() => {
@@ -325,7 +329,7 @@ const shouldShowImage = computed(() => {
 
   // Check if condition value is numeric
   const conditionValue = imageConditionValue.value;
-  
+
   // Try to parse condition value as number
   const numConditionValue = Number.parseFloat(String(conditionValue));
   const isNumericCondition = !isNaN(numConditionValue);

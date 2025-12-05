@@ -43,14 +43,6 @@
         @update="handleEntityUpdate"
         @delete="handleEntityDelete"
       /> <!-- Drop zone overlay for palette items -->
-      <div
-        v-if="isDraggingFromPalette"
-        class="drop-zone-overlay"
-        @drop="handleDrop"
-        @dragover.prevent
-        @dragenter.prevent
-      />
-
     </div>
      <!-- Temporary drawing rectangle (while drawing) - outside container for proper positioning -->
 
@@ -89,7 +81,6 @@ const floorplanImage = '/floorplan.png';
 // Refs
 const dashboardWrapperRef = ref<HTMLElement>();
 const dashboardRef = ref<HTMLElement>();
-const isDraggingFromPalette = ref(false);
 const isAnimatingZoom = ref(false);
 const entitiesStore = useEntitiesStore();
 
@@ -292,14 +283,6 @@ let escapeHandler: ((_e: KeyboardEvent) => void) | null = null;
 
 // Initialize scale on mount if not set
 onMounted(() => {
-  // Listen for palette drag events
-  window.addEventListener('dragstart', () => {
-    isDraggingFromPalette.value = true;
-  });
-  window.addEventListener('dragend', () => {
-    isDraggingFromPalette.value = false;
-  });
-
   // Handle Escape key to deselect and Backspace/Delete to remove selected entity
   escapeHandler = (e: KeyboardEvent) => {
     // Don't trigger if user is typing in input fields
@@ -929,42 +912,6 @@ async function handleEntityDelete(entityId: string) {
   await setHAActions(newHAActions);
 }
 
-// Drag and drop from palette
-async function handleDrop(e: DragEvent) {
-  e.preventDefault();
-  isDraggingFromPalette.value = false;
-
-  const entityData = e.dataTransfer?.getData('application/json');
-  if (!entityData) return;
-
-  try {
-    const entity = JSON.parse(entityData) as EntityData;
-    const rect = dashboardWrapperRef.value?.getBoundingClientRect();
-    if (!rect) return;
-
-    // Calculate drop position relative to dashboard
-    // Account for scale and pan correctly
-    const currentScale = scale.value || 1;
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const x = (mouseX - panX.value) / currentScale;
-    const y = (mouseY - panY.value) / currentScale;
-
-    // Add entity at drop position
-    // Add to placed entities list
-    if (!placedEntityIds.value.includes(entity.key)) {
-      await setPlacedEntityIds([...placedEntityIds.value, entity.key]);
-    }
-
-    // Save position
-    const newPositions = { ...positions.value };
-    newPositions[entity.key] = `${x} ${y}`;
-    await setPositions(newPositions);
-  } catch (error) {
-    console.error('Error dropping entity:', error);
-  }
-}
-
 // Create action button
 async function createActionButton() {
   if (!dashboardWrapperRef.value) {
@@ -1489,7 +1436,7 @@ defineExpose({
     await setPositions(newPositions);
 
     // Select the newly added entity so user can see it
-    setSelectedEntity(entity);
+    setSelectedEntity(entity, { x, y });
   },
 });
 

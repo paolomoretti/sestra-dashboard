@@ -1,44 +1,45 @@
 <template>
+
   <div class="entity-palette">
+
     <div
       v-for="entity in filteredEntities"
       :key="entity.key"
       class="palette-item"
-      :draggable="!isTouchDevice"
-      @dragstart="handleDragStart($event, entity)"
       @click="handleItemClick(entity)"
     >
-      <!-- Icon -->
-      <img
+       <!-- Icon --> <img
         v-if="getIconUrl(entity)"
         :src="getIconUrl(entity)"
         class="palette-icon"
         draggable="false"
       />
       <div v-else class="palette-icon-placeholder" />
-
-      <!-- Entity info -->
+       <!-- Entity info -->
       <div class="palette-info">
-        <div class="palette-name" :title="entity.name || entity.key">{{ entity.name || entity.key }}</div>
-        <div class="palette-entity-id" :title="entity.key">{{ entity.key }}</div>
-        <div v-if="entity.state" class="palette-state" :title="`State: ${entity.state}`">
-          State: {{ entity.state }}
+
+        <div class="palette-name" :title="entity.name || entity.key">
+           {{ entity.name || entity.key }}
         </div>
+
+        <div class="palette-entity-id" :title="entity.key">{{ entity.key }}</div>
+
+        <div v-if="entity.state" class="palette-state" :title="`State: ${entity.state}`">
+           State: {{ entity.state }}
+        </div>
+
       </div>
+
     </div>
+
   </div>
+
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed } from 'vue';
 import { getMDIIconPath, createIconSVG, getIconColor } from '../utils/iconUtils';
 import type { EntityData } from '../composables/useEntitySelection';
-
-// Detect touch devices
-const isTouchDevice = ref(false);
-onMounted(() => {
-  isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-});
 
 interface Props {
   entities: EntityData[];
@@ -57,7 +58,7 @@ const filteredEntities = computed(() => {
 
   // Filter by type
   if (props.filter !== 'all') {
-    filtered = filtered.filter((e) => {
+    filtered = filtered.filter(e => {
       const domain = e.key.split('.')[0];
       return domain === props.filter.replace('_', '-');
     });
@@ -65,7 +66,7 @@ const filteredEntities = computed(() => {
 
   // Filter by room
   if (props.roomFilter && props.roomFilter !== 'all') {
-    filtered = filtered.filter((e) => {
+    filtered = filtered.filter(e => {
       return e.areaId === props.roomFilter;
     });
   }
@@ -73,7 +74,7 @@ const filteredEntities = computed(() => {
   // Filter by search query
   if (props.searchQuery) {
     const query = props.searchQuery.toLowerCase();
-    filtered = filtered.filter((e) => {
+    filtered = filtered.filter(e => {
       const name = (e.name || '').toLowerCase();
       const key = e.key.toLowerCase();
       return name.includes(query) || key.includes(query);
@@ -90,12 +91,6 @@ function getIconUrl(entity: EntityData): string | null {
 
   const color = getIconColor(entity.key, entity.state, entity.iconColorOn, entity.iconColorOff);
   return createIconSVG(path, color, 30);
-}
-
-function handleDragStart(e: DragEvent, entity: EntityData) {
-  if (!e.dataTransfer) return;
-  e.dataTransfer.effectAllowed = 'copy';
-  e.dataTransfer.setData('application/json', JSON.stringify(entity));
 }
 
 function handleItemClick(entity: EntityData) {
@@ -121,9 +116,8 @@ function handleItemClick(entity: EntityData) {
   background: #2a2a2a;
   border: 1px solid #3a3a3a;
   border-radius: 4px;
-  cursor: grab;
+  cursor: pointer;
   transition: all 0.2s;
-  user-select: none;
   min-height: 60px;
 }
 
@@ -138,11 +132,6 @@ function handleItemClick(entity: EntityData) {
   background: #333;
   border-color: #4a4a4a;
   transform: translateX(2px);
-}
-
-.palette-item:active {
-  cursor: grabbing;
-  opacity: 0.8;
 }
 
 .palette-icon {

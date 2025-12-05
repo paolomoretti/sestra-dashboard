@@ -1,66 +1,84 @@
 <template>
-  <div id="sidebar" class="sidebar-container w-full sm:w-[300px] bg-[#2a2a2a] border-l border-[#3a3a3a] overflow-y-auto overflow-x-hidden flex flex-col sm:min-w-[200px] transition-all duration-300">
-    <div class="flex flex-col h-full">
-      <!-- Header -->
-      <div class="px-4 py-3 sm:py-3 bg-[#333] border-b border-[#3a3a3a] flex-shrink-0">
-        <h3 class="text-base sm:text-sm font-semibold text-white m-0 flex items-center gap-2">
-          <span>📋</span>
-          <span>Entities</span>
+
+  <div
+    v-if="isOpen"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    @click.self="$emit('close')"
+  >
+
+    <div
+      class="bg-[#2a2a2a] w-full max-w-md h-[80vh] rounded-lg shadow-xl flex flex-col border border-[#3a3a3a] m-4"
+    >
+       <!-- Header -->
+      <div
+        class="px-4 py-3 border-b border-[#3a3a3a] flex items-center justify-between flex-shrink-0"
+      >
+
+        <h3 class="text-lg font-semibold text-white m-0 flex items-center gap-2">
+           <span>📋</span> <span>Add Entity</span>
         </h3>
+         <button
+          @click="$emit('close')"
+          class="text-gray-400 hover:text-white text-2xl leading-none px-2"
+        >
+           &times;</button
+        >
       </div>
-      
-      <!-- Content -->
+       <!-- Content -->
       <div class="flex-1 flex flex-col min-h-0">
+
         <div class="px-4 py-3 flex-shrink-0 space-y-3">
-          <input
+           <input
             v-model="searchQuery"
             type="text"
             placeholder="Search entities..."
             class="w-full px-3 py-3 sm:py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-base sm:text-sm text-white placeholder-[#666] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             @input="handleSearch"
+            ref="searchInput"
           />
         </div>
+
         <div class="filter-dropdowns-container border-b border-[#3a3a3a] flex-shrink-0">
+
           <div class="filter-dropdown-wrapper">
-            <select
-              v-model="selectedRoom"
-              class="filter-dropdown"
-            >
+             <select v-model="selectedRoom" class="filter-dropdown">
+
               <option value="all">🏠 All Rooms</option>
-              <option
-                v-for="area in sortedAreas"
-                :key="area.area_id"
-                :value="area.area_id"
-              >
-                {{ area.name }}
+
+              <option v-for="area in sortedAreas" :key="area.area_id" :value="area.area_id">
+                 {{ area.name }}
               </option>
-            </select>
+               </select
+            >
           </div>
+
           <div class="filter-dropdown-wrapper">
-            <select
+             <select
               :value="activeEntityTab"
-              @change="(e) => { 
-                const newTab = (e.target as HTMLSelectElement).value;
-                activeEntityTab = newTab;
-                setStoredTab(newTab);
-                if (window.updatePaletteFilter) {
-                  window.updatePaletteFilter(newTab, searchQuery);
+              @change="
+                e => {
+                  const newTab = (e.target as HTMLSelectElement).value;
+                  activeEntityTab = newTab;
+                  setStoredTab(newTab);
+                  if (window.updatePaletteFilter) {
+                    window.updatePaletteFilter(newTab, searchQuery);
+                  }
                 }
-              }"
+              "
               class="filter-dropdown"
             >
-              <option
-                v-for="tab in entityTabs"
-                :key="tab.value"
-                :value="tab.value"
-              >
-                {{ tab.icon }} {{ tab.label }}
+
+              <option v-for="tab in entityTabs" :key="tab.value" :value="tab.value">
+                 {{ tab.icon }} {{ tab.label }}
               </option>
-            </select>
+               </select
+            >
           </div>
+
         </div>
+
         <div class="flex-1 min-h-0 overflow-hidden">
-          <EntityPalette
+           <EntityPalette
             :entities="allEntities"
             :filter="activeEntityTab"
             :search-query="searchQuery"
@@ -68,20 +86,34 @@
             @entity-selected="handleEntitySelected"
           />
         </div>
+
       </div>
+
     </div>
+
   </div>
+
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useEntitiesStore } from '../stores/entities';
 import EntityPalette from './EntityPalette.vue';
 import type { EntityData } from '../composables/useEntitySelection';
+
+const props = defineProps<{
+  isOpen: boolean;
+}>();
+
+const emit = defineEmits<{
+  close: [];
+}>();
+
 const entitiesStore = useEntitiesStore();
 const { allEntities, areas } = storeToRefs(entitiesStore);
+const searchInput = ref<HTMLInputElement | null>(null);
 
 // Entity tabs state
 const [storedTab, setStoredTab] = useLocalStorage('activeEntityTab', 'all');
@@ -104,17 +136,16 @@ const sortedAreas = computed(() => {
 });
 
 async function handleEntitySelected(entity: EntityData) {
-  // On mobile or when clicking (not dragging), add entity at viewport center
-  // Check if we're on mobile by checking if touch events are available
-  const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  
-  // Always use click-to-add for now (works better on mobile and desktop)
+  // Always use click-to-add
   if (window.addEntityAtViewportCenter) {
     await window.addEntityAtViewportCenter(entity);
   } else if (window.addEntity) {
-    // Fallback to old method if new one doesn't exist
     window.addEntity(entity);
   }
+  // Close modal after selection? Maybe keep it open for multiple additions.
+  // User didn't specify, but usually "Add Entity" implies adding one.
+  // However, for a dashboard builder, adding multiple might be common.
+  // I'll keep it open for now, user can close it.
 }
 
 // Debounce function for search
@@ -144,9 +175,8 @@ const entityTabs = computed(() => [
 ]);
 
 // Watch for tab changes and update palette
-watch(activeEntityTab, (newTab) => {
+watch(activeEntityTab, newTab => {
   setStoredTab(newTab);
-  // Notify dashboard.js to filter entities
   if (window.updatePaletteFilter) {
     window.updatePaletteFilter(newTab, searchQuery.value);
   }
@@ -158,32 +188,34 @@ watch(searchQuery, () => {
 });
 
 // Watch for room filter changes
-watch(selectedRoom, (newRoom) => {
+watch(selectedRoom, newRoom => {
   setStoredRoom(newRoom);
 });
 
+// Focus search on open
+watch(
+  () => props.isOpen,
+  newVal => {
+    if (newVal) {
+      nextTick(() => {
+        searchInput.value?.focus();
+        // Re-initialize palette filter when opening
+        if (window.updatePaletteFilter) {
+          window.updatePaletteFilter(activeEntityTab.value, searchQuery.value);
+        }
+      });
+    }
+  }
+);
+
 onMounted(() => {
-  // Initialize palette if it hasn't been initialized yet (sidebar was hidden on load)
   if (window.initPalette) {
     window.initPalette();
-  }
-  
-  // Notify dashboard.js of initial tab and search
-  if (window.updatePaletteFilter) {
-    window.updatePaletteFilter(activeEntityTab.value, searchQuery.value);
   }
 });
 </script>
 
 <style scoped>
-#paletteDiv canvas {
-  cursor: grab;
-}
-
-#paletteDiv canvas:active {
-  cursor: grabbing;
-}
-
 .filter-dropdowns-container {
   display: flex;
   padding: 0;
@@ -232,13 +264,5 @@ onMounted(() => {
   color: #ffffff;
   padding: 8px;
 }
-
-@media (max-width: 768px) {
-  .filter-dropdown {
-    font-size: 16px;
-    padding: 14px 16px;
-    padding-right: 40px;
-    min-height: 44px;
-  }
-}
 </style>
+
