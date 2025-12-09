@@ -53,6 +53,12 @@ Run these commands on your computer (where the code is):
       Add these variables so the app knows where Home Assistant is:
       - `HA_ADDRESS`: `https://halaptop.tail8c24dc.ts.net` (Your HA URL)
       - `HA_ACCESS_TOKEN`: `YOUR_LONG_LIVED_ACCESS_TOKEN`
+      - `VITE_FIREBASE_API_KEY`: Your Firebase API Key
+      - `VITE_FIREBASE_AUTH_DOMAIN`: Your Auth Domain
+      - `VITE_FIREBASE_PROJECT_ID`: Your Project ID
+      - `VITE_FIREBASE_STORAGE_BUCKET`: Your Storage Bucket
+      - `VITE_FIREBASE_MESSAGING_SENDER_ID`: Your Messaging Sender ID
+      - `VITE_FIREBASE_APP_ID`: Your App ID
 7.  Click **Create**.
 
 ---

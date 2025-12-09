@@ -691,6 +691,8 @@ import {
   fetchAutomations,
   type HAService,
 } from '../utils/haServices';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getStorageInstance } from '../utils/firebase';
 
 interface Props {
   entity: EntityData;
@@ -1368,17 +1370,46 @@ function handleImageUrlChange(event: Event) {
   emit('update', props.entity.key, { imageUrl });
 }
 
-function handleImageFileSelect() {
+async function handleImageFileSelect() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
-  input.onchange = (e: Event) => {
+  input.onchange = async (e: Event) => {
     const target = e.target as HTMLInputElement;
     const file = target.files?.[0];
     if (file) {
-      // Create a local file URL
-      const imageUrl = URL.createObjectURL(file);
-      emit('update', props.entity.key, { imageUrl });
+      try {
+        // Show loading state if we had a way to indicate it (could use a local ref for button text)
+        // For now, console log
+        console.log('Starting image upload from info panel...', file.name);
+
+        const storage = getStorageInstance();
+        if (!storage) {
+          throw new Error('Firebase Storage not initialized');
+        }
+
+        const timestamp = Date.now();
+        const filename = `images/${timestamp}_${file.name}`;
+        const fileRef = storageRef(storage, filename);
+
+        // Upload file
+        await uploadBytes(fileRef, file);
+        console.log('Image uploaded successfully');
+
+        // Get download URL
+        const imageUrl = await getDownloadURL(fileRef);
+        console.log('Download URL:', imageUrl);
+
+        // Update entity with new URL
+        emit('update', props.entity.key, { imageUrl });
+
+        // Use toast if possible, otherwise alert
+        const { success } = useToast();
+        success('Image uploaded successfully');
+      } catch (error) {
+        console.error('Error uploading image:', error);
+        alert(`Failed to upload image: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   };
   input.click();

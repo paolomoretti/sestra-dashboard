@@ -5,28 +5,45 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAuth, type Auth } from 'firebase/auth';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 // Firebase configuration
 // These values should be set via environment variables or from Firebase Console
+// Get runtime configuration from window.env (injected by entrypoint.sh) or build-time env
+const runtimeEnv = (window as any).env || {};
+
 const firebaseConfig = {
-  apiKey: import.meta.env['VITE_FIREBASE_API_KEY'] ?? '',
-  authDomain: import.meta.env['VITE_FIREBASE_AUTH_DOMAIN'] ?? '',
-  projectId: import.meta.env['VITE_FIREBASE_PROJECT_ID'] ?? 'sestra-dashboard',
-  storageBucket: import.meta.env['VITE_FIREBASE_STORAGE_BUCKET'] ?? '',
-  messagingSenderId: import.meta.env['VITE_FIREBASE_MESSAGING_SENDER_ID'] ?? '',
-  appId: import.meta.env['VITE_FIREBASE_APP_ID'] ?? '',
+  apiKey: runtimeEnv.FIREBASE_API_KEY || import.meta.env['VITE_FIREBASE_API_KEY'] || '',
+  authDomain: runtimeEnv.FIREBASE_AUTH_DOMAIN || import.meta.env['VITE_FIREBASE_AUTH_DOMAIN'] || '',
+  projectId:
+    runtimeEnv.FIREBASE_PROJECT_ID ||
+    import.meta.env['VITE_FIREBASE_PROJECT_ID'] ||
+    'sestra-dashboard',
+  storageBucket:
+    runtimeEnv.FIREBASE_STORAGE_BUCKET || import.meta.env['VITE_FIREBASE_STORAGE_BUCKET'] || '',
+  messagingSenderId:
+    runtimeEnv.FIREBASE_MESSAGING_SENDER_ID ||
+    import.meta.env['VITE_FIREBASE_MESSAGING_SENDER_ID'] ||
+    '',
+  appId: runtimeEnv.FIREBASE_APP_ID || import.meta.env['VITE_FIREBASE_APP_ID'] || '',
 };
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
+let storage: FirebaseStorage | null = null;
 
 /**
  * Initialize Firebase (only once)
  */
-export function initFirebase(): { app: FirebaseApp; db: Firestore; auth: Auth } | null {
-  if (app && db && auth) {
-    return { app, db, auth };
+export function initFirebase(): {
+  app: FirebaseApp;
+  db: Firestore;
+  auth: Auth;
+  storage: FirebaseStorage;
+} | null {
+  if (app && db && auth && storage) {
+    return { app, db, auth, storage };
   }
 
   // Check if Firebase is already initialized
@@ -62,7 +79,8 @@ export function initFirebase(): { app: FirebaseApp; db: Firestore; auth: Auth } 
   try {
     db = getFirestore(app);
     auth = getAuth(app);
-    return { app, db, auth };
+    storage = getStorage(app);
+    return { app, db, auth, storage };
   } catch (error) {
     console.warn('⚠️ Failed to initialize Firestore. Falling back to localStorage:', error);
     return null;
@@ -87,4 +105,14 @@ export function getAuthInstance(): Auth {
     initFirebase();
   }
   return auth!;
+}
+
+/**
+ * Get Storage instance
+ */
+export function getStorageInstance(): FirebaseStorage {
+  if (!storage) {
+    initFirebase();
+  }
+  return storage!;
 }

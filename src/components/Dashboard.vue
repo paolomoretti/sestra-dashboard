@@ -51,7 +51,13 @@
       class="drawing-rectangle"
       :style="drawingRectangleStyle"
     />
-
+     <!-- Hidden file input for image upload --> <input
+      ref="fileInputRef"
+      type="file"
+      accept="image/*"
+      style="display: none"
+      @change="handleFileChange"
+    />
   </div>
 
 </template>
@@ -61,6 +67,8 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import { useFirestoreData } from '../composables/useFirestoreData';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getStorageInstance } from '../utils/firebase';
 import EntityWidget from './EntityWidget.vue';
 import ZoneRectangle, { type ZoneData } from './ZoneRectangle.vue';
 import {
@@ -81,6 +89,7 @@ const floorplanImage = '/floorplan.png';
 // Refs
 const dashboardWrapperRef = ref<HTMLElement>();
 const dashboardRef = ref<HTMLElement>();
+const fileInputRef = ref<HTMLInputElement>();
 const isAnimatingZoom = ref(false);
 const entitiesStore = useEntitiesStore();
 
@@ -859,6 +868,7 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
 
   // Image widget properties
   if ('imageUrl' in updates) {
+    console.log(`Updating imageUrl for ${entityId} to:`, updates.imageUrl);
     await firestoreStore.updateWidget(entityId, { imageUrl: updates.imageUrl });
   }
 
@@ -1272,7 +1282,12 @@ function setRectangleDrawingMode(enabled: boolean) {
 // Expose functions for external use
 defineExpose({
   createActionButton,
-  createImageWidget,
+  createImageWidget: () => {
+    // Trigger file input click
+    if (fileInputRef.value) {
+      fileInputRef.value.click();
+    }
+  },
   setRectangleDrawingMode,
   zoomIn: () => {
     if (!dashboardWrapperRef.value) return;
@@ -1448,6 +1463,127 @@ function parsePosition(loc?: string): { x: number; y: number } {
 }
 
 // Listen for palette drag start (moved to main onMounted)
+// Create image widget with URL
+async function createImageWidgetWithUrl(url: string) {
+  if (!dashboardWrapperRef.value) {
+    return;
+  }
+
+  // Calculate center position in diagram coordinates
+  const rect = dashboardWrapperRef.value.getBoundingClientRect();
+  const wrapperWidth = rect.width;
+  const wrapperHeight = rect.height;
+
+  // Center of viewport in wrapper coordinates
+  const centerX = wrapperWidth / 2;
+  const centerY = wrapperHeight / 2;
+
+  // Convert to diagram coordinates
+  const currentScale = scale.value || 1;
+  const diagramX = (centerX - panX.value) / currentScale;
+  const diagramY = (centerY - panY.value) / currentScale;
+
+  const imageWidgetKey = `image_widget_${Date.now()}`;
+
+  // Add to placed entities
+  await setPlacedEntityIds([...placedEntityIds.value, imageWidgetKey]);
+
+  // Save position
+  const newPositions = { ...positions.value };
+  newPositions[imageWidgetKey] = `${diagramX} ${diagramY}`;
+  await setPositions(newPositions);
+
+  // Save default size
+  const newSizes = { ...sizes.value };
+  newSizes[imageWidgetKey] = '200 150';
+  await setSizes(newSizes);
+
+  // Save label override
+  const newLabelOverrides = { ...labelOverrides.value };
+  newLabelOverrides[imageWidgetKey] = 'Image Widget';
+  await setLabelOverrides(newLabelOverrides);
+
+  // Save image widget properties to Firestore
+  await firestoreStore.updateWidget(imageWidgetKey, {
+    isImageWidget: true,
+    imageUrl: url,
+    linkedEntityId: '',
+  });
+
+  // Select the newly created widget
+  setTimeout(() => {
+    // Create a synthetic entity for selection since it might not be fully reactive yet
+    const entity = {
+      key: imageWidgetKey,
+      isImageWidget: true,
+      category: 'image',
+      name: 'Image Widget',
+      state: 'idle',
+      icon: 'image',
+      loc: `${diagramX} ${diagramY}`,
+      size: '200 150',
+      imageUrl: url,
+    } as any;
+
+    setSelectedEntity(entity, { x: diagramX, y: diagramY });
+  }, 100);
+}
+
+// Image upload state
+const isUploading = ref(false);
+
+// Handle file selection
+async function handleFileChange(event: Event) {
+  console.log('handleFileChange triggered');
+  const input = event.target as HTMLInputElement;
+
+  if (!input.files || input.files.length === 0) {
+    console.log('No files selected');
+    return;
+  }
+
+  const file = input.files[0];
+  console.log('File selected:', file.name, file.size, file.type);
+
+  try {
+    isUploading.value = true;
+
+    // Check storage instance
+    const storage = getStorageInstance();
+    console.log('Storage instance:', storage);
+
+    if (!storage) {
+      throw new Error(
+        'Firebase Storage not initialized. Check your .env file and Firebase config.'
+      );
+    }
+
+    console.log('Starting upload for:', file.name);
+
+    const timestamp = Date.now();
+    const filename = `images/${timestamp}_${file.name}`;
+    const fileRef = storageRef(storage, filename);
+
+    // Upload file
+    await uploadBytes(fileRef, file);
+    console.log('Image uploaded successfully');
+
+    // Get download URL
+    const url = await getDownloadURL(fileRef);
+    console.log('Download URL retrieved:', url);
+
+    // Create widget with URL
+    await createImageWidgetWithUrl(url);
+    console.log('Image widget created');
+  } catch (error) {
+    console.error('Error uploading image:', error);
+    alert(`Failed to upload image: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    isUploading.value = false;
+    // Reset input
+    input.value = '';
+  }
+}
 </script>
 
 <style scoped>
