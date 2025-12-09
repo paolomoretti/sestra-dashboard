@@ -20,19 +20,20 @@ Run these commands on your computer (where the code is):
     docker login
     ```
 
-2.  **Build the image**:
-    Replace `YOUR_DOCKER_USERNAME` with your actual Docker Hub username.
+2.  **Build and Push**:
+    I have added a convenient script in `package.json` to handle multi-platform builds (ARM64 & AMD64) automatically. This ensures the image works on both newer Macs (Apple Silicon) and standard NAS processors (Intel/AMD).
+
+    **Crucial**: Make sure you have a `.dockerignore` file (I just added one for you) to prevent your local `node_modules` from breaking the Linux container build.
 
     ```bash
-    # Build for multiple platforms (important for NAS which might be ARM or x86)
-    docker buildx build --platform linux/amd64,linux/arm64 -t YOUR_DOCKER_USERNAME/sestra-dashboard:latest --push .
+    # This command builds for both platforms and pushes to Docker Hub
+    npm run docker:push
     ```
 
-    _If `docker buildx` doesn't work, just use standard build (might limit compatibility):_
+    _If you prefer running the command manually:_
 
     ```bash
-    docker build -t YOUR_DOCKER_USERNAME/sestra-dashboard:latest .
-    docker push YOUR_DOCKER_USERNAME/sestra-dashboard:latest
+    docker buildx build --platform linux/amd64,linux/arm64 -t littlebrown/sestra-dashboard:latest --push .
     ```
 
 ---
@@ -41,13 +42,13 @@ Run these commands on your computer (where the code is):
 
 1.  Open **Container Station**.
 2.  Go to **Images** -> **Pull**.
-3.  Enter your image name: `YOUR_DOCKER_USERNAME/sestra-dashboard:latest`.
+3.  Enter your image name: `littlebrown/sestra-dashboard:latest`.
 4.  Click **Pull**.
 5.  Once downloaded, click the **+ (Create Container)** icon next to the image.
 6.  **Configure the Container**:
     - **Name**: `sestra-dashboard`
     - **Network**: Bridge (or Host if you prefer)
-    - **Port Forwarding**: Map container port `80` to a NAS port (e.g., `8080`).
+    - **Port Forwarding**: Map container port `80` to a NAS port (e.g., `8787`).
     - **Environment Variables** (Crucial Step):
       Add these variables so the app knows where Home Assistant is:
       - `HA_ADDRESS`: `https://halaptop.tail8c24dc.ts.net` (Your HA URL)
@@ -58,29 +59,45 @@ Run these commands on your computer (where the code is):
 
 ## Step 3: Configure Home Assistant CORS
 
-Since your dashboard is now running on your NAS (e.g., `http://192.168.1.50:8080`), you must tell Home Assistant to allow connections from it.
+Since your dashboard is now running on your NAS (e.g., `http://192.168.1.50:8787`), you must tell Home Assistant to allow connections from it.
 
-1.  Open your Home Assistant `configuration.yaml`.
+1.  Open your Home Assistant `configuration.yaml` (using File Editor or VS Code add-on).
 2.  Add or update the `http` section:
     ```yaml
     http:
       cors_allowed_origins:
-        - http://192.168.1.50:8080 # Replace with your NAS IP and the port you chose
+        - http://192.168.1.50:8787 # Replace with your NAS IP and the port you chose
+        - https://halaptop.tail8c24dc.ts.net # Good idea to add this too if accessing via Tailscale
     ```
 3.  **Restart Home Assistant**.
 
 ---
 
-## Step 4: Access and Test
+## Troubleshooting
 
-1.  Open your browser and go to `http://YOUR_NAS_IP:8080`.
-2.  The dashboard should load.
-3.  It should automatically connect to Home Assistant using the environment variables you set.
-4.  **Troubleshooting**:
-    - If it doesn't connect, open the browser console (F12).
-    - Type `window.env` to see if the variables were injected correctly.
-    * **CORS Error?**: This means Home Assistant blocked the connection.
-      - Check your `configuration.yaml`.
-      - **CRITICAL**: The URL in `cors_allowed_origins` must **exactly match** what you see in your browser address bar.
-      - If you access via `http://sestra:8787`, you MUST add `http://sestra:8787`.
-      - If you access via `http://192.168.1.50:8787`, you MUST add `http://192.168.1.50:8787`.
+### "I only see Watchtower running" / Container keeps restarting
+
+If the `sestra-dashboard` container appears and then disappears, or shows a "Restarting" status, it is crashing on startup.
+
+1.  **Check Logs**:
+    - In Container Station, click on the `sestra-dashboard` container.
+    - Click **Logs** or **Console**.
+2.  **Look for "Exec format error"**:
+    - If you see `exec /entrypoint.sh: exec format error`, it means the image architecture doesn't match your NAS.
+    - **Fix**: Run `npm run docker:push` again to ensure both `linux/amd64` and `linux/arm64` are built.
+3.  **Look for "Permission denied"**:
+    - If `entrypoint.sh` fails to run, it might be a permission issue. (The Dockerfile handles this, but good to check).
+
+### "I don't see anything at the IP address"
+
+1.  **Check the Port**: Did you map `8787` (Host) to `80` (Container)?
+2.  **Check the Logs**: Is Nginx starting? You should see:
+    ```
+    /docker-entrypoint.sh: /docker-entrypoint.d/ is not empty, will attempt to perform configuration
+    ...
+    start worker processes
+    ```
+3.  **Browser Console**: If the page loads but is blank or shows an error:
+    - Press F12.
+    - Check the **Console** tab for errors (like CORS or connection refused).
+    - Type `window.env` to verify your config is loaded.

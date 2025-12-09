@@ -9,12 +9,12 @@ import { getAuth, type Auth } from 'firebase/auth';
 // Firebase configuration
 // These values should be set via environment variables or from Firebase Console
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'sestra-dashboard',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+  apiKey: import.meta.env['VITE_FIREBASE_API_KEY'] ?? '',
+  authDomain: import.meta.env['VITE_FIREBASE_AUTH_DOMAIN'] ?? '',
+  projectId: import.meta.env['VITE_FIREBASE_PROJECT_ID'] ?? 'sestra-dashboard',
+  storageBucket: import.meta.env['VITE_FIREBASE_STORAGE_BUCKET'] ?? '',
+  messagingSenderId: import.meta.env['VITE_FIREBASE_MESSAGING_SENDER_ID'] ?? '',
+  appId: import.meta.env['VITE_FIREBASE_APP_ID'] ?? '',
 };
 
 let app: FirebaseApp | null = null;
@@ -32,13 +32,11 @@ export function initFirebase(): { app: FirebaseApp; db: Firestore; auth: Auth } 
   // Check if Firebase is already initialized
   const existingApps = getApps();
   if (existingApps.length > 0) {
-    app = existingApps[0];
+    app = existingApps[0] ?? null;
   } else {
     // Validate config
     if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-      console.warn(
-        '⚠️ Firebase configuration incomplete. Falling back to localStorage.'
-      );
+      console.warn('⚠️ Firebase configuration incomplete. Falling back to localStorage.');
       console.warn('   Please create a .env file with VITE_FIREBASE_* variables (see env.example)');
       console.warn('   Current config:', {
         hasApiKey: !!firebaseConfig.apiKey,
@@ -54,6 +52,11 @@ export function initFirebase(): { app: FirebaseApp; db: Firestore; auth: Auth } 
       console.warn('⚠️ Failed to initialize Firebase. Falling back to localStorage:', error);
       return null;
     }
+  }
+
+  // Ensure app is initialized before creating services
+  if (!app) {
+    return null;
   }
 
   try {
@@ -85,4 +88,3 @@ export function getAuthInstance(): Auth {
   }
   return auth!;
 }
-

@@ -872,7 +872,7 @@ function defineTemplates() {
             // In GoJS binding: pictureObj is the Picture itself
             // To get the Node's data, we need to go up: pictureObj.part.data
             const node = pictureObj ? pictureObj.part : null;
-            if (!node?.data) {
+            if (!node || !node.data) {
               return '';
             }
 

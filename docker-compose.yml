@@ -1,12 +1,18 @@
-version: '3'
 services:
   sestra-dashboard:
-    build: .
-    image: sestra-dashboard:latest
+    image: littlebrown/sestra-dashboard:latest
     container_name: sestra-dashboard
     restart: unless-stopped
     ports:
-      - '8080:80'
+      - '8787:80'
     environment:
-      - HA_ADDRESS=http://192.168.1.50:8123 # Replace with your HA IP
-      - HA_ACCESS_TOKEN=your_long_lived_token_here
+      - HA_ADDRESS=####
+      - HA_ACCESS_TOKEN=######
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 --cleanup
+    restart: unless-stopped

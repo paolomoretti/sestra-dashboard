@@ -238,13 +238,14 @@ const iconUrl = computed(() => {
   return createIconSVG(path, color, iconSize);
 });
 
+// Styles
+const isSelected = computed(() => selectedEntity.value?.key === props.entity.key);
+
 // Watch for selection changes to toggle panel
 watch(isSelected, newVal => {
   isPanelOpen.value = newVal;
 });
 
-// Styles
-const isSelected = computed(() => selectedEntity.value?.key === props.entity.key);
 const widgetStyle = computed(() => {
   // Position is in diagram coordinates, no transform needed here
   // The dashboard container will apply the transform
