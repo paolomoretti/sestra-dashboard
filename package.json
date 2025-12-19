@@ -1,6 +1,6 @@
 {
   "name": "sestra-dashboard",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Home Assistant dashboard using GoJS for sensors and events visualization",
   "type": "module",
   "scripts": {

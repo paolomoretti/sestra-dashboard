@@ -11,43 +11,48 @@ import {
   deleteDoc,
   collection,
   getDocs,
-  query,
   onSnapshot,
   deleteField,
-  type DocumentData,
   type Unsubscribe,
   type QuerySnapshot,
+  type Firestore,
 } from 'firebase/firestore';
 import { initFirebase } from '../utils/firebase';
-import { signInAnonymously, type User } from 'firebase/auth';
+import {
+  signInAnonymously,
+  setPersistence,
+  inMemoryPersistence,
+  type User,
+  type Auth,
+} from 'firebase/auth';
 
 export interface WidgetData {
   entityName: string; // The entity key/id
-  labelName?: string; // Label override
-  labelVisible?: boolean; // Whether to show the label for this widget (default: true)
-  stateVisible?: boolean; // Whether to show the state value for this widget (default: true)
-  icon?: string;
+  labelName?: string | undefined; // Label override
+  labelVisible?: boolean | undefined; // Whether to show the label for this widget (default: true)
+  stateVisible?: boolean | undefined; // Whether to show the state value for this widget (default: true)
+  icon?: string | undefined;
   position: string; // Format: "x y"
   size: string; // Format: "width height"
-  action?: { tapAction?: any; holdAction?: any };
-  haAction?: { service: string; serviceData?: Record<string, any> };
-  valuePrefix?: string; // Prefix to display before the numeric value
-  valueSuffix?: string; // Suffix to display after the numeric value
-  iconColorOn?: string; // Custom color for icon when state is "on" (hex color, e.g., "#FFC107")
-  iconColorOff?: string; // Custom color for icon when state is "off" or default (hex color, e.g., "#888888")
+  action?: { tapAction?: any; holdAction?: any } | undefined;
+  haAction?: { service: string; serviceData?: Record<string, any> } | undefined;
+  valuePrefix?: string | undefined; // Prefix to display before the numeric value
+  valueSuffix?: string | undefined; // Suffix to display after the numeric value
+  iconColorOn?: string | undefined; // Custom color for icon when state is "on" (hex color, e.g., "#FFC107")
+  iconColorOff?: string | undefined; // Custom color for icon when state is "off" or default (hex color, e.g., "#888888")
   // Image widget fields
-  isImageWidget?: boolean;
-  imageUrl?: string; // URL to the image to display
-  linkedEntityId?: string; // Entity ID to check state for conditional display
-  imageConditionOperator?: string; // Condition operator for showing image (equal, greater, lower, etc.)
-  imageConditionValue?: number | string; // Condition value for showing image
+  isImageWidget?: boolean | undefined;
+  imageUrl?: string | undefined; // URL to the image to display
+  linkedEntityId?: string | undefined; // Entity ID to check state for conditional display
+  imageConditionOperator?: string | undefined; // Condition operator for showing image (equal, greater, lower, etc.)
+  imageConditionValue?: number | string | undefined; // Condition value for showing image
 }
 
 export interface UIData {
-  labelsVisible?: boolean; // Global labels visibility (default: true)
-  sidebarVisible?: boolean; // Sidebar visibility (default: true)
-  scrollPosition?: { x: number; y: number }; // Scroll position
-  scale?: number; // Zoom/scale level
+  labelsVisible?: boolean | undefined; // Global labels visibility (default: true)
+  sidebarVisible?: boolean | undefined; // Sidebar visibility (default: true)
+  scrollPosition?: { x: number; y: number } | undefined; // Scroll position
+  scale?: number | undefined; // Zoom/scale level
 }
 
 const COLLECTION_NAME = 'widgets';
@@ -72,6 +77,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
    * Initialize Firebase and authenticate
    */
   async function initialize(): Promise<boolean> {
+    console.log('🔄 Firestore store initialize() called');
     try {
       isLoading.value = true;
       error.value = null;
@@ -98,16 +104,38 @@ export const useFirestoreStore = defineStore('firestore', () => {
           user.value = auth.currentUser;
           isAuthenticated.value = true;
         } catch (authError: any) {
-          console.error('❌ Failed to sign in anonymously:', authError);
-          if (authError.code === 'auth/operation-not-allowed') {
-            console.error('   Anonymous authentication is not enabled in Firebase Console.');
-            console.error('   Please enable it: Firebase Console → Authentication → Sign-in method → Anonymous');
-            throw new Error('Anonymous authentication not enabled');
-          } else if (authError.code === 'auth/api-key-not-valid' || authError.message?.includes('400')) {
-            console.error('   Firebase API key or configuration may be invalid.');
-            throw authError;
-          } else {
-            throw authError;
+          console.warn(
+            '⚠️ Initial anonymous auth failed, likely due to iframe/storage restrictions. Retrying with in-memory persistence...',
+            authError
+          );
+
+          try {
+            await setPersistence(auth, inMemoryPersistence);
+            await signInAnonymously(auth);
+            user.value = auth.currentUser;
+            isAuthenticated.value = true;
+            console.log('✅ Authenticated anonymously using in-memory persistence');
+          } catch (retryError: any) {
+            console.error(
+              '❌ Failed to sign in anonymously (even with memory persistence):',
+              retryError
+            );
+
+            if (retryError.code === 'auth/operation-not-allowed') {
+              console.error('   Anonymous authentication is not enabled in Firebase Console.');
+              console.error(
+                '   Please enable it: Firebase Console → Authentication → Sign-in method → Anonymous'
+              );
+              throw new Error('Anonymous authentication not enabled');
+            } else if (
+              retryError.code === 'auth/api-key-not-valid' ||
+              retryError.message?.includes('400')
+            ) {
+              console.error('   Firebase API key or configuration may be invalid.');
+              throw retryError;
+            } else {
+              throw retryError;
+            }
           }
         }
       } else {
@@ -146,7 +174,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
    */
   function loadFromLocalStorage(): void {
     const widgetsData: Record<string, WidgetData> = {};
-    
+
     // Load from old localStorage format and convert
     const entities = JSON.parse(localStorage.getItem('ha_dashboard_entities') ?? '[]');
     const positions = JSON.parse(localStorage.getItem('ha_dashboard_positions') ?? '{}');
@@ -173,7 +201,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
       widgetsData[entityId] = {
         entityName: entityId,
         labelName: labelOverrides[entityId],
-        labelVisible: labelVisible,
+        labelVisible,
         icon: icons[entityId],
         position: positions[entityId] || '0 0',
         size: sizes[entityId] || '80 40',
@@ -197,10 +225,10 @@ export const useFirestoreStore = defineStore('firestore', () => {
     try {
       const widgetsCollection = collection(db, COLLECTION_NAME);
       const querySnapshot = await getDocs(widgetsCollection);
-      
+
       const widgetsData: Record<string, WidgetData> = {};
-      
-      querySnapshot.forEach((docSnap) => {
+
+      querySnapshot.forEach(docSnap => {
         const widgetId = docSnap.id;
         const data = docSnap.data() as WidgetData;
         widgetsData[widgetId] = data;
@@ -217,7 +245,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
         loadFromLocalStorage();
         return;
       }
-      
+
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       error.value = errorMessage;
       console.error('❌ Failed to load widgets:', err);
@@ -240,13 +268,13 @@ export const useFirestoreStore = defineStore('firestore', () => {
     }
 
     const widgetsCollection = collection(db, COLLECTION_NAME);
-    
+
     unsubscribe = onSnapshot(
       widgetsCollection,
       (querySnapshot: QuerySnapshot) => {
         const widgetsData: Record<string, WidgetData> = {};
-        
-        querySnapshot.forEach((docSnap) => {
+
+        querySnapshot.forEach(docSnap => {
           const widgetId = docSnap.id;
           const data = docSnap.data() as WidgetData;
           widgetsData[widgetId] = data;
@@ -255,7 +283,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
         widgets.value = widgetsData;
         console.log('🔄 Widgets updated from Firestore');
       },
-      (err) => {
+      err => {
         error.value = err.message;
         console.error('❌ Firestore listener error:', err);
       }
@@ -318,26 +346,32 @@ export const useFirestoreStore = defineStore('firestore', () => {
     // For valuePrefix and valueSuffix, if undefined or empty string is passed, we need to delete the field
     const processedUpdates: any = { ...updates };
     const fieldsToDelete: string[] = [];
-    
-    if ('valuePrefix' in updates && (updates.valuePrefix === undefined || updates.valuePrefix === '')) {
+
+    if (
+      'valuePrefix' in updates &&
+      (updates.valuePrefix === undefined || updates.valuePrefix === '')
+    ) {
       // Mark for deletion in Firestore
       processedUpdates.valuePrefix = deleteField();
       fieldsToDelete.push('valuePrefix');
     }
-    if ('valueSuffix' in updates && (updates.valueSuffix === undefined || updates.valueSuffix === '')) {
+    if (
+      'valueSuffix' in updates &&
+      (updates.valueSuffix === undefined || updates.valueSuffix === '')
+    ) {
       // Mark for deletion in Firestore
       processedUpdates.valueSuffix = deleteField();
       fieldsToDelete.push('valueSuffix');
     }
-    
+
     // Remove undefined values from updates (but keep deleteField() for prefix/suffix)
     const cleanedUpdates = removeUndefinedFields(processedUpdates);
-    
+
     // Update local state
     const updatedWidget: WidgetData = {
       ...currentWidget,
     };
-    
+
     // Apply updates, but remove fields marked for deletion
     for (const [key, value] of Object.entries(cleanedUpdates)) {
       if (fieldsToDelete.includes(key)) {
@@ -347,7 +381,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
         (updatedWidget as any)[key] = value;
       }
     }
-    
+
     widgets.value = {
       ...widgets.value,
       [widgetId]: updatedWidget,
@@ -477,7 +511,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
     try {
       const uiDocRef = doc(db, UI_COLLECTION_NAME, UI_DOCUMENT_ID);
       const uiDocSnap = await getDoc(uiDocRef);
-      
+
       if (uiDocSnap.exists()) {
         const data = uiDocSnap.data() as UIData;
         uiData.value = {
@@ -494,12 +528,14 @@ export const useFirestoreStore = defineStore('firestore', () => {
     } catch (err: any) {
       // Check if it's a permission error
       if (err?.code === 'permission-denied' || err?.message?.includes('permissions')) {
-        console.warn('⚠️ Permission denied for Firestore UI settings. Falling back to localStorage.');
+        console.warn(
+          '⚠️ Permission denied for Firestore UI settings. Falling back to localStorage.'
+        );
         useFirestore.value = false;
         loadUISettingsFromLocalStorage();
         return;
       }
-      
+
       console.error('❌ Failed to load UI settings:', err);
       // Fall back to localStorage on error
       loadUISettingsFromLocalStorage();
@@ -511,11 +547,15 @@ export const useFirestoreStore = defineStore('firestore', () => {
    */
   function loadUISettingsFromLocalStorage(): void {
     try {
-      const labelsVisible = JSON.parse(localStorage.getItem('ha_dashboard_labels_visible') ?? 'true');
-      const sidebarVisible = JSON.parse(localStorage.getItem('ha_dashboard_sidebar_visible') ?? 'true');
+      const labelsVisible = JSON.parse(
+        localStorage.getItem('ha_dashboard_labels_visible') ?? 'true'
+      );
+      const sidebarVisible = JSON.parse(
+        localStorage.getItem('ha_dashboard_sidebar_visible') ?? 'true'
+      );
       const scrollPositionStr = localStorage.getItem('ha_dashboard_scroll_position');
       let scrollPosition: { x: number; y: number } | undefined = undefined;
-      
+
       if (scrollPositionStr) {
         try {
           const parsed = JSON.parse(scrollPositionStr);
@@ -550,11 +590,15 @@ export const useFirestoreStore = defineStore('firestore', () => {
     }
 
     try {
-      const labelsVisible = JSON.parse(localStorage.getItem('ha_dashboard_labels_visible') ?? 'true');
-      const sidebarVisible = JSON.parse(localStorage.getItem('ha_dashboard_sidebar_visible') ?? 'true');
+      const labelsVisible = JSON.parse(
+        localStorage.getItem('ha_dashboard_labels_visible') ?? 'true'
+      );
+      const sidebarVisible = JSON.parse(
+        localStorage.getItem('ha_dashboard_sidebar_visible') ?? 'true'
+      );
       const scrollPositionStr = localStorage.getItem('ha_dashboard_scroll_position');
       let scrollPosition: { x: number; y: number } | undefined = undefined;
-      
+
       if (scrollPositionStr) {
         try {
           const parsed = JSON.parse(scrollPositionStr);
@@ -575,7 +619,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
       const cleanedData = removeUndefinedFields(uiDataToSave);
       const uiDocRef = doc(db, UI_COLLECTION_NAME, UI_DOCUMENT_ID);
       await setDoc(uiDocRef, cleanedData);
-      
+
       uiData.value = uiDataToSave;
       console.log('✅ Migrated UI settings to Firestore');
     } catch (err) {
@@ -645,10 +689,10 @@ export const useFirestoreStore = defineStore('firestore', () => {
     }
 
     const uiDocRef = doc(db, UI_COLLECTION_NAME, UI_DOCUMENT_ID);
-    
+
     uiUnsubscribe = onSnapshot(
       uiDocRef,
-      (docSnap) => {
+      docSnap => {
         if (docSnap.exists()) {
           const data = docSnap.data() as UIData;
           uiData.value = {
@@ -659,7 +703,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
           console.log('🔄 UI settings updated from Firestore');
         }
       },
-      (err) => {
+      err => {
         error.value = err.message;
         console.error('❌ Firestore UI listener error:', err);
       }
@@ -683,7 +727,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
   /**
    * Set user interacting flag (for preventing auto-save during interactions)
    */
-  function setUserInteracting(value: boolean): void {
+  function setUserInteracting(): void {
     // This can be used for future optimizations
   }
 
@@ -706,4 +750,3 @@ export const useFirestoreStore = defineStore('firestore', () => {
     cleanup,
   };
 });
-

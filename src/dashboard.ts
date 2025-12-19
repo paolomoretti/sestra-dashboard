@@ -14,6 +14,7 @@ import {
 import type { HAConfig } from '../config';
 import type { HAEntityState } from './utils/iconUtils';
 import { useToast } from './composables/useToast';
+import { executeTapAction } from './utils/actionHandler';
 
 let diagram: go.Diagram | null = null;
 let palette: go.Palette | null = null;
@@ -163,9 +164,9 @@ export function initDashboard(config: HAConfig): void {
       // If clicking on the icon/picture (name === 'ICON') and there's a tap action, execute it
       if (obj.name === 'ICON' && tapAction?.action) {
         // Prevent selection - execute action instead
+        // Prevent selection - execute action instead
         (async () => {
           try {
-            const { executeTapAction } = await import('./utils/actionHandler');
             await executeTapAction(tapAction, obj.part.data, config);
           } catch (error) {
             console.error('Error executing tap action:', error);
@@ -872,7 +873,7 @@ function defineTemplates() {
             // In GoJS binding: pictureObj is the Picture itself
             // To get the Node's data, we need to go up: pictureObj.part.data
             const node = pictureObj ? pictureObj.part : null;
-            if (!node || !node.data) {
+            if (!node?.data) {
               return '';
             }
 

@@ -22,8 +22,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useHotkeys } from './composables/useHotkeys';
+import { useFirestoreStore } from './stores/firestore';
+import { useToast } from './composables/useToast';
 import Dashboard from './components/Dashboard.vue';
 import ZoomControls from './components/ZoomControls.vue';
 import NumericValues from './components/NumericValues.vue';
@@ -37,6 +39,18 @@ import './style.css';
 const dashboardRef = ref<InstanceType<typeof Dashboard>>();
 const settingsOpen = ref(false);
 const entityModalOpen = ref(false);
+const firestoreStore = useFirestoreStore();
+const toast = useToast();
+
+// Watch for Firestore errors
+watch(
+  () => firestoreStore.error,
+  newError => {
+    if (newError) {
+      toast.error(`Firestore Error: ${newError}`, 10000);
+    }
+  }
+);
 
 function openSettings() {
   settingsOpen.value = true;

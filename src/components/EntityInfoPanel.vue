@@ -1507,7 +1507,8 @@ function handleStateConditionValueChange(event: Event) {
 
 function handleNavigationPathChange(event: Event) {
   const target = event.target as HTMLInputElement;
-  const tapAction: TapAction = props.entity.tapAction ?? { action: 'navigate' };
+  // Create a copy to avoid mutating prop
+  const tapAction: TapAction = { ...(props.entity.tapAction ?? { action: 'navigate' }) };
   tapAction.navigation_path = target.value;
 
   emit('update', props.entity.key, { tapAction });
@@ -1554,7 +1555,8 @@ function handleLongPressActionChange(event: Event) {
 
 function handleLongPressNavigationPathChange(event: Event) {
   const target = event.target as HTMLInputElement;
-  const holdAction: TapAction = props.entity.holdAction ?? { action: 'navigate' };
+  // Create a copy to avoid mutating prop
+  const holdAction: TapAction = { ...(props.entity.holdAction ?? { action: 'navigate' }) };
   holdAction.navigation_path = target.value;
 
   emit('update', props.entity.key, { holdAction });

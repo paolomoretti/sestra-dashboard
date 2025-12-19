@@ -45,32 +45,12 @@ window.pinia = pinia;
 
 app.mount('#app');
 
-// Register Service Worker for PWA (only in production)
-// In development, skip service worker to avoid aggressive caching
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then(registration => {
-        console.log('✅ Service Worker registered:', registration.scope);
-      })
-      .catch(error => {
-        console.warn('⚠️ Service Worker registration failed:', error);
-      });
-  });
-} else if ('serviceWorker' in navigator && import.meta.env.DEV) {
-  // In development, unregister any existing service workers to prevent caching issues
-  navigator.serviceWorker.getRegistrations().then(registrations => {
-    registrations.forEach(registration => {
-      registration.unregister().then(() => {
-        console.log('🔧 Unregistered service worker for development');
-      });
-    });
-  });
-}
+// Service Worker removed
 
 // Load entities after app is mounted
 nextTick(async () => {
+  console.log('🚀 Sestra Dashboard v1.0.1 (Authentication Fixes Included)');
+
   // Import after Pinia is set up
   const { useEntitiesStore } = await import('./stores/entities');
   const { useFirestoreStore } = await import('./stores/firestore');

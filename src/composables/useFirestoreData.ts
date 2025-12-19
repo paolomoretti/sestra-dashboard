@@ -2,19 +2,18 @@
  * Composable for reactive Firestore data access
  */
 
-import { computed, watch, type Ref } from 'vue';
-import { useDebounceFn } from '@vueuse/core';
-import { useFirestoreStore, type WidgetData } from '../stores/firestore';
+import { computed } from 'vue';
+import { useFirestoreStore } from '../stores/firestore';
 
 /**
  * Get reactive dashboard data from Firestore
  */
 export function useFirestoreData() {
   const firestoreStore = useFirestoreStore();
-  
+
   // Expose interaction flag setter
-  const setUserInteracting = (value: boolean) => {
-    firestoreStore.setUserInteracting(value);
+  const setUserInteracting = (_value: boolean) => {
+    firestoreStore.setUserInteracting();
   };
 
   // Convert widgets to the old format for backward compatibility
@@ -122,7 +121,7 @@ export function useFirestoreData() {
   async function setEntities(value: string[]): Promise<void> {
     const currentWidgets = firestoreStore.widgets || {};
     const currentEntityIds = Object.keys(currentWidgets);
-    
+
     // Delete widgets that are no longer in the list
     for (const widgetId of currentEntityIds) {
       if (!value.includes(widgetId)) {
@@ -191,7 +190,7 @@ export function useFirestoreData() {
    */
   async function setIcons(value: Record<string, string>): Promise<void> {
     const currentIcons = icons.value;
-    
+
     // Update widgets whose icon has changed
     for (const [widgetId, icon] of Object.entries(value)) {
       const currentIcon = currentIcons[widgetId];
@@ -214,9 +213,11 @@ export function useFirestoreData() {
    * Save actions to Firestore
    * Only updates widgets whose actions have actually changed
    */
-  async function setActions(value: Record<string, { tapAction?: any; holdAction?: any }>): Promise<void> {
+  async function setActions(
+    value: Record<string, { tapAction?: any; holdAction?: any }>
+  ): Promise<void> {
     const currentActions = actions.value;
-    
+
     // Update widgets whose actions have changed
     for (const [widgetId, action] of Object.entries(value)) {
       const currentAction = currentActions[widgetId];
@@ -244,7 +245,7 @@ export function useFirestoreData() {
    */
   async function setLabelOverrides(value: Record<string, string>): Promise<void> {
     const currentLabelOverrides = labelOverrides.value;
-    
+
     // Update widgets whose label override has changed
     for (const [widgetId, labelName] of Object.entries(value)) {
       const currentLabel = currentLabelOverrides[widgetId];
@@ -267,9 +268,11 @@ export function useFirestoreData() {
    * Save HA actions to Firestore
    * Only updates widgets whose HA actions have actually changed
    */
-  async function setHAActions(value: Record<string, { service: string; serviceData?: Record<string, any> }>): Promise<void> {
+  async function setHAActions(
+    value: Record<string, { service: string; serviceData?: Record<string, any> }>
+  ): Promise<void> {
     const currentHAActions = haActions.value;
-    
+
     // Update widgets whose HA actions have changed
     for (const [widgetId, haAction] of Object.entries(value)) {
       const currentHAAction = currentHAActions[widgetId];

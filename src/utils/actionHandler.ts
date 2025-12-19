@@ -25,9 +25,13 @@ export interface TapAction {
  * @param entityData - Entity data from GoJS node
  * @param config - HA configuration with accessToken
  */
-export async function executeTapAction(action: TapAction | null | undefined, entityData: EntityData, config: HAConfig): Promise<void> {
+export async function executeTapAction(
+  action: TapAction | null | undefined,
+  entityData: EntityData,
+  config: HAConfig
+): Promise<void> {
   console.log('executeTapAction called with:', { action, entityData, config });
-  
+
   if (!action?.action) {
     console.warn('No action provided or action.action is missing');
     return;
@@ -45,22 +49,22 @@ export async function executeTapAction(action: TapAction | null | undefined, ent
     case 'toggle':
       console.log('Calling toggleEntity for:', entityId);
       return toggleEntity(entityId, config);
-    
+
     case 'more-info':
       return showMoreInfo(entityData, config);
-    
+
     case 'navigate':
       // If navigation_path is provided, use it; otherwise default to entity's history page
       const navigationPath = action.navigation_path || `/history?entity_id=${entityId}`;
       return navigateTo(navigationPath, config);
-    
+
     case 'call-service':
       if (action.service) {
         return callService(action.service, entityId, action.target, config);
       }
       console.warn('Call-service action requires service');
       break;
-    
+
     default:
       console.warn(`Unknown action type: ${action.action}`);
   }
@@ -74,21 +78,21 @@ async function toggleEntity(entityId: string, config: HAConfig): Promise<void> {
     const [domain] = entityId.split('.');
     const url = `${getApiBaseUrl(config)}/services/${domain}/toggle`;
     console.log('Toggle entity - URL:', url, 'entityId:', entityId, 'domain:', domain);
-    
+
     const requestBody = {
-      entity_id: entityId
+      entity_id: entityId,
     };
     console.log('Toggle request body:', requestBody);
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
     });
-    
+
     console.log('Toggle response status:', response.status, response.statusText);
 
     if (!response.ok) {
@@ -96,7 +100,7 @@ async function toggleEntity(entityId: string, config: HAConfig): Promise<void> {
     }
 
     const result = await response.json();
-    
+
     // Trigger state update after a short delay
     setTimeout(() => {
       if (window.diagramInstance && window.updateSensorStates) {
@@ -125,7 +129,7 @@ function showMoreInfo(entityData: EntityData, config: HAConfig): void {
     console.warn('No entity ID found for more-info action');
     return;
   }
-  
+
   // Open entity's detail page in Home Assistant
   // This opens the entity configuration page where you can see all details, history, etc.
   const entityDetailPath = `/config/entities/${entityId}`;
@@ -139,9 +143,9 @@ function showMoreInfo(entityData: EntityData, config: HAConfig): void {
  */
 function navigateTo(navigationPath: string, config: HAConfig): void {
   console.log('Navigate to:', navigationPath);
-  
+
   let fullUrl: string;
-  
+
   // If it's already a full URL, use it as-is
   if (navigationPath.startsWith('http://') || navigationPath.startsWith('https://')) {
     fullUrl = navigationPath;
@@ -151,16 +155,51 @@ function navigateTo(navigationPath: string, config: HAConfig): void {
     const path = navigationPath.startsWith('/') ? navigationPath : `/${navigationPath}`;
     fullUrl = `${config.address}${path}`;
   }
-  
+
   console.log('Opening Home Assistant URL:', fullUrl);
-  // Open in a new tab
-  window.open(fullUrl, '_blank');
+
+  // Check if running in an iframe (e.g., inside Home Assistant)
+  const isIframe = window.self !== window.top;
+
+  if (isIframe) {
+    try {
+      // Try to navigate via top location (works if same-origin or allowed)
+      // This is generally more reliable for navigation than window.open in iframes
+      window.top!.location.href = fullUrl;
+    } catch (e) {
+      // SecurityError (cross-origin) or Sandbox-blocked
+      console.log('Direct top navigation blocked, trying window.open target=_top');
+
+      // Try opening with target='_top'
+      const newWindow = window.open(fullUrl, '_top');
+
+      // If window.open returns null, it was likely blocked by popup blocker or sandbox
+      if (!newWindow) {
+        console.warn('Navigation to _top failed, falling back to _blank');
+        window.open(fullUrl, '_blank');
+
+        // Notify user if possible (toast)
+        import('../composables/useToast').then(({ useToast }) => {
+          const { info } = useToast();
+          info('Opening in new tab (navigation restricted by Home Assistant)');
+        });
+      }
+    }
+  } else {
+    // Standalone - open in new tab
+    window.open(fullUrl, '_blank');
+  }
 }
 
 /**
  * Call a Home Assistant service
  */
-async function callService(service: string, entityId: string | undefined, target: { entity_id?: string } | undefined, config: HAConfig): Promise<void> {
+async function callService(
+  service: string,
+  entityId: string | undefined,
+  target: { entity_id?: string } | undefined,
+  config: HAConfig
+): Promise<void> {
   try {
     const [domain, serviceName] = service.split('.');
     if (!domain || !serviceName) {
@@ -168,20 +207,20 @@ async function callService(service: string, entityId: string | undefined, target
     }
 
     const url = `${getApiBaseUrl(config)}/services/${domain}/${serviceName}`;
-    
-    const serviceData = target?.entity_id 
+
+    const serviceData = target?.entity_id
       ? { entity_id: target.entity_id }
-      : entityId 
+      : entityId
         ? { entity_id: entityId }
         : {};
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(serviceData)
+      body: JSON.stringify(serviceData),
     });
 
     if (!response.ok) {
@@ -197,4 +236,3 @@ async function callService(service: string, entityId: string | undefined, target
     throw error;
   }
 }
-

@@ -12,22 +12,6 @@ import { getStorage, type FirebaseStorage } from 'firebase/storage';
 // Get runtime configuration from window.env (injected by entrypoint.sh) or build-time env
 const runtimeEnv = (window as any).env || {};
 
-const firebaseConfig = {
-  apiKey: runtimeEnv.FIREBASE_API_KEY || import.meta.env['VITE_FIREBASE_API_KEY'] || '',
-  authDomain: runtimeEnv.FIREBASE_AUTH_DOMAIN || import.meta.env['VITE_FIREBASE_AUTH_DOMAIN'] || '',
-  projectId:
-    runtimeEnv.FIREBASE_PROJECT_ID ||
-    import.meta.env['VITE_FIREBASE_PROJECT_ID'] ||
-    'sestra-dashboard',
-  storageBucket:
-    runtimeEnv.FIREBASE_STORAGE_BUCKET || import.meta.env['VITE_FIREBASE_STORAGE_BUCKET'] || '',
-  messagingSenderId:
-    runtimeEnv.FIREBASE_MESSAGING_SENDER_ID ||
-    import.meta.env['VITE_FIREBASE_MESSAGING_SENDER_ID'] ||
-    '',
-  appId: runtimeEnv.FIREBASE_APP_ID || import.meta.env['VITE_FIREBASE_APP_ID'] || '',
-};
-
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
@@ -51,6 +35,27 @@ export function initFirebase(): {
   if (existingApps.length > 0) {
     app = existingApps[0] ?? null;
   } else {
+    // Create firebaseConfig from env variables
+    // Priority: runtime (window.env) -> build-time (import.meta.env)
+    const firebaseConfig = {
+      apiKey: runtimeEnv.VITE_FIREBASE_API_KEY || import.meta.env['VITE_FIREBASE_API_KEY'] || '',
+      authDomain:
+        runtimeEnv.VITE_FIREBASE_AUTH_DOMAIN || import.meta.env['VITE_FIREBASE_AUTH_DOMAIN'] || '',
+      projectId:
+        runtimeEnv.VITE_FIREBASE_PROJECT_ID ||
+        import.meta.env['VITE_FIREBASE_PROJECT_ID'] ||
+        'sestra-dashboard',
+      storageBucket:
+        runtimeEnv.VITE_FIREBASE_STORAGE_BUCKET ||
+        import.meta.env['VITE_FIREBASE_STORAGE_BUCKET'] ||
+        '',
+      messagingSenderId:
+        runtimeEnv.VITE_FIREBASE_MESSAGING_SENDER_ID ||
+        import.meta.env['VITE_FIREBASE_MESSAGING_SENDER_ID'] ||
+        '',
+      appId: runtimeEnv.VITE_FIREBASE_APP_ID || import.meta.env['VITE_FIREBASE_APP_ID'] || '',
+    };
+
     // Validate config
     if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
       console.warn('⚠️ Firebase configuration incomplete. Falling back to localStorage.');

@@ -890,19 +890,26 @@ async function handleIconClick(e: MouseEvent) {
 
   // Execute tap action if exists
   if (props.entity.tapAction?.action) {
-    await executeTapAction(props.entity.tapAction, props.entity, haConfig);
-    // Show success toast
-    const { success } = useToast();
-    const actionName =
-      props.entity.tapAction.action === 'toggle'
-        ? 'Toggled'
-        : props.entity.tapAction.action === 'navigate'
-          ? 'Navigated'
-          : 'Action executed';
-    success(`${actionName}: ${displayLabel.value}`);
-    // Still zoom to entity after action (but don't select)
-    if (window.zoomToEntity) {
-      window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
+    try {
+      await executeTapAction(props.entity.tapAction, props.entity, haConfig);
+      // Show success toast
+      const { success } = useToast();
+      const actionName =
+        props.entity.tapAction.action === 'toggle'
+          ? 'Toggled'
+          : props.entity.tapAction.action === 'navigate'
+            ? 'Navigated'
+            : 'Action executed';
+      success(`${actionName}: ${displayLabel.value}`);
+
+      // Still zoom to entity after action (but don't select)
+      if (window.zoomToEntity) {
+        window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
+      }
+    } catch (error) {
+      console.error('Error executing tap action:', error);
+      const { error: showError } = useToast();
+      showError(`Failed to execute action: ${(error as Error).message}`);
     }
     // Don't select when there's a tap action - just execute it
     return;
@@ -947,18 +954,32 @@ async function executeLongPressAction() {
   // Cancel any pending click actions
   hasDragged.value = true;
 
-  // Execute the hold action
-  await executeTapAction(props.entity.holdAction, props.entity, haConfig);
+  // Stop dragging
+  isDragging.value = false;
+  // Clear any global drag state
+  delete (window as any).__entityDragOffsetX;
+  delete (window as any).__entityDragOffsetY;
+  delete (window as any).__entityDragStartPos;
+  delete (window as any).__entityDragStartTarget;
 
-  // Show success toast
-  const { success } = useToast();
-  const actionName =
-    props.entity.holdAction.action === 'toggle'
-      ? 'Toggled'
-      : props.entity.holdAction.action === 'navigate'
-        ? 'Navigated'
-        : 'Action executed';
-  success(`${actionName} (long press): ${displayLabel.value}`);
+  try {
+    // Execute the hold action
+    await executeTapAction(props.entity.holdAction, props.entity, haConfig);
+
+    // Show success toast
+    const { success } = useToast();
+    const actionName =
+      props.entity.holdAction.action === 'toggle'
+        ? 'Toggled'
+        : props.entity.holdAction.action === 'navigate'
+          ? 'Navigated'
+          : 'Action executed';
+    success(`${actionName} (long press): ${displayLabel.value}`);
+  } catch (error) {
+    console.error('Error executing long press action:', error);
+    const { error: showError } = useToast();
+    showError(`Failed to execute action: ${(error as Error).message}`);
+  }
 
   // Zoom to entity position
   if (window.zoomToEntity) {
