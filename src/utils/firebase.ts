@@ -37,23 +37,24 @@ export function initFirebase(): {
   } else {
     // Create firebaseConfig from env variables
     // Priority: runtime (window.env) -> build-time (import.meta.env)
+    // Note: Docker entrypoint.sh injects vars WITHOUT VITE_ prefix into window.env
     const firebaseConfig = {
-      apiKey: runtimeEnv.VITE_FIREBASE_API_KEY || import.meta.env['VITE_FIREBASE_API_KEY'] || '',
+      apiKey: runtimeEnv['FIREBASE_API_KEY'] || import.meta.env['VITE_FIREBASE_API_KEY'] || '',
       authDomain:
-        runtimeEnv.VITE_FIREBASE_AUTH_DOMAIN || import.meta.env['VITE_FIREBASE_AUTH_DOMAIN'] || '',
+        runtimeEnv['FIREBASE_AUTH_DOMAIN'] || import.meta.env['VITE_FIREBASE_AUTH_DOMAIN'] || '',
       projectId:
-        runtimeEnv.VITE_FIREBASE_PROJECT_ID ||
+        runtimeEnv['FIREBASE_PROJECT_ID'] ||
         import.meta.env['VITE_FIREBASE_PROJECT_ID'] ||
         'sestra-dashboard',
       storageBucket:
-        runtimeEnv.VITE_FIREBASE_STORAGE_BUCKET ||
+        runtimeEnv['FIREBASE_STORAGE_BUCKET'] ||
         import.meta.env['VITE_FIREBASE_STORAGE_BUCKET'] ||
         '',
       messagingSenderId:
-        runtimeEnv.VITE_FIREBASE_MESSAGING_SENDER_ID ||
+        runtimeEnv['FIREBASE_MESSAGING_SENDER_ID'] ||
         import.meta.env['VITE_FIREBASE_MESSAGING_SENDER_ID'] ||
         '',
-      appId: runtimeEnv.VITE_FIREBASE_APP_ID || import.meta.env['VITE_FIREBASE_APP_ID'] || '',
+      appId: runtimeEnv['FIREBASE_APP_ID'] || import.meta.env['VITE_FIREBASE_APP_ID'] || '',
     };
 
     // Validate config

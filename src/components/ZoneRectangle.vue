@@ -24,6 +24,7 @@
         :title="zone.label || 'Unnamed Zone'"
         :style="{ ...labelStyle, pointerEvents: 'auto' }"
         @click.stop="handleLabelClick"
+        @touchstart.stop="handleLabelTouchStart"
         @mousedown.stop="handleLabelMouseDown"
         @contextmenu.stop="handleLabelRightClick"
       >
@@ -362,7 +363,7 @@ function handleClick(e: MouseEvent) {
     hasDragged.value = false;
     return;
   }
-  
+
   // Clear any pending click timeout (in case this is the second click of a double-click)
   if (clickTimeout.value) {
     clearTimeout(clickTimeout.value);
@@ -370,13 +371,13 @@ function handleClick(e: MouseEvent) {
     // This was a double-click, don't handle as single click
     return;
   }
-  
+
   // If zone is locked, only allow selection from the label (handled by handleLabelClick)
   // But still allow double-click to work (handled separately)
   if (props.zone.locked) {
     return;
   }
-  
+
   // Check if click is on the rectangle itself (not a child element)
   if (
     e.target === e.currentTarget ||
@@ -395,23 +396,28 @@ function handleDoubleClick(e: MouseEvent) {
   // Prevent event from bubbling to parent elements
   e.stopPropagation();
   e.preventDefault();
-  
+
   // Clear any pending single-click timeout (so single click doesn't fire after double-click)
   if (clickTimeout.value) {
     clearTimeout(clickTimeout.value);
     clickTimeout.value = null;
   }
-  
+
   // Don't zoom if we just finished dragging
   if (hasDragged.value) {
     hasDragged.value = false;
     return;
   }
-  
+
   // Zoom to zone on double-click (same as hotkey behavior)
   // Works for BOTH locked and unlocked zones - no locked check!
   // eslint-disable-next-line no-console
-  console.log('[Zone] Double-click detected, zooming to zone:', props.zone.label, 'locked:', props.zone.locked);
+  console.log(
+    '[Zone] Double-click detected, zooming to zone:',
+    props.zone.label,
+    'locked:',
+    props.zone.locked
+  );
   if (window.zoomToZone) {
     window.zoomToZone(props.zone, 50);
   }
@@ -421,19 +427,16 @@ function handleDoubleClick(e: MouseEvent) {
 function handleTouchStart(e: TouchEvent) {
   // Only handle if touching the rectangle itself
   const target = e.target as HTMLElement;
-  if (
-    target === e.currentTarget ||
-    target.classList.contains('zone-rectangle')
-  ) {
+  if (target === e.currentTarget || target.classList.contains('zone-rectangle')) {
     const currentTime = Date.now();
     const tapLength = currentTime - lastTapTime.value;
-    
+
     // Clear any existing timeout
     if (tapTimeout.value) {
       clearTimeout(tapTimeout.value);
       tapTimeout.value = null;
     }
-    
+
     // If tap was within 300ms of last tap, it's a double-tap
     if (tapLength < 300 && tapLength > 0) {
       e.preventDefault();
@@ -454,18 +457,43 @@ function handleTouchStart(e: TouchEvent) {
   }
 }
 
-function handleLabelClick() {
+function handleLabelClick(e?: any) {
   if (hasDragged.value) {
     hasDragged.value = false;
     return;
   }
+
   isPanelOpen.value = true;
   isExpanded.value = true;
   emit('select', props.zone);
+
   // Zoom to zone
   if (window.zoomToZone) {
     window.zoomToZone(props.zone, 50);
   }
+
+  // Focus the input after opening
+  void nextTick(() => {
+    if (labelInputRef.value) {
+      labelInputRef.value.focus();
+      labelInputRef.value.select();
+    }
+  });
+}
+
+function handleLabelTouchStart(e: TouchEvent) {
+  // Prevent default to avoid generating a click event (which might delay or double-trigger)
+  if (e.cancelable) e.preventDefault();
+
+  isPanelOpen.value = true;
+  isExpanded.value = true;
+  emit('select', props.zone);
+
+  // Zoom to zone
+  if (window.zoomToZone) {
+    window.zoomToZone(props.zone, 50);
+  }
+
   // Focus the input after opening
   void nextTick(() => {
     if (labelInputRef.value) {

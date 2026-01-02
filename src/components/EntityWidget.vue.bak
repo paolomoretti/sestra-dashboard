@@ -82,7 +82,7 @@
          </template
       >
     </div>
-     <!-- Text Label Style --> <!-- Text Label Style -->
+     <!-- Text Label Style -->
     <div
       v-else-if="entity.isTextLabel"
       class="entity-widget text-label-widget"
@@ -96,7 +96,6 @@
       @touchstart="handleTouchStart"
       @touchmove="handleTouchMove"
       @touchend="handleTouchEnd"
-      @mousedown="handleMouseDown"
       @contextmenu.prevent.stop="handleTextLabelRightClick"
       @click.stop="handleClick"
     >
@@ -121,8 +120,57 @@
           > <input type="checkbox" v-model="editingBackgroundTransparent" /> Transparent Background
           </label
         >
-        <div class="text-label-divider"></div>
-         <button class="text-label-delete" @click="deleteTextLabel"> 🗑️ Remove Label </button>
+      </div>
+       <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
+        >
+        <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
+
+        <div class="resize-handle resize-handle-sw" @mousedown.stop="startResize('sw', $event)" />
+
+        <div class="resize-handle resize-handle-ne" @mousedown.stop="startResize('ne', $event)" />
+
+        <div class="resize-handle resize-handle-nw" @mousedown.stop="startResize('nw', $event)" />
+         </template
+      >
+    </div>
+     <!-- Text Label Style -->
+    <div
+      v-else-if="entity.isTextLabel"
+      class="entity-widget text-label-widget"
+      :class="{
+        selected: isSelected,
+        resizing: isResizing,
+        dragging: isDragging,
+        'transparent-bg': entity.backgroundTransparent,
+      }"
+      :style="textLabelStyle"
+      @touchstart="handleTouchStart"
+      @touchmove="handleTouchMove"
+      @touchend="handleTouchEnd"
+      @contextmenu.prevent.stop="handleTextLabelRightClick"
+      @click.stop="handleClick"
+    >
+
+      <div class="text-label-content" :style="textLabelContentStyle"> {{ displayLabel }} </div>
+       <!-- Edit Menu -->
+      <div
+        v-if="isEditing"
+        class="text-label-edit-menu"
+        @mousedown.stop
+        @click.stop
+        @contextmenu.stop
+      >
+         <input
+          ref="textInputRef"
+          v-model="editingText"
+          class="text-label-input"
+          placeholder="Label Text"
+          @keydown.enter="saveTextLabel"
+          @blur="saveTextLabel"
+        /> <label class="text-label-toggle"
+          > <input type="checkbox" v-model="editingBackgroundTransparent" /> Transparent Background
+          </label
+        >
       </div>
        <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
         >
@@ -412,12 +460,6 @@ function saveTextLabel() {
     // But "clicking outside" needs a listener.
     // Let's use a global click listener when isEditing is true.
   }, 0);
-}
-
-function deleteTextLabel() {
-  if (confirm('Are you sure you want to remove this label?')) {
-    emit('delete', props.entity.key);
-  }
 }
 
 // Watch isEditing to add/remove global click listener
@@ -2295,29 +2337,6 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 }
 .text-label-toggle input {
   cursor: pointer;
-}
-
-.text-label-divider {
-  height: 1px;
-  background-color: #333;
-  margin: 4px 0;
-  width: 100%;
-}
-
-.text-label-delete {
-  background: transparent;
-  border: 1px solid #ff4444;
-  color: #ff4444;
-  padding: 4px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  text-align: center;
-  transition: all 0.2s;
-  width: 100%;
-}
-.text-label-delete:hover {
-  background: rgba(255, 68, 68, 0.1);
 }
 </style>
 

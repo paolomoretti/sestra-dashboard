@@ -46,6 +46,9 @@ export interface WidgetData {
   linkedEntityId?: string | undefined; // Entity ID to check state for conditional display
   imageConditionOperator?: string | undefined; // Condition operator for showing image (equal, greater, lower, etc.)
   imageConditionValue?: number | string | undefined; // Condition value for showing image
+  // Text Label fields
+  isTextLabel?: boolean | undefined;
+  backgroundTransparent?: boolean | undefined;
 }
 
 export interface UIData {

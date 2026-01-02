@@ -167,6 +167,7 @@ const placedEntities = computed(() => {
       // Check if this is an action button or image widget
       const isActionButton = entityId.startsWith('action_button_');
       const isImageWidget = entityId.startsWith('image_widget_');
+      const isTextLabel = entityId.startsWith('text_label_');
 
       // Find entity in store (or create synthetic entity for action buttons/image widgets)
       let entity: EntityData | null =
@@ -209,6 +210,23 @@ const placedEntities = computed(() => {
         };
       }
 
+      // If not found and it's a text label, create a synthetic entity
+      if (!entity && isTextLabel) {
+        const widgetData = firestoreStore.widgets[entityId] as any;
+        entity = {
+          key: entityId,
+          isTextLabel: true,
+          category: 'text',
+          name: labelOverridesData[entityId] || 'Text Label',
+          state: 'idle',
+          icon: 'format-text',
+          loc: positionsData[entityId] || '0 0',
+          size: sizesData[entityId] || '200 60',
+          labelOverride: labelOverridesData[entityId] || 'Text Label',
+          backgroundTransparent: widgetData?.backgroundTransparent || false,
+        };
+      }
+
       if (!entity) return null;
 
       return {
@@ -239,6 +257,10 @@ const placedEntities = computed(() => {
         imageConditionValue:
           (firestoreStore.widgets[entityId] as any)?.imageConditionValue ??
           entity.imageConditionValue,
+        isTextLabel: (firestoreStore.widgets[entityId] as any)?.isTextLabel ?? entity.isTextLabel,
+        backgroundTransparent:
+          (firestoreStore.widgets[entityId] as any)?.backgroundTransparent ??
+          entity.backgroundTransparent,
         haAction: haActionsData[entityId] ?? entity.haAction,
       } as EntityData;
     })
@@ -249,12 +271,10 @@ function calculateInitialScale(): number {
   if (!dashboardWrapperRef.value) return 1;
   const wrapper = dashboardWrapperRef.value;
   const wrapperWidth = wrapper.clientWidth;
-  const wrapperHeight = wrapper.clientHeight;
 
-  // Calculate scale to fit both width and height, use the smaller one
+  // Calculate scale to fit width
   const scaleX = wrapperWidth / FLOORPLAN_WIDTH;
-  const scaleY = wrapperHeight / FLOORPLAN_HEIGHT;
-  const initialScale = Math.min(scaleX, scaleY, 1); // Don't scale up beyond 1
+  const initialScale = Math.min(scaleX, 1); // Fit to width, but don't scale up beyond 1
 
   return Math.max(0.1, initialScale); // Minimum scale
 }
@@ -353,28 +373,15 @@ onMounted(() => {
     if (scaleInitialized || !dashboardWrapperRef.value) return;
 
     const wrapperWidth = dashboardWrapperRef.value.clientWidth;
-    const wrapperHeight = dashboardWrapperRef.value.clientHeight;
 
-    // If scale is already restored from Firestore, use it
-    if (uiScale.value !== undefined) {
-      const scaledWidth = FLOORPLAN_WIDTH * uiScale.value;
-      const scaledHeight = FLOORPLAN_HEIGHT * uiScale.value;
-      const newPanX = (wrapperWidth - scaledWidth) / 2;
-      const newPanY = (wrapperHeight - scaledHeight) / 2;
-      panX.value = newPanX;
-      panY.value = newPanY;
-      scaleInitialized = true;
-      return;
-    }
-
-    // If Firestore is initialized but no scale was found, calculate initial
-    // Only do this if Firestore has finished loading (to avoid setting before restore)
+    // Always calculate initial scale to fit width (ignoring saved scale to enforce "Always open with fit to width")
+    // Only do this if Firestore has finished loading
     if (firestoreInitialized.value) {
       const targetScale = calculateInitialScale();
       const scaledWidth = FLOORPLAN_WIDTH * targetScale;
-      const scaledHeight = FLOORPLAN_HEIGHT * targetScale;
-      const newPanX = (wrapperWidth - scaledWidth) / 2;
-      const newPanY = (wrapperHeight - scaledHeight) / 2;
+
+      const newPanX = (wrapperWidth - scaledWidth) / 2; // Center horizontally
+      const newPanY = 0; // Align top
 
       setUIScale(targetScale);
       panX.value = newPanX;
@@ -1280,8 +1287,11 @@ function setRectangleDrawingMode(enabled: boolean) {
 }
 
 // Expose functions for external use
-defineExpose({
+const interactions = {
   createActionButton,
+  createTextLabel: () => {
+    createTextLabel();
+  },
   createImageWidget: () => {
     // Trigger file input click
     if (fileInputRef.value) {
@@ -1396,9 +1406,9 @@ defineExpose({
     const zoneWidthWithPadding = zone.width + padding * 2;
     const zoneHeightWithPadding = zone.height + padding * 2;
 
-    // Calculate scale so the zone takes up about 60% of the viewport width and height
-    const scaleX = wrapperWidth / 1.67 / zoneWidthWithPadding;
-    const scaleY = wrapperHeight / 1.67 / zoneHeightWithPadding;
+    // Calculate scale so the zone takes up about 95% of the viewport width and height
+    const scaleX = wrapperWidth / 1.05 / zoneWidthWithPadding;
+    const scaleY = wrapperHeight / 1.05 / zoneHeightWithPadding;
     const targetScale = Math.min(scaleX, scaleY, maxScale);
 
     // Calculate pan to center the zone in the viewport
@@ -1453,7 +1463,20 @@ defineExpose({
     // Select the newly added entity so user can see it
     setSelectedEntity(entity, { x, y });
   },
+};
+
+// Expose functions for window (needed for ZoneRectangle)
+onMounted(() => {
+  Object.assign(window, interactions);
 });
+
+onUnmounted(() => {
+  Object.keys(interactions).forEach(key => {
+    delete (window as any)[key];
+  });
+});
+
+defineExpose(interactions);
 
 // Helper function
 function parsePosition(loc?: string): { x: number; y: number } {
@@ -1463,6 +1486,74 @@ function parsePosition(loc?: string): { x: number; y: number } {
 }
 
 // Listen for palette drag start (moved to main onMounted)
+// Create text label
+async function createTextLabel() {
+  if (!dashboardWrapperRef.value) {
+    return;
+  }
+
+  // Calculate center position in diagram coordinates
+  const rect = dashboardWrapperRef.value.getBoundingClientRect();
+  const wrapperWidth = rect.width;
+  const wrapperHeight = rect.height;
+
+  // Center of viewport in wrapper coordinates
+  const centerX = wrapperWidth / 2;
+  const centerY = wrapperHeight / 2;
+
+  // Convert to diagram coordinates
+  const currentScale = scale.value || 1;
+  const diagramX = (centerX - panX.value) / currentScale;
+  const diagramY = (centerY - panY.value) / currentScale;
+
+  // Generate unique key for text label
+  const textLabelKey = `text_label_${Date.now()}`;
+
+  // Create text label entity
+  const textLabel: EntityData = {
+    key: textLabelKey,
+    isTextLabel: true,
+    category: 'text',
+    name: 'New Label',
+    state: 'idle',
+    icon: 'format-text',
+    loc: `${diagramX} ${diagramY}`,
+    size: '200 60',
+    labelOverride: 'New Label',
+    backgroundTransparent: false,
+  };
+
+  // Add to placed entities
+  if (!placedEntityIds.value.includes(textLabelKey)) {
+    await setPlacedEntityIds([...placedEntityIds.value, textLabelKey]);
+  }
+
+  // Save position and size
+  const newPositions = { ...positions.value };
+  newPositions[textLabelKey] = `${diagramX} ${diagramY}`;
+  await setPositions(newPositions);
+
+  const newSizes = { ...sizes.value };
+  newSizes[textLabelKey] = '200 60';
+  await setSizes(newSizes);
+
+  // Save label override
+  const newLabelOverrides = { ...labelOverrides.value };
+  newLabelOverrides[textLabelKey] = 'New Label';
+  await setLabelOverrides(newLabelOverrides);
+
+  // Save properties to Firestore
+  await firestoreStore.updateWidget(textLabelKey, {
+    isTextLabel: true,
+    backgroundTransparent: false,
+    labelName: 'New Label',
+    position: `${diagramX} ${diagramY}`,
+    size: '200 60',
+  });
+
+  // Do NOT select the widget, the widget's onMounted hook will trigger edit mode automatically.
+}
+
 // Create image widget with URL
 async function createImageWidgetWithUrl(url: string) {
   if (!dashboardWrapperRef.value) {

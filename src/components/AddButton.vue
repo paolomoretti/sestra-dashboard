@@ -17,6 +17,8 @@
          <span class="menu-icon">⚡</span> <span class="menu-label">Action Button</span> </button
       > <button class="add-menu-item" @click="handleAddImageWidget">
          <span class="menu-icon">🖼️</span> <span class="menu-label">Image Widget</span> </button
+      > <button class="add-menu-item" @click="handleAddTextLabel">
+         <span class="menu-icon">🔤</span> <span class="menu-label">Text Label</span> </button
       > <button class="add-menu-item" @click="handleAddZone">
          <span class="menu-icon">⬜</span> <span class="menu-label">Zone Rectangle</span> </button
       >
@@ -33,6 +35,7 @@ const emit = defineEmits<{
   addEntity: [];
   addActionButton: [];
   addImageWidget: [];
+  addTextLabel: [];
   addZone: [];
 }>();
 
@@ -54,6 +57,11 @@ function handleAddActionButton() {
 
 function handleAddImageWidget() {
   emit('addImageWidget');
+  isMenuOpen.value = false;
+}
+
+function handleAddTextLabel() {
+  emit('addTextLabel');
   isMenuOpen.value = false;
 }
 

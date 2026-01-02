@@ -39,6 +39,9 @@ export interface EntityData {
   linkedEntityId?: string; // Entity ID to check state for conditional display
   imageConditionOperator?: string; // Condition operator for showing image (equal, greater, lower, etc.)
   imageConditionValue?: number | string; // Condition value for showing image
+  // Text Label fields
+  isTextLabel?: boolean;
+  backgroundTransparent?: boolean;
 }
 
 export interface Position {
@@ -55,7 +58,10 @@ export const selectedEntityPosition: Ref<Position> = ref<Position>({ x: 0, y: 0 
  * @param entity - The entity data (or null to deselect)
  * @param position - The position {x, y} in diagram coordinates
  */
-export function setSelectedEntity(entity: EntityData | null, position: Position = { x: 0, y: 0 }): void {
+export function setSelectedEntity(
+  entity: EntityData | null,
+  position: Position = { x: 0, y: 0 }
+): void {
   selectedEntity.value = entity;
   selectedEntityPosition.value = position;
 }
@@ -76,7 +82,6 @@ export function useEntitySelection() {
     selectedEntity,
     selectedEntityPosition,
     setSelectedEntity,
-    clearSelection
+    clearSelection,
   };
 }
-

@@ -45,9 +45,12 @@
         <div class="panel-content">
            <!-- General Tab -->
           <div v-show="activeTab === 'general'" class="tab-content">
-             <!-- Label Override -->
+             <!-- Label Override / Text Content -->
             <div class="detail-row">
-               <span class="detail-label">Label:</span> <input
+               <span class="detail-label">{{
+                entity.isTextLabel ? 'Text Content:' : 'Label:'
+              }}</span
+              > <input
                 type="text"
                 v-model="labelOverrideInput"
                 @blur="handleLabelOverrideBlur"
@@ -352,6 +355,18 @@
                   type="checkbox"
                   :checked="widgetLabelVisible"
                   @change="handleLabelVisibilityChange"
+                  @mousedown.stop
+                  @click.stop
+                /> <span class="toggle-slider"></span> </label
+              >
+            </div>
+             <!-- Text Label Background (for text labels) -->
+            <div class="detail-row" v-if="entity.isTextLabel">
+               <span class="detail-label">Transparent:</span> <label class="toggle-switch"
+                > <input
+                  type="checkbox"
+                  :checked="entity.backgroundTransparent"
+                  @change="handleTextLabelTransparentChange"
                   @mousedown.stop
                   @click.stop
                 /> <span class="toggle-slider"></span> </label
@@ -1435,6 +1450,11 @@ function handleImageConditionValueChange(event: Event) {
 function handleLabelVisibilityChange(event: Event) {
   const target = event.target as HTMLInputElement;
   emit('update', props.entity.key, { labelVisible: target.checked });
+}
+
+function handleTextLabelTransparentChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  emit('update', props.entity.key, { backgroundTransparent: target.checked });
 }
 
 function handleStateVisibilityChange(event: Event) {

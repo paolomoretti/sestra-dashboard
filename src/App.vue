@@ -11,6 +11,7 @@
       <ZoomControls /> <AddButton
         @add-action-button="handleAddActionButton"
         @add-image-widget="handleAddImageWidget"
+        @add-text-label="handleAddTextLabel"
         @add-zone="handleAddZone"
         @add-entity="openEntityModal"
       /> <ToastContainer /> <SettingsPanel :is-open="settingsOpen" @close="closeSettings" />
@@ -136,6 +137,10 @@ function handleAddActionButton() {
 
 function handleAddImageWidget() {
   dashboardRef.value?.createImageWidget();
+}
+
+function handleAddTextLabel() {
+  dashboardRef.value?.createTextLabel();
 }
 
 function handleAddZone() {
