@@ -39,9 +39,11 @@
         :key="entity.key"
         :entity="entity"
         :scale="currentScale"
+        :is-editing="widgetEditingId === entity.key"
         @select="handleEntitySelect"
         @update="handleEntityUpdate"
         @delete="handleEntityDelete"
+        @edit="handleWidgetEdit"
       /> <!-- Drop zone overlay for palette items -->
     </div>
      <!-- Temporary drawing rectangle (while drawing) - outside container for proper positioning -->
@@ -51,7 +53,16 @@
       class="drawing-rectangle"
       :style="drawingRectangleStyle"
     />
-     <!-- Hidden file input for image upload --> <input
+     <!-- Entity Info Panel (Context Menu) - Fixed position --> <EntityInfoPanel
+      v-if="editingEntity"
+      :entity="editingEntity"
+      :is-open="true"
+      :scale="1"
+      :display-label="editingEntity.labelOverride || editingEntity.name || 'Widget'"
+      @update="handleEntityUpdate"
+      @delete="handleEntityDelete"
+      @close="closeWidgetEdit"
+    /> <!-- Hidden file input for image upload --> <input
       ref="fileInputRef"
       type="file"
       accept="image/*"
@@ -70,6 +81,7 @@ import { useFirestoreData } from '../composables/useFirestoreData';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getStorageInstance } from '../utils/firebase';
 import EntityWidget from './EntityWidget.vue';
+import EntityInfoPanel from './EntityInfoPanel.vue';
 import ZoneRectangle, { type ZoneData } from './ZoneRectangle.vue';
 import {
   setSelectedEntity,
@@ -100,6 +112,30 @@ const rectangleStartX = ref(0);
 const rectangleStartY = ref(0);
 const zones = ref<ZoneData[]>([]);
 const selectedZoneId = ref<string | null>(null);
+
+// Widget Editing State
+const widgetEditingId = ref<string | null>(null);
+
+function handleWidgetEdit(entityId: string) {
+  widgetEditingId.value = entityId;
+}
+
+function closeWidgetEdit() {
+  widgetEditingId.value = null;
+}
+
+// Ensure edit mode closes if selection is cleared or changed
+watch(selectedEntity, newVal => {
+  if (widgetEditingId.value && (!newVal || newVal.key !== widgetEditingId.value)) {
+    closeWidgetEdit();
+  }
+});
+
+// Computed: Editing Entity
+const editingEntity = computed(() => {
+  if (!widgetEditingId.value) return null;
+  return placedEntities.value.find(e => e.key === widgetEditingId.value) || null;
+});
 
 // Firestore data
 const firestoreStore = useFirestoreStore();
@@ -535,19 +571,26 @@ function handleMouseDown(e: MouseEvent) {
 
   const target = e.target as HTMLElement;
 
-  // Check if clicking on an interactive element (entity widget, zone, etc.)
-  // If so, don't start panning - let the element handle the event
-  const isInteractiveElement =
-    target.closest('.entity-widget-wrapper') ||
-    target.closest('.entity-widget') ||
-    target.closest('.zone-rectangle-wrapper') ||
-    target.closest('.zone-label') ||
+  // Check for specific interactive controls that should prevent panning (buttons, inputs, etc.)
+  // We allow panning even if clicking on the widget wrapper itself (unless dragging in edit mode).
+  const isInteractiveControl =
+    target.closest('.resize-handle') ||
+    target.closest('.action-button') ||
+    target.closest('button') ||
+    target.closest('input') ||
     target.closest('.zone-edit-panel') ||
     target.closest('.entity-info-panel') ||
+    target.closest('.widget-edit-button') ||
+    target.closest('.widget-delete-button') ||
     target.closest('.drop-zone-overlay');
 
-  // Only pan if NOT clicking on an interactive element
-  if (!isInteractiveElement) {
+  // Note: EntityWidget handles stopping propagation if we are interacting with it IN EDIT MODE (dragging).
+  // If the event bubbles here, it means we are either:
+  // 1. Clicking empty space
+  // 2. Clicking a widget wrapper in Read-Only mode
+  // 3. Clicking a widget while editing but NOT dragging/resizing (maybe just selecting?)
+
+  if (!isInteractiveControl) {
     // If in rectangle drawing mode, start drawing
     if (isDrawingRectangle.value) {
       const rect = dashboardWrapperRef.value.getBoundingClientRect();
@@ -571,9 +614,15 @@ function handleMouseDown(e: MouseEvent) {
       return;
     }
 
-    // Deselect any selected entity when clicking empty space
-    clearSelection();
-    selectedZoneId.value = null;
+    // Handle selection clearing
+    // If we clicked on a widget wrapper, DO NOT clear selection (let the click event handle selection)
+    const isWidgetWrapper = target.closest('.entity-widget-wrapper');
+
+    if (!isWidgetWrapper) {
+      clearSelection();
+      selectedZoneId.value = null;
+      // Note: closeWidgetEdit is handled by the watch(selectedEntity)
+    }
 
     isPanning = true;
     const rect = dashboardWrapperRef.value.getBoundingClientRect();

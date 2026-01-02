@@ -5,7 +5,7 @@
     class="entity-widget-wrapper"
     :style="widgetStyle"
     @click.stop="entity.isActionButton ? undefined : handleClick"
-    @mousedown.stop="entity.isActionButton ? undefined : handleMouseDown"
+    @mousedown="entity.isActionButton ? undefined : handleMouseDown"
   >
      <!-- Action Button Style -->
     <div
@@ -29,7 +29,7 @@
           class="action-button-label"
           >{{ actionButtonLabel }}</span
         > </button
-      > <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
+      > <!-- Resize handles (shown when editing) --> <template v-if="isEditing"
         >
         <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
 
@@ -70,7 +70,7 @@
          <span class="placeholder-text">{{ imageUrl ? 'Condition not met' : 'No image' }}</span
         >
       </div>
-       <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
+       <!-- Resize handles (shown when editing) --> <template v-if="isEditing"
         >
         <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
 
@@ -124,7 +124,7 @@
         <div class="text-label-divider"></div>
          <button class="text-label-delete" @click="deleteTextLabel"> 🗑️ Remove Label </button>
       </div>
-       <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
+       <!-- Resize handles (shown when editing) --> <template v-if="isEditing"
         >
         <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
 
@@ -158,7 +158,7 @@
       <div v-if="stateDisplay" class="temperature-display" :style="stateDisplayStyle">
          {{ stateDisplay }}
       </div>
-       <!-- Resize handles (shown when selected) --> <template v-if="isSelected"
+       <!-- Resize handles (shown when editing) --> <template v-if="isEditing"
         >
         <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
 
@@ -184,16 +184,31 @@
        <span class="label-text">{{ displayLabel }}</span
       >
     </div>
-     <!-- Entity Info Panel - positioned at label location --> <EntityInfoPanel
-      v-if="isPanelOpen"
-      :entity="entity"
-      :is-open="isPanelOpen"
-      :scale="scale"
-      :display-label="displayLabel"
-      @update="(entityId, updates) => emit('update', entityId, updates)"
-      @delete="entityId => emit('delete', entityId)"
-      @close="isPanelOpen = false"
-    /> <!-- Camera Modal --> <CameraModal
+     <!-- Edit/Delete Buttons (shown when selected) --> <template v-if="isSelected"
+      >
+      <div
+        class="widget-edit-button"
+        @click.stop="emit('edit', entity.key)"
+        @mousedown.stop
+        @touchstart.stop
+        @touchend.stop
+        title="Edit Widget"
+      >
+         ✏️
+      </div>
+
+      <div
+        class="widget-delete-button"
+        @click.stop="emit('delete', entity.key)"
+        @mousedown.stop
+        @touchstart.stop
+        @touchend.stop
+        title="Delete Widget"
+      >
+         🗑️
+      </div>
+       </template
+    > <!-- Camera Modal --> <CameraModal
       v-if="entity.category === 'camera'"
       :is-open="isCameraModalOpen"
       :entity-id="entity.key"
@@ -223,12 +238,13 @@ import { useUIStore } from '../stores/ui';
 import { useEntitiesStore } from '../stores/entities';
 import { haConfig } from '../../config';
 import { getApiBaseUrl } from '../utils/haServices';
-import EntityInfoPanel from './EntityInfoPanel.vue';
+
 import CameraModal from './CameraModal.vue';
 
 interface Props {
   entity: EntityData;
   scale: number;
+  isEditing?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -236,6 +252,7 @@ const emit = defineEmits<{
   select: [entity: EntityData];
   update: [entityId: string, updates: Partial<EntityData>];
   delete: [entityId: string];
+  edit: [entityId: string];
 }>();
 
 const widgetRef = ref<HTMLElement>();
@@ -245,6 +262,9 @@ const hasDragged = ref(false);
 const hasDraggedFromLabel = ref(false);
 const isPanelOpen = ref(false);
 const isCameraModalOpen = ref(false);
+
+const uiStore = useUIStore();
+const { isGlobalEditMode } = storeToRefs(uiStore);
 
 // Text Label Editing
 const isEditing = ref(false);
@@ -301,11 +321,6 @@ const iconUrl = computed(() => {
 // Styles
 const isSelected = computed(() => selectedEntity.value?.key === props.entity.key);
 
-// Watch for selection changes to toggle panel
-watch(isSelected, newVal => {
-  isPanelOpen.value = newVal;
-});
-
 const widgetStyle = computed(() => {
   // Position is in diagram coordinates, no transform needed here
   // The dashboard container will apply the transform
@@ -358,7 +373,6 @@ const textLabelStyle = computed(() => ({
 }));
 
 const textLabelContentStyle = computed(() => {
-  const scaleFactor = labelScaleFactor.value;
   // Font size logic: Try to fit height but clamp?
   // User didn't specify font sizing behavior. Let's start with a reasonable default relative to widget height.
   // Or just use a fixed scalable size.
@@ -898,7 +912,7 @@ function handleResizeEnd() {
 }
 
 // Labels visibility
-const uiStore = useUIStore();
+// Labels visibility
 const { labelsVisible, scale: uiScale } = storeToRefs(uiStore);
 
 // Widget-specific label visibility (from Firestore, default to true)
@@ -932,13 +946,6 @@ const displayLabel = computed(() => {
     return props.entity.labelOverride;
   }
   return props.entity.name || props.entity.key;
-});
-
-// Check if this is a Ring camera
-const isRingCamera = computed(() => {
-  if (props.entity.category !== 'camera') return false;
-  const entityIdLower = props.entity.key.toLowerCase();
-  return entityIdLower.includes('ring') || entityIdLower.includes('doorbell');
 });
 
 // Action button label: show label if set, hide if explicitly empty string
@@ -1011,17 +1018,24 @@ function handleClick() {
     return;
   }
 
-  if (props.entity.isTextLabel) {
-    // For text labels, open edit menu instead of selecting or opening panel
-    startEditing();
-    return;
+  // Handle click based on mode
+  if (isGlobalEditMode.value) {
+    // Edit Mode: Select only
+    emit('select', props.entity);
+  } else {
+    // View Mode: Text Labels don't have default action, maybe just do nothing?
+    // Or if it has hold action?
+    // For now, keep selection for text labels in view mode?
+    // User said: "When edit mode is off, then clicking an entity runs the tap action"
+    // Text labels might not have tap actions.
+    if (props.entity.isTextLabel) {
+      // Do nothing or maybe show info?
+    }
   }
 
-  emit('select', props.entity);
-  // Toggle panel - if open, close it; if closed, open it
-  isPanelOpen.value = !isPanelOpen.value;
-  // Zoom to entity position
-  if (window.zoomToEntity) {
+  // Zoom to entity position if selected (only in Edit Mode?)
+  // Keeping existing behavior for now, but usually we zoom on selection.
+  if (isGlobalEditMode.value && window.zoomToEntity) {
     window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
   }
 }
@@ -1036,77 +1050,21 @@ async function handleIconClick(e: MouseEvent) {
     return;
   }
 
-  // For all cameras, open modal (Ring cameras will have recording support)
-  if (props.entity.category === 'camera') {
-    isCameraModalOpen.value = true;
-    return;
-  }
+  if (isGlobalEditMode.value) {
+    // Edit Mode: Select entity
+    emit('select', props.entity);
 
-  // For action buttons, execute HA action if set
-  if (props.entity.isActionButton && props.entity.haAction?.service) {
-    const service = props.entity.haAction.service;
-    const [domain, serviceName] = service.split('.');
-    if (domain && serviceName) {
-      try {
-        // Use proxy in dev, direct URL in production
-        const apiBaseUrl = getApiBaseUrl(haConfig);
-        const url = `${apiBaseUrl}/services/${domain}/${serviceName}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${haConfig.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(props.entity.haAction.serviceData || {}),
-        });
-        if (!response.ok) {
-          throw new Error(`Failed to call service: ${response.statusText}`);
-        }
-        // Show success toast
-        const { success } = useToast();
-        success(`Action executed: ${serviceName}`);
-      } catch (error) {
-        console.error('Error executing HA action:', error);
-        // Show error toast
-        const { error: showError } = useToast();
-        showError(`Failed to execute action: ${serviceName}`);
-      }
+    if (window.zoomToEntity) {
+      window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
     }
-    return;
-  }
-
-  // Execute tap action if exists
-  if (props.entity.tapAction?.action) {
-    try {
-      await executeTapAction(props.entity.tapAction, props.entity, haConfig);
-      // Show success toast
-      const { success } = useToast();
-      const actionName =
-        props.entity.tapAction.action === 'toggle'
-          ? 'Toggled'
-          : props.entity.tapAction.action === 'navigate'
-            ? 'Navigated'
-            : 'Action executed';
-      success(`${actionName}: ${displayLabel.value}`);
-
-      // Still zoom to entity after action (but don't select)
-      if (window.zoomToEntity) {
-        window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
-      }
-    } catch (error) {
-      console.error('Error executing tap action:', error);
-      const { error: showError } = useToast();
-      showError(`Failed to execute action: ${(error as Error).message}`);
+  } else {
+    // View Mode: Execute Tap Action
+    if (props.entity.tapAction) {
+      void executeTapAction(props.entity.tapAction, props.entity, haConfig);
+    } else {
+      // Default action: Toggle
+      void executeTapAction({ action: 'toggle' }, props.entity, haConfig);
     }
-    // Don't select when there's a tap action - just execute it
-    return;
-  }
-
-  // Otherwise, select entity, open panel, and zoom
-  emit('select', props.entity);
-  isPanelOpen.value = true;
-  if (window.zoomToEntity) {
-    window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
   }
 }
 
@@ -1208,39 +1166,19 @@ async function handleActionButtonClick(e: MouseEvent) {
     return;
   }
 
-  // Don't execute if widget is selected - allow dragging/resizing instead
-  if (isSelected.value) {
-    return;
-  }
+  if (isGlobalEditMode.value) {
+    emit('select', props.entity);
 
-  // Execute HA action if set
-  if (props.entity.haAction?.service) {
-    const service = props.entity.haAction.service;
-    const [domain, serviceName] = service.split('.');
-    if (domain && serviceName) {
-      try {
-        const apiBaseUrl = getApiBaseUrl(haConfig);
-        const url = `${apiBaseUrl}/services/${domain}/${serviceName}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${haConfig.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(props.entity.haAction.serviceData || {}),
-        });
-        if (!response.ok) {
-          throw new Error(`Failed to call service: ${response.statusText}`);
-        }
-        // Show success toast
-        const { success } = useToast();
-        success(`Action executed: ${serviceName}`);
-      } catch (error) {
-        console.error('Error executing HA action:', error);
-        // Show error toast
-        const { error: showError } = useToast();
-        showError(`Failed to execute action: ${serviceName}`);
-      }
+    if (window.zoomToEntity) {
+      window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
+    }
+  } else {
+    // Execute Action
+    if (props.entity.tapAction) {
+      void executeTapAction(props.entity.tapAction, props.entity, haConfig);
+    } else {
+      // Default toggle
+      void executeTapAction({ action: 'toggle' }, props.entity, haConfig);
     }
   }
 }
@@ -1462,6 +1400,23 @@ function saveSize() {
 
 // Drag handling
 function handleMouseDown(e: MouseEvent) {
+  // If Global Edit Mode is OFF, allow panning (bubbling)
+  if (!isGlobalEditMode.value) {
+    return;
+  }
+
+  // If Global Edit Mode is ON, but not selected, allow panning (bubbling) - Click will select
+  if (isGlobalEditMode.value && !isSelected.value) {
+    // Exception: text label editing is handled separately?
+    // Actually, if we click an unselected widget in edit mode, we want to select it, not drag it immediately?
+    // User said: "fix to enable dragging a selected widget".
+    // So distinct step: Select first, then drag.
+    // If we return here, click handler will fire and select it.
+    return;
+  }
+
+  // If we are here: Global Edit Mode is ON AND isSelected. Allow drag.
+
   // Don't drag on right-click (button 2) - allow context menu handlers to work
   if (e.button === 2) {
     return;
@@ -1673,14 +1628,14 @@ function handleTouchStart(e: TouchEvent) {
   }
 
   // Don't prevent default yet - wait to see if it's a drag or tap
-  // Only prevent if we're selected (to allow dragging)
-  if (isSelected.value) {
+  // Only prevent if we're selected AND in Global Edit Mode (to allow dragging)
+  if (isGlobalEditMode.value && isSelected.value) {
     e.preventDefault();
     e.stopPropagation();
     isDragging.value = true;
     hasDragged.value = false;
   } else {
-    // If not selected, don't prevent default - let click events fire
+    // If not enabled, don't prevent default - let click events fire
     isDragging.value = false;
     hasDragged.value = false;
   }
@@ -1854,8 +1809,8 @@ function handleTouchEnd(e: TouchEvent) {
     if (props.entity.isActionButton) {
       void handleActionButtonClick(e as any);
     } else if (props.entity.isTextLabel) {
-      // For text labels, open edit menu instead of selecting
-      startEditing();
+      // For text labels, select them
+      emit('select', props.entity);
     } else {
       // For regular widgets, select them
       emit('select', props.entity);
@@ -2295,6 +2250,56 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 }
 .text-label-toggle input {
   cursor: pointer;
+}
+
+.widget-edit-button,
+.widget-delete-button {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  background-color: #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  z-index: 20005;
+  font-size: 16px;
+}
+.widget-edit-button {
+  top: -16px;
+  right: -16px;
+  color: #2196f3;
+}
+.widget-delete-button {
+  bottom: -16px;
+  right: -16px;
+  color: #f44336;
+}
+
+.widget-edit-button:hover,
+.widget-delete-button:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+}
+
+/* Larger touch target for mobile */
+@media (max-width: 768px) {
+  .widget-edit-button,
+  .widget-delete-button {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+  .widget-edit-button {
+    top: -18px;
+    right: -18px;
+  }
+  .widget-delete-button {
+    bottom: -18px;
+    right: -18px;
+  }
 }
 
 .text-label-divider {

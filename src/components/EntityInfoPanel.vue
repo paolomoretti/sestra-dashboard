@@ -5,7 +5,6 @@
     ref="panelRef"
     class="entity-info-panel"
     :class="{ expanded: isExpanded }"
-    :style="infoPanelStyle"
     @mousedown.stop
     @click.stop
   >
@@ -685,7 +684,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { debouncedRef } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useToast } from '../composables/useToast';
 import { clearSelection, type EntityData } from '../composables/useEntitySelection';
@@ -696,7 +695,6 @@ import {
   getDefaultIcon,
 } from '../utils/iconUtils';
 import { type TapAction } from '../utils/actionHandler';
-import { useUIStore } from '../stores/ui';
 import { useEntitiesStore } from '../stores/entities';
 import { getAllMDIIcons, COMMON_MDI_ICONS } from '../utils/mdiIconList';
 import { haConfig } from '../../config';
@@ -738,17 +736,8 @@ watch(
   { immediate: true }
 );
 
-// Panel style with scale transform
-const uiStore = useUIStore();
-const { scale: uiScale } = storeToRefs(uiStore);
-
-const infoPanelStyle = computed(() => {
-  const scale = 1 / (uiScale.value || 1);
-  return {
-    transform: `translateX(-50%) scale(${scale})`,
-    transformOrigin: 'top center',
-  };
-});
+// Scale prop is no longer needed for styling as we use fixed position
+// but we keep the prop definition to avoid breaking type check
 
 // Widget-specific label visibility
 const widgetLabelVisible = computed(() => {
@@ -1615,11 +1604,11 @@ onMounted(() => {
 
 <style scoped>
 .entity-info-panel {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  margin-top: 4px;
-  min-width: 200px;
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  margin-top: 0;
+  min-width: 250px;
   max-width: 400px;
   background-color: #2a2a2a;
   border: 1px solid #4a4a4a;
@@ -1628,6 +1617,8 @@ onMounted(() => {
   z-index: 20001;
   pointer-events: auto;
   overflow: visible;
+  left: auto; /* Reset left */
+  transform: none; /* Reset transform */
 }
 
 .entity-info-panel.expanded {
@@ -1641,12 +1632,15 @@ onMounted(() => {
 
 @media (max-width: 768px) {
   .entity-info-panel {
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    min-width: calc(100vw - 32px);
-    max-width: calc(100vw - 32px);
-    width: calc(100vw - 32px);
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 16px 16px 0 0;
+    transform: none;
+    min-width: 100vw;
+    max-width: 100vw;
+    width: 100vw;
   }
 
   .entity-info-panel.expanded {

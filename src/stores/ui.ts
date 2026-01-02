@@ -152,6 +152,17 @@ export const useUIStore = defineStore('ui', () => {
     scale.value = value;
   }
 
+  // Global Edit Mode
+  const isGlobalEditMode = ref(false);
+
+  function toggleGlobalEditMode() {
+    isGlobalEditMode.value = !isGlobalEditMode.value;
+  }
+
+  function setGlobalEditMode(value: boolean) {
+    isGlobalEditMode.value = value;
+  }
+
   return {
     // Labels visibility
     labelsVisible,
@@ -168,5 +179,9 @@ export const useUIStore = defineStore('ui', () => {
     scale,
     setScale,
     hasRestoredScale: () => hasRestoredScale,
+    // Global Edit Mode
+    isGlobalEditMode,
+    toggleGlobalEditMode,
+    setGlobalEditMode,
   };
 });

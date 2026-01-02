@@ -1,47 +1,61 @@
 <template>
-  <Teleport to="body">
-    <div
-      v-if="isOpen"
-      class="camera-modal-overlay"
-      @click.self="close"
-      @keydown.esc="close"
+   <Teleport to="body"
     >
+    <div v-if="isOpen" class="camera-modal-overlay" @click.self="close" @keydown.esc="close">
+
       <div class="camera-modal" @click.stop>
+
         <div class="camera-modal-header">
+
           <h2 class="camera-modal-title">{{ entityName }}</h2>
+
           <div class="camera-modal-controls">
-            <button
+             <button
               class="camera-modal-button"
               :class="{ active: viewMode === 'live' }"
               @click="switchToLive"
             >
-              Live
-            </button>
-            <button
+               Live </button
+            > <button
               v-if="supportsRecordings"
               class="camera-modal-button"
               :class="{ active: viewMode === 'recording' }"
               @click="viewMode = 'recording'"
             >
-              Recording
-            </button>
-            <button class="camera-modal-close" @click="close" aria-label="Close">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+               Recording </button
+            > <button class="camera-modal-close" @click="close" aria-label="Close">
+               <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+
                 <line x1="18" y1="6" x2="6" y2="18"></line>
+
                 <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
+                 </svg
+              > </button
+            >
           </div>
+
         </div>
+
         <div class="camera-modal-content">
-          <!-- Live Stream -->
+           <!-- Live Stream -->
           <div v-if="viewMode === 'live'" class="camera-stream-container">
+
             <div v-if="loading && !liveStreamUrl" class="camera-loading">
+
               <div class="spinner"></div>
+
               <p>Loading stream...</p>
+
             </div>
-            <template v-else-if="liveStreamUrl">
-              <img
+             <template v-else-if="liveStreamUrl"
+              > <img
                 :key="liveStreamUrl"
                 :src="liveStreamUrl"
                 class="camera-stream"
@@ -52,21 +66,34 @@
                 @loadstart="handleStreamLoadStart"
               />
               <div v-if="loading" class="camera-loading-overlay">
+
                 <div class="spinner"></div>
+
                 <p>Loading stream...</p>
+
               </div>
-            </template>
+               </template
+            >
             <div v-else-if="streamError" class="camera-error">
+
               <p>Unable to load live stream</p>
-              <p class="camera-error-hint">Check your Home Assistant connection and camera settings</p>
+
+              <p class="camera-error-hint">
+                Check your Home Assistant connection and camera settings
+              </p>
+
             </div>
+
             <div v-else class="camera-error">
+
               <p>No stream URL available</p>
+
             </div>
+
           </div>
-          <!-- Recording -->
+           <!-- Recording -->
           <div v-else-if="viewMode === 'recording'" class="camera-recording-container">
-            <video
+             <video
               v-if="recordingUrl"
               :src="recordingUrl"
               class="camera-recording"
@@ -75,18 +102,30 @@
               @error="handleRecordingError"
             />
             <div v-else-if="loadingRecording" class="camera-loading">
+
               <div class="spinner"></div>
+
               <p>Loading recording...</p>
+
             </div>
+
             <div v-else class="camera-error">
+
               <p>No recording available</p>
+
               <p class="camera-error-hint">Recordings may not be available for this camera</p>
+
             </div>
+
           </div>
+
         </div>
+
       </div>
+
     </div>
-  </Teleport>
+     </Teleport
+  >
 </template>
 
 <script setup lang="ts">
@@ -98,8 +137,8 @@ interface Props {
   isOpen: boolean;
   entityId: string;
   entityName: string;
-  videoUrl?: string;
-  entityPicture?: string;
+  videoUrl?: string | undefined;
+  entityPicture?: string | undefined;
 }
 
 const props = defineProps<Props>();
@@ -129,7 +168,7 @@ const isRingCamera = computed(() => {
 // Refresh the URL periodically to show latest snapshot
 function getCameraStreamUrl(): string | null {
   const timestamp = Date.now();
-  
+
   // In dev mode, use proxy which handles CORS and auth
   // In prod, use full address with token
   if (import.meta.env.DEV) {
@@ -154,7 +193,7 @@ function getPosterUrl(): string | null {
     }
     return pictureUrl;
   }
-  
+
   // Fallback to camera_proxy endpoint for snapshot
   // Use full HA address and keep the full entity ID, add token for authentication
   return `${haConfig.address}/api/camera_proxy/${props.entityId}?token=${haConfig.accessToken}`;
@@ -164,22 +203,22 @@ function getPosterUrl(): string | null {
 function initializeStream(): void {
   loading.value = true;
   streamError.value = false;
-  
+
   // Clear any existing refresh interval
   if (liveStreamRefreshInterval) {
     clearInterval(liveStreamRefreshInterval);
     liveStreamRefreshInterval = null;
   }
-  
+
   const streamUrl = getCameraStreamUrl();
   const poster = getPosterUrl();
-  
+
   if (streamUrl) {
     posterUrl.value = poster;
     liveStreamUrl.value = streamUrl;
     console.log('Camera stream URL:', streamUrl);
     console.log('Camera poster URL:', poster);
-    
+
     // Refresh the image URL every 2 seconds to show latest snapshot
     // Update the src with a new timestamp to force browser to reload
     liveStreamRefreshInterval = setInterval(() => {
@@ -191,7 +230,7 @@ function initializeStream(): void {
         }
       }
     }, 2000);
-    
+
     // Image will load and trigger load event
   } else {
     console.error('No stream URL available');
@@ -212,7 +251,7 @@ async function loadRecording() {
 
   try {
     const apiBaseUrl = getApiBaseUrl(haConfig);
-    
+
     // First, get the current state to check for recording URLs
     const stateResponse = await fetch(`${apiBaseUrl}/states/${props.entityId}`, {
       headers: {
@@ -223,13 +262,13 @@ async function loadRecording() {
 
     if (stateResponse.ok) {
       const state = await stateResponse.json();
-      
+
       // Check for recording URL in attributes (Ring might store this)
-      const recordingUrlAttr = 
-        state.attributes?.recording_url || 
+      const recordingUrlAttr =
+        state.attributes?.recording_url ||
         state.attributes?.last_recording_url ||
         state.attributes?.video_url;
-      
+
       if (recordingUrlAttr) {
         let url = recordingUrlAttr;
         if (url.startsWith('/')) {
@@ -335,15 +374,14 @@ function close() {
   emit('close');
 }
 
-
 watch(
   () => props.isOpen,
-  (isOpen) => {
+  isOpen => {
     if (isOpen) {
       streamError.value = false;
       // Start with recording view (shows latest recording)
       viewMode.value = 'recording';
-      
+
       // Load recording first (this is what works)
       if (isRingCamera.value) {
         loadRecording();
@@ -356,7 +394,7 @@ watch(
         recordingUrl.value = url;
         supportsRecordings.value = true;
       }
-      
+
       // Initialize poster for live view
       const poster = getPosterUrl();
       posterUrl.value = poster;
@@ -375,7 +413,7 @@ watch(
 );
 
 // Watch viewMode to reinitialize stream when switching to live
-watch(viewMode, (newMode) => {
+watch(viewMode, newMode => {
   if (newMode === 'live' && props.isOpen) {
     initializeStream();
   }
@@ -400,7 +438,7 @@ onUnmounted(() => {
     clearInterval(liveStreamRefreshInterval);
     liveStreamRefreshInterval = null;
   }
-  
+
   liveStreamUrl.value = null;
   posterUrl.value = null;
 });
