@@ -30,6 +30,7 @@ export interface EntityData {
   // Area/room information
   areaId?: string | null;
   areaName?: string | null;
+  deviceId?: string | null; // Device ID for deep linking
   // Camera-specific fields
   entityPicture?: string; // URL to entity picture (for cameras)
   videoUrl?: string; // URL to video stream (for cameras)

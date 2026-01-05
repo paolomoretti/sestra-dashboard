@@ -1206,8 +1206,13 @@ function handleTapActionChange(event: Event) {
       actionType === 'call-service')
   ) {
     tapAction = { action: actionType } as TapAction;
-    if (actionType === 'navigate' && props.entity.tapAction?.navigation_path) {
-      tapAction.navigation_path = props.entity.tapAction.navigation_path;
+    if (actionType === 'navigate') {
+      if (props.entity.tapAction?.navigation_path) {
+        tapAction.navigation_path = props.entity.tapAction.navigation_path;
+      } else if (props.entity.deviceId) {
+        // Pre-populate with Direct Device Link if available
+        tapAction.navigation_path = `/config/devices/device/${props.entity.deviceId}`;
+      }
     }
   }
 

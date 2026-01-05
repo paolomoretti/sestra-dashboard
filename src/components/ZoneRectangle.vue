@@ -164,7 +164,7 @@ const emit = defineEmits<{
 }>();
 
 const uiStore = useUIStore();
-const { scale: uiScale } = storeToRefs(uiStore);
+const { scale: uiScale, isGlobalEditMode } = storeToRefs(uiStore);
 
 const rectangleRef = ref<HTMLElement>();
 const panelRef = ref<HTMLElement>();
@@ -364,6 +364,11 @@ function handleClick(e: MouseEvent) {
     return;
   }
 
+  // Only allow selection in Global Edit Mode
+  if (!isGlobalEditMode.value) {
+    return;
+  }
+
   // Clear any pending click timeout (in case this is the second click of a double-click)
   if (clickTimeout.value) {
     clearTimeout(clickTimeout.value);
@@ -457,9 +462,17 @@ function handleTouchStart(e: TouchEvent) {
   }
 }
 
-function handleLabelClick(e?: any) {
+function handleLabelClick() {
   if (hasDragged.value) {
     hasDragged.value = false;
+    return;
+  }
+
+  // Only allow selection/editing in Global Edit Mode
+  if (!isGlobalEditMode.value) {
+    if (window.zoomToZone) {
+      window.zoomToZone(props.zone, 50);
+    }
     return;
   }
 
@@ -485,6 +498,14 @@ function handleLabelTouchStart(e: TouchEvent) {
   // Prevent default to avoid generating a click event (which might delay or double-trigger)
   if (e.cancelable) e.preventDefault();
 
+  // Only allow selection/editing in Global Edit Mode
+  if (!isGlobalEditMode.value) {
+    if (window.zoomToZone) {
+      window.zoomToZone(props.zone, 50);
+    }
+    return;
+  }
+
   isPanelOpen.value = true;
   isExpanded.value = true;
   emit('select', props.zone);
@@ -506,6 +527,11 @@ function handleLabelTouchStart(e: TouchEvent) {
 function handleLabelRightClick(e: MouseEvent) {
   e.preventDefault();
   e.stopPropagation();
+
+  // Only allow context menu in Global Edit Mode
+  if (!isGlobalEditMode.value) {
+    return;
+  }
   isPanelOpen.value = true;
   isExpanded.value = true;
   emit('select', props.zone);
@@ -526,6 +552,11 @@ function handleLabelRightClick(e: MouseEvent) {
 function handleRightClick(e: MouseEvent) {
   e.preventDefault();
   e.stopPropagation();
+
+  // Only allow context menu in Global Edit Mode
+  if (!isGlobalEditMode.value) {
+    return;
+  }
   isPanelOpen.value = true;
   isExpanded.value = true;
   emit('select', props.zone);
@@ -686,7 +717,7 @@ function handleLabelMouseDown(e: MouseEvent) {
 watch(
   () => props.selected,
   isSelected => {
-    if (isSelected && !isPanelOpen.value) {
+    if (isSelected && !isPanelOpen.value && isGlobalEditMode.value) {
       // Auto-open panel when zone becomes selected (e.g., after creation)
       isPanelOpen.value = true;
       isExpanded.value = true;

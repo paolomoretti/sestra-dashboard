@@ -50,7 +50,11 @@ export const useEntitiesStore = defineStore('entities', () => {
   /**
    * Fetch data from Home Assistant via WebSocket API
    */
-  async function fetchViaWebSocket<T>(config: HAConfig, messageType: string, messageId: number = 1): Promise<T | null> {
+  async function fetchViaWebSocket<T>(
+    config: HAConfig,
+    messageType: string,
+    messageId: number = 1
+  ): Promise<T | null> {
     return new Promise((resolve, reject) => {
       const wsProtocol = config.address.startsWith('https') ? 'wss' : 'ws';
       const baseUrl = config.address.replace(/^https?/, wsProtocol).replace(/\/api\/?$/, '');
@@ -72,25 +76,29 @@ export const useEntitiesStore = defineStore('entities', () => {
         // Wait for auth_required message
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = event => {
         try {
           const message = JSON.parse(event.data);
 
           if (message.type === 'auth_required') {
-            ws.send(JSON.stringify({
-              type: 'auth',
-              access_token: config.accessToken,
-            }));
+            ws.send(
+              JSON.stringify({
+                type: 'auth',
+                access_token: config.accessToken,
+              })
+            );
             return;
           }
 
           if (message.type === 'auth_ok') {
             authenticated = true;
             // Send the actual request
-            ws.send(JSON.stringify({
-              id: messageId,
-              type: messageType,
-            }));
+            ws.send(
+              JSON.stringify({
+                id: messageId,
+                type: messageType,
+              })
+            );
             return;
           }
 
@@ -123,7 +131,7 @@ export const useEntitiesStore = defineStore('entities', () => {
         }
       };
 
-      ws.onerror = (error) => {
+      ws.onerror = error => {
         if (!resolved) {
           resolved = true;
           clearTimeout(timeout);
@@ -163,7 +171,11 @@ export const useEntitiesStore = defineStore('entities', () => {
 
   async function loadDevices(config: HAConfig): Promise<void> {
     try {
-      const devicesData = await fetchViaWebSocket<HADevice[]>(config, 'config/device_registry/list', 11);
+      const devicesData = await fetchViaWebSocket<HADevice[]>(
+        config,
+        'config/device_registry/list',
+        11
+      );
       if (devicesData && Array.isArray(devicesData)) {
         devices.value = devicesData;
         console.debug(`Loaded ${devicesData.length} devices from Home Assistant`);
@@ -209,11 +221,9 @@ export const useEntitiesStore = defineStore('entities', () => {
       // We'll need to fetch entity registry to get device_id for each entity
       let entityRegistry: Array<{ entity_id: string; device_id: string | null }> = [];
       try {
-        const registryData = await fetchViaWebSocket<Array<{ entity_id: string; device_id: string | null }>>(
-          config,
-          'config/entity_registry/list',
-          12
-        );
+        const registryData = await fetchViaWebSocket<
+          Array<{ entity_id: string; device_id: string | null }>
+        >(config, 'config/entity_registry/list', 12);
         if (registryData && Array.isArray(registryData)) {
           entityRegistry = registryData;
           console.debug(`Loaded ${entityRegistry.length} entities from entity registry`);
@@ -284,7 +294,7 @@ export const useEntitiesStore = defineStore('entities', () => {
           // Extract area information
           // First check if entity has area_id directly in attributes
           let areaId = state.attributes.area_id as string | undefined;
-          
+
           // If not, try to get it from the device
           if (!areaId) {
             const deviceId = entityToDeviceMap.get(state.entity_id);
@@ -292,7 +302,7 @@ export const useEntitiesStore = defineStore('entities', () => {
               areaId = deviceToAreaMap.get(deviceId);
             }
           }
-          
+
           const areaName = areaId ? areaMap.get(areaId) : null;
 
           // Extract camera-specific attributes
@@ -314,6 +324,7 @@ export const useEntitiesStore = defineStore('entities', () => {
             holdAction: null,
             areaId: areaId ?? null,
             areaName: areaName ?? null,
+            deviceId: entityToDeviceMap.get(state.entity_id) ?? null,
             entityPicture: entityPicture ?? undefined,
             videoUrl: videoUrl ?? undefined,
           } as EntityData;

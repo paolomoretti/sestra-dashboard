@@ -53,10 +53,11 @@ export async function executeTapAction(
     case 'more-info':
       return showMoreInfo(entityData, config);
 
-    case 'navigate':
+    case 'navigate': {
       // If navigation_path is provided, use it; otherwise default to entity's history page
       const navigationPath = action.navigation_path || `/history?entity_id=${entityId}`;
       return navigateTo(navigationPath, config);
+    }
 
     case 'call-service':
       if (action.service) {
@@ -130,7 +131,30 @@ function showMoreInfo(entityData: EntityData, config: HAConfig): void {
     return;
   }
 
-  // Open entity's detail page in Home Assistant
+  // If in iframe, try to trigger native HA more-info dialog
+  if (window.self !== window.top) {
+    try {
+      // Attempt to find the main HA element in the parent document and dispatch event
+      // This requires same-origin or appropriate access permissions
+      const haElement =
+        window.parent.document.querySelector('home-assistant') ||
+        window.parent.document.querySelector('hui-root');
+      if (haElement) {
+        const event = new CustomEvent('hass-more-info', {
+          bubbles: true,
+          composed: true,
+          detail: { entityId },
+        });
+        haElement.dispatchEvent(event);
+        console.log('Dispatched hass-more-info event to parent HA');
+        return;
+      }
+    } catch (e) {
+      console.warn('Failed to dispatch hass-more-info to parent:', e);
+    }
+  }
+
+  // Fallback: Open entity's detail page in Home Assistant
   // This opens the entity configuration page where you can see all details, history, etc.
   const entityDetailPath = `/config/entities/${entityId}`;
   navigateTo(entityDetailPath, config);
