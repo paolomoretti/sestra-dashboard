@@ -6,8 +6,7 @@ service cloud.firestore {
       // Allow read/write for authenticated users
       allow read, write: if request.auth != null;
       
-      // For anonymous auth (current setup):
-      allow read, write: if true; // ⚠️ Only for development!
+
     }
     
     // UI settings collection
@@ -15,8 +14,7 @@ service cloud.firestore {
       // Allow read/write for authenticated users
       allow read, write: if request.auth != null;
       
-      // For anonymous auth (current setup):
-      allow read, write: if true; // ⚠️ Only for development!
+
     }
   }
 }
