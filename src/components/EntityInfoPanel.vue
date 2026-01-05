@@ -1548,8 +1548,13 @@ function handleLongPressActionChange(event: Event) {
       actionType === 'call-service')
   ) {
     holdAction = { action: actionType } as TapAction;
-    if (actionType === 'navigate' && props.entity.holdAction?.navigation_path) {
-      holdAction.navigation_path = props.entity.holdAction.navigation_path;
+    if (actionType === 'navigate') {
+      if (props.entity.holdAction?.navigation_path) {
+        holdAction.navigation_path = props.entity.holdAction.navigation_path;
+      } else if (props.entity.deviceId) {
+        // Pre-populate with Direct Device Link if available
+        holdAction.navigation_path = `/config/devices/device/${props.entity.deviceId}`;
+      }
     }
   }
 
