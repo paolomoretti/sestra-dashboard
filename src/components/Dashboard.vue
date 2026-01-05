@@ -868,7 +868,9 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
 
   if (updates.tapAction !== undefined || updates.holdAction !== undefined) {
     const newActions = { ...actions.value };
-    if (!newActions[entityId]) newActions[entityId] = {};
+    // Clone the action object to avoid mutation of the original reference
+    newActions[entityId] = { ...(newActions[entityId] || {}) };
+
     if (updates.tapAction !== undefined) newActions[entityId].tapAction = updates.tapAction;
     if (updates.holdAction !== undefined) newActions[entityId].holdAction = updates.holdAction;
     await setActions(newActions);
