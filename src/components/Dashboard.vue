@@ -4,47 +4,53 @@
     ref="dashboardWrapperRef"
     class="dashboard-wrapper"
     @wheel="handleWheel"
-    @touchstart.prevent="handleTouchStart"
-    @touchmove.prevent="handleTouchMove"
-    @touchend.prevent="handleTouchEnd"
+    @touchstart="handleTouchStart"
+    @touchmove="handleTouchMove"
+    @touchend="handleTouchEnd"
     @mousedown="handleMouseDown"
     @mousemove="handleMouseMove"
     @mouseup="handleMouseUp"
     @mouseleave="handleMouseUp"
+    @scroll="handleScroll"
+    style="overflow: auto"
   >
 
-    <div
-      ref="dashboardRef"
-      class="dashboard-container"
-      :class="{ 'drawing-mode': isDrawingRectangle }"
-      :style="containerStyle"
-    >
-       <!-- Background image --> <img
-        :src="floorplanImage"
-        class="dashboard-background"
-        :style="backgroundStyle"
-        draggable="false"
-        alt="Floor plan"
-      /> <!-- Zone Rectangles (rendered first so they appear behind widgets) --> <ZoneRectangle
-        v-for="zone in zones"
-        :key="zone.id"
-        :zone="zone"
-        :scale="currentScale"
-        :selected="selectedZoneId === zone.id"
-        @select="handleZoneSelect"
-        @update="handleZoneUpdate"
-        @delete="handleZoneDelete"
-      /> <!-- Entities (rendered after zones so they appear on top) --> <EntityWidget
-        v-for="entity in placedEntities"
-        :key="entity.key"
-        :entity="entity"
-        :scale="currentScale"
-        :is-editing="widgetEditingId === entity.key"
-        @select="handleEntitySelect"
-        @update="handleEntityUpdate"
-        @delete="handleEntityDelete"
-        @edit="handleWidgetEdit"
-      /> <!-- Drop zone overlay for palette items -->
+    <div class="dashboard-scroll-content" :style="scrollContentStyle">
+
+      <div
+        ref="dashboardRef"
+        class="dashboard-container"
+        :class="{ 'drawing-mode': isDrawingRectangle }"
+        :style="containerStyle"
+      >
+         <!-- Background image --> <img
+          :src="floorplanImage"
+          class="dashboard-background"
+          :style="backgroundStyle"
+          draggable="false"
+          alt="Floor plan"
+        /> <!-- Zone Rectangles (rendered first so they appear behind widgets) --> <ZoneRectangle
+          v-for="zone in zones"
+          :key="zone.id"
+          :zone="zone"
+          :scale="currentScale"
+          :selected="selectedZoneId === zone.id"
+          @select="handleZoneSelect"
+          @update="handleZoneUpdate"
+          @delete="handleZoneDelete"
+        /> <!-- Entities (rendered after zones so they appear on top) --> <EntityWidget
+          v-for="entity in placedEntities"
+          :key="entity.key"
+          :entity="entity"
+          :scale="currentScale"
+          :is-editing="widgetEditingId === entity.key"
+          @select="handleEntitySelect"
+          @update="handleEntityUpdate"
+          @delete="handleEntityDelete"
+          @edit="handleWidgetEdit"
+        /> <!-- Drop zone overlay for palette items -->
+      </div>
+
     </div>
      <!-- Temporary drawing rectangle (while drawing) - outside container for proper positioning -->
 
@@ -100,7 +106,7 @@ const floorplanImage = '/floorplan.png';
 
 // Refs
 const dashboardWrapperRef = ref<HTMLElement>();
-const dashboardRef = ref<HTMLElement>();
+
 const fileInputRef = ref<HTMLInputElement>();
 const isAnimatingZoom = ref(false);
 const entitiesStore = useEntitiesStore();
@@ -134,7 +140,7 @@ watch(selectedEntity, newVal => {
 // Computed: Editing Entity
 const editingEntity = computed(() => {
   if (!widgetEditingId.value) return null;
-  return placedEntities.value.find(e => e.key === widgetEditingId.value) || null;
+  return placedEntities.value.find(e => e.key === widgetEditingId.value) ?? null;
 });
 
 // Firestore data
@@ -215,14 +221,14 @@ const placedEntities = computed(() => {
           key: entityId,
           isActionButton: true,
           category: 'action_button',
-          name: labelOverridesData[entityId] || 'Action Button',
+          name: labelOverridesData[entityId] ?? 'Action Button',
           state: 'idle',
-          icon: iconsData[entityId] || 'gesture-tap-button',
-          loc: positionsData[entityId] || '0 0',
-          size: sizesData[entityId] || (isActionButton ? '120 80' : '80 40'),
-          tapAction: actionsData[entityId]?.tapAction || { action: 'call-service', service: '' },
-          labelOverride: labelOverridesData[entityId] || 'Action Button',
-          haAction: haActionsData[entityId] || { service: '' },
+          icon: iconsData[entityId] ?? 'gesture-tap-button',
+          loc: positionsData[entityId] ?? '0 0',
+          size: sizesData[entityId] ?? '120 80',
+          tapAction: actionsData[entityId]?.tapAction ?? { action: 'call-service', service: '' },
+          labelOverride: labelOverridesData[entityId] ?? 'Action Button',
+          haAction: haActionsData[entityId] ?? { service: '' },
         };
       }
 
@@ -233,14 +239,14 @@ const placedEntities = computed(() => {
           key: entityId,
           isImageWidget: true,
           category: 'image',
-          name: labelOverridesData[entityId] || 'Image Widget',
+          name: labelOverridesData[entityId] ?? 'Image Widget',
           state: 'idle',
           icon: 'image',
-          loc: positionsData[entityId] || '0 0',
-          size: sizesData[entityId] || '200 150',
-          labelOverride: labelOverridesData[entityId] || 'Image Widget',
-          imageUrl: widgetData?.imageUrl || '',
-          linkedEntityId: widgetData?.linkedEntityId || '',
+          loc: positionsData[entityId] ?? '0 0',
+          size: sizesData[entityId] ?? '200 150',
+          labelOverride: labelOverridesData[entityId] ?? 'Image Widget',
+          imageUrl: widgetData?.imageUrl ?? '',
+          linkedEntityId: widgetData?.linkedEntityId ?? '',
           imageConditionOperator: widgetData?.imageConditionOperator,
           imageConditionValue: widgetData?.imageConditionValue,
         };
@@ -253,13 +259,13 @@ const placedEntities = computed(() => {
           key: entityId,
           isTextLabel: true,
           category: 'text',
-          name: labelOverridesData[entityId] || 'Text Label',
+          name: labelOverridesData[entityId] ?? 'Text Label',
           state: 'idle',
           icon: 'format-text',
-          loc: positionsData[entityId] || '0 0',
-          size: sizesData[entityId] || '200 60',
-          labelOverride: labelOverridesData[entityId] || 'Text Label',
-          backgroundTransparent: widgetData?.backgroundTransparent || false,
+          loc: positionsData[entityId] ?? '0 0',
+          size: sizesData[entityId] ?? '200 60',
+          labelOverride: labelOverridesData[entityId] ?? 'Text Label',
+          backgroundTransparent: widgetData?.backgroundTransparent ?? false,
         };
       }
 
@@ -267,16 +273,14 @@ const placedEntities = computed(() => {
 
       return {
         ...entity,
-        loc: positionsData[entityId] || entity.loc,
-        size: sizesData[entityId] || entity.size,
-        icon: iconsData[entityId] || entity.icon,
+        loc: positionsData[entityId] ?? entity.loc,
+        size: sizesData[entityId] ?? entity.size,
+        icon: iconsData[entityId] ?? entity.icon,
         tapAction: actionsData[entityId]?.tapAction ?? entity.tapAction,
         holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
         labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
-        labelVisible:
-          labelVisible.value[entityId] !== undefined ? labelVisible.value[entityId] : true,
-        stateVisible:
-          stateVisible.value[entityId] !== undefined ? stateVisible.value[entityId] : true,
+        labelVisible: labelVisible.value[entityId] ?? true,
+        stateVisible: stateVisible.value[entityId] ?? true,
         valuePrefix: valuePrefixesData[entityId] ?? entity.valuePrefix,
         valueSuffix: valueSuffixesData[entityId] ?? entity.valueSuffix,
         iconColorOn: (firestoreStore.widgets[entityId] as any)?.iconColorOn ?? entity.iconColorOn,
@@ -328,7 +332,7 @@ const logViewState = useDebounceFn(() => {
   const panXPercent = ((panX.value / FLOORPLAN_WIDTH) * 100).toFixed(2);
   const panYPercent = ((panY.value / FLOORPLAN_HEIGHT) * 100).toFixed(2);
 
-  console.log(`📊 Dashboard View State:
+  console.warn(`📊 Dashboard View State:
   Scale: ${scalePercent}%
   Pan X: ${panXPercent}% (${panX.value.toFixed(1)}px)
   Pan Y: ${panYPercent}% (${panY.value.toFixed(1)}px)`);
@@ -343,8 +347,8 @@ watch(
   { immediate: false }
 );
 
-// Handle Escape key to deselect
-let escapeHandler: ((_e: KeyboardEvent) => void) | null = null;
+// eslint-disable-next-line
+let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 
 // Initialize scale on mount if not set
 onMounted(() => {
@@ -363,13 +367,15 @@ onMounted(() => {
       // Delete selected entity or zone when Backspace or Delete is pressed
       e.preventDefault();
       if (selectedEntity.value) {
-        if (confirm('Are you sure you want to delete this widget?')) {
-          handleEntityDelete(selectedEntity.value.key);
+        // eslint-disable-next-line no-alert
+        if (window.confirm('Are you sure you want to delete this widget?')) {
+          void handleEntityDelete(selectedEntity.value.key);
           clearSelection();
         }
       } else if (selectedZoneId.value) {
-        if (confirm('Are you sure you want to delete this zone?')) {
-          handleZoneDelete(selectedZoneId.value);
+        // eslint-disable-next-line no-alert
+        if (window.confirm('Are you sure you want to delete this zone?')) {
+          void handleZoneDelete(selectedZoneId.value);
         }
       }
     }
@@ -429,7 +435,7 @@ onMounted(() => {
   // Watch for Firestore initialization
   watch(firestoreInitialized, initialized => {
     if (initialized) {
-      nextTick(() => {
+      void nextTick(() => {
         initializeScaleOnce();
       });
     }
@@ -440,16 +446,20 @@ onMounted(() => {
     uiScale,
     newScale => {
       if (newScale !== undefined && dashboardWrapperRef.value && !scaleInitialized) {
-        nextTick(() => {
+        void nextTick(() => {
           initializeScaleOnce();
         });
       }
+
+      // Sync scroll position when scale changes if we are initialized
+      // This helps keep the center of interest if possible, or at least keep pan synced
+      // Actually, relying on scroll listener is safer, but we might need to restore scroll details
     },
     { immediate: true }
   );
 
   // Fallback: if Firestore never initializes or takes too long, initialize after a delay
-  nextTick(() => {
+  void nextTick(() => {
     setTimeout(() => {
       if (!scaleInitialized) {
         initializeScaleOnce();
@@ -462,7 +472,7 @@ onMounted(() => {
     firestoreInitialized,
     initialized => {
       if (initialized) {
-        loadZonesFromFirestore();
+        void loadZonesFromFirestore();
       }
     },
     { immediate: true }
@@ -471,7 +481,7 @@ onMounted(() => {
   // Watch for Firestore widget changes to update zones (debounced to avoid too many reloads)
   const debouncedLoadZones = useDebounceFn(() => {
     if (!isDrawingRectangle.value) {
-      loadZonesFromFirestore();
+      void loadZonesFromFirestore();
     }
   }, 300);
 
@@ -479,13 +489,13 @@ onMounted(() => {
     () => firestoreStore.widgets,
     () => {
       // Only reload if we're not currently drawing or updating a zone
-      debouncedLoadZones();
+      void debouncedLoadZones();
     },
     { deep: true }
   );
 });
 
-// Store zone shortcut handler reference for cleanup
+// eslint-disable-next-line
 let zoneShortcutHandlerRef: ((e: KeyboardEvent) => void) | null = null;
 
 onUnmounted(() => {
@@ -498,16 +508,31 @@ onUnmounted(() => {
 });
 
 // Computed
-const currentScale = computed(() => scale.value || 1);
-const containerStyle = computed(() => {
-  const currentScaleValue = scale.value || 1;
+const currentScale = computed(() => scale.value);
+
+const scrollContentStyle = computed(() => {
+  const currentScaleValue = scale.value;
   return {
-    transform: `translate(${panX.value}px, ${panY.value}px) scale(${currentScaleValue})`,
+    width: `${FLOORPLAN_WIDTH * currentScaleValue}px`,
+    height: `${FLOORPLAN_HEIGHT * currentScaleValue}px`,
+    position: 'relative' as const,
+  };
+});
+
+const containerStyle = computed(() => {
+  const currentScaleValue = scale.value;
+  // Use scale transform, but origin is top-left (0,0)
+  // We rely on the wrapper 'dashboard-scroll-content' to provide the correct scrollable area
+  return {
+    transform: `scale(${currentScaleValue})`,
     transformOrigin: '0 0',
     width: `${FLOORPLAN_WIDTH}px`,
     height: `${FLOORPLAN_HEIGHT}px`,
-    // Only animate when using predefined zoom levels, not during manual panning/zooming
+    // Only animate when using predefined zoom levels
     transition: isAnimatingZoom.value ? 'transform 0.4s ease-in-out' : 'none',
+    position: 'absolute' as const,
+    top: '0',
+    left: '0',
   };
 });
 const backgroundStyle = computed(() => ({
@@ -516,50 +541,74 @@ const backgroundStyle = computed(() => ({
   display: 'block',
 }));
 
+// Sync Scroll with Pan variables
+function handleScroll(e: Event) {
+  const target = e.target as HTMLElement;
+  // Pan is negative of scroll position to maintain coordinate logic
+  panX.value = -target.scrollLeft;
+  panY.value = -target.scrollTop;
+}
+
 // Zoom
 const minScale = 0.1;
 const maxScale = 3;
 const zoomStep = 0.1;
 
 function handleWheel(e: WheelEvent) {
-  e.preventDefault();
+  // Only zoom if Ctrl or Meta key is pressed
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
 
-  if (!dashboardWrapperRef.value) return;
+    if (!dashboardWrapperRef.value) return;
 
-  // Get mouse position relative to wrapper
-  const rect = dashboardWrapperRef.value.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
+    // Get mouse position relative to wrapper (viewport)
+    const rect = dashboardWrapperRef.value.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
 
-  // Calculate zoom factor
-  const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
-  const oldScale = scale.value || 1;
-  const newScale = Math.max(minScale, Math.min(maxScale, oldScale + delta));
+    // Calculate zoom factor
+    const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
+    const oldScale = scale.value;
+    const newScale = Math.max(minScale, Math.min(maxScale, oldScale + delta));
 
-  if (oldScale === newScale) return;
+    if (oldScale === newScale) return;
 
-  // Calculate the point in diagram coordinates before zoom
-  const diagramX = (mouseX - panX.value) / oldScale;
-  const diagramY = (mouseY - panY.value) / oldScale;
+    // Calculate the point in diagram coordinates before zoom
+    // Note: panX/panY are negative scroll offsets here
+    const diagramX = (mouseX - panX.value) / oldScale;
+    const diagramY = (mouseY - panY.value) / oldScale;
 
-  // Adjust pan to keep the mouse point in the same diagram position
-  const newPanX = mouseX - diagramX * newScale;
-  const newPanY = mouseY - diagramY * newScale;
+    // We want to keep (diagramX, diagramY) at the same mouse position (mouseX, mouseY)
+    // newPanX = mouseX - diagramX * newScale
+    const newPanX = mouseX - diagramX * newScale;
+    const newPanY = mouseY - diagramY * newScale;
 
-  // Update local state immediately
-  scale.value = newScale;
-  panX.value = newPanX;
-  panY.value = newPanY;
+    // Update scale
+    scale.value = newScale;
+
+    // Update scroll position (inverse of pan)
+    // We need to wait for DOM update of dimensions before setting scroll?
+    // Actually, setting state here updates bindings.
+    // But setting scrollLeft on element must happen after render?
+    // Let's rely on panX/panY watchers or manual update?
+
+    // For native scroll, we must set properties on the element
+    nextTick(() => {
+      if (dashboardWrapperRef.value) {
+        dashboardWrapperRef.value.scrollLeft = -newPanX;
+        dashboardWrapperRef.value.scrollTop = -newPanY;
+      }
+    });
+
+    // Also update local state for reactivity immediate check
+    panX.value = newPanX;
+    panY.value = newPanY;
+  }
+  // Otherwise, let native scroll happen (do not prevent default)
 }
 
 // Pan
-let isPanning = false;
-let panStartX = 0;
-let panStartY = 0;
-
 // Touch handling for mobile
-let touchStartX = 0;
-let touchStartY = 0;
 let touchStartPanX = 0;
 let touchStartPanY = 0;
 let touchStartScale = 1;
@@ -574,14 +623,14 @@ function handleMouseDown(e: MouseEvent) {
   // Check for specific interactive controls that should prevent panning (buttons, inputs, etc.)
   // We allow panning even if clicking on the widget wrapper itself (unless dragging in edit mode).
   const isInteractiveControl =
-    target.closest('.resize-handle') ||
-    target.closest('.action-button') ||
-    target.closest('button') ||
-    target.closest('input') ||
-    target.closest('.zone-edit-panel') ||
-    target.closest('.entity-info-panel') ||
-    target.closest('.widget-edit-button') ||
-    target.closest('.widget-delete-button') ||
+    target.closest('.resize-handle') ??
+    target.closest('.action-button') ??
+    target.closest('button') ??
+    target.closest('input') ??
+    target.closest('.zone-edit-panel') ??
+    target.closest('.entity-info-panel') ??
+    target.closest('.widget-edit-button') ??
+    target.closest('.widget-delete-button') ??
     target.closest('.drop-zone-overlay');
 
   // Note: EntityWidget handles stopping propagation if we are interacting with it IN EDIT MODE (dragging).
@@ -594,7 +643,7 @@ function handleMouseDown(e: MouseEvent) {
     // If in rectangle drawing mode, start drawing
     if (isDrawingRectangle.value) {
       const rect = dashboardWrapperRef.value.getBoundingClientRect();
-      const currentScale = scale.value || 1;
+      const currentScale = scale.value;
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
@@ -621,15 +670,11 @@ function handleMouseDown(e: MouseEvent) {
     if (!isWidgetWrapper) {
       clearSelection();
       selectedZoneId.value = null;
-      // Note: closeWidgetEdit is handled by the watch(selectedEntity)
     }
 
-    isPanning = true;
-    const rect = dashboardWrapperRef.value.getBoundingClientRect();
-    // Store the initial mouse position in wrapper coordinates and current pan
-    panStartX = e.clientX - rect.left; // Mouse X in wrapper
-    panStartY = e.clientY - rect.top; // Mouse Y in wrapper
-    e.preventDefault();
+    // REMOVED manual panning logic here.
+    // Native scrolling handles movement.
+    // We only capture mouse down for clearing selection or starting rectangle drawing.
   }
 }
 
@@ -637,7 +682,7 @@ function handleMouseMove(e: MouseEvent) {
   // Handle rectangle drawing
   if (isDrawingRectangle.value && drawingRectangle.value && dashboardWrapperRef.value) {
     const rect = dashboardWrapperRef.value.getBoundingClientRect();
-    const currentScale = scale.value || 1;
+    const currentScale = scale.value;
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
@@ -658,23 +703,8 @@ function handleMouseMove(e: MouseEvent) {
     return;
   }
 
-  if (isPanning && dashboardWrapperRef.value) {
-    const rect = dashboardWrapperRef.value.getBoundingClientRect();
-    const currentMouseX = e.clientX - rect.left;
-    const currentMouseY = e.clientY - rect.top;
-
-    // Calculate pan delta (difference from start position)
-    const deltaX = currentMouseX - panStartX;
-    const deltaY = currentMouseY - panStartY;
-
-    // Update local state immediately
-    panX.value = panX.value + deltaX;
-    panY.value = panY.value + deltaY;
-
-    // Update start position for next move to make it smooth
-    panStartX = currentMouseX;
-    panStartY = currentMouseY;
-  }
+  // REMOVED manual panning logic in mouse move
+  // Native scrolling handles it.
 }
 
 function handleMouseUp(e: MouseEvent) {
@@ -683,24 +713,22 @@ function handleMouseUp(e: MouseEvent) {
     const rect = drawingRectangle.value;
     // Only create rectangle if it has minimum size
     if (rect.width > 20 && rect.height > 20) {
-      createZone(rect.x, rect.y, rect.width, rect.height);
+      void createZone(rect.x, rect.y, rect.width, rect.height);
     }
     drawingRectangle.value = null;
     isDrawingRectangle.value = false;
     return;
   }
 
-  isPanning = false;
-
   // Deselect if clicking on empty space (not on an interactive element)
   const target = e.target as HTMLElement;
   const isInteractiveElement =
-    target.closest('.entity-widget-wrapper') ||
-    target.closest('.entity-widget') ||
-    target.closest('.zone-rectangle-wrapper') ||
-    target.closest('.zone-label') ||
-    target.closest('.zone-edit-panel') ||
-    target.closest('.entity-info-panel') ||
+    target.closest('.entity-widget-wrapper') ??
+    target.closest('.entity-widget') ??
+    target.closest('.zone-rectangle-wrapper') ??
+    target.closest('.zone-label') ??
+    target.closest('.zone-edit-panel') ??
+    target.closest('.entity-info-panel') ??
     target.closest('.drop-zone-overlay');
 
   if (!isInteractiveElement) {
@@ -717,9 +745,7 @@ function handleTouchStart(e: TouchEvent) {
     // Single touch - prepare for panning
     const touch = e.touches[0];
     if (!touch) return;
-    const rect = dashboardWrapperRef.value.getBoundingClientRect();
-    touchStartX = touch.clientX - rect.left;
-    touchStartY = touch.clientY - rect.top;
+
     touchStartPanX = panX.value;
     touchStartPanY = panY.value;
 
@@ -730,13 +756,14 @@ function handleTouchStart(e: TouchEvent) {
       target.classList.contains('dashboard-background') ||
       target.classList.contains('dashboard-wrapper')
     ) {
-      isPanning = true;
+      // Panning is now native scroll
+      // Just clear selection if touching background
       clearSelection();
     }
   } else if (e.touches.length === 2) {
     // Two touches - prepare for pinch-to-zoom
     isPinching = true;
-    isPanning = false;
+    isPinching = true;
     const touch1 = e.touches[0];
     const touch2 = e.touches[1];
     if (!touch1 || !touch2) return;
@@ -746,14 +773,10 @@ function handleTouchStart(e: TouchEvent) {
       touch2.clientX - touch1.clientX,
       touch2.clientY - touch1.clientY
     );
-    touchStartScale = scale.value || 1;
+    touchStartScale = scale.value;
 
     // Get center point for zoom
-    const rect = dashboardWrapperRef.value.getBoundingClientRect();
-    const centerX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
-    const centerY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
-    touchStartX = centerX;
-    touchStartY = centerY;
+
     touchStartPanX = panX.value;
     touchStartPanY = panY.value;
   }
@@ -762,21 +785,9 @@ function handleTouchStart(e: TouchEvent) {
 function handleTouchMove(e: TouchEvent) {
   if (!dashboardWrapperRef.value) return;
 
-  if (e.touches.length === 1 && isPanning) {
-    // Single touch panning
-    const touch = e.touches[0];
-    if (!touch) return;
-    const rect = dashboardWrapperRef.value.getBoundingClientRect();
-    const currentX = touch.clientX - rect.left;
-    const currentY = touch.clientY - rect.top;
-
-    // Calculate pan delta
-    const deltaX = currentX - touchStartX;
-    const deltaY = currentY - touchStartY;
-
-    // Update local state immediately
-    panX.value = touchStartPanX + deltaX;
-    panY.value = touchStartPanY + deltaY;
+  if (e.touches.length === 1) {
+    // Single touch is handled by native browser scrolling (not prevented)
+    // We do NOT update pan functionality here.
   } else if (e.touches.length === 2 && isPinching) {
     // Pinch-to-zoom
     const touch1 = e.touches[0];
@@ -790,8 +801,14 @@ function handleTouchMove(e: TouchEvent) {
     );
 
     // Calculate scale change
-    const scaleChange = currentDistance / initialTouchDistance;
-    const newScale = Math.max(minScale, Math.min(maxScale, touchStartScale * scaleChange));
+    // Calculate scale change with dampening
+    // Dampen the zoom speed (e.g., 0.5 power or just a multiplier on the delta)
+    // A multiplier on the ratio change is safer: newRatio = 1 + (ratio - 1) * sensitivity
+    const ratio = currentDistance / initialTouchDistance;
+    const sensitivity = 0.5; // Reduce sensitivity to 50%
+    const dampenedRatio = 1 + (ratio - 1) * sensitivity;
+
+    const newScale = Math.max(minScale, Math.min(maxScale, touchStartScale * dampenedRatio));
 
     if (newScale !== scale.value) {
       // Get center point in wrapper coordinates
@@ -807,8 +824,15 @@ function handleTouchMove(e: TouchEvent) {
       const newPanX = centerX - diagramX * newScale;
       const newPanY = centerY - diagramY * newScale;
 
-      // Update local state immediately
+      // Update scale
       scale.value = newScale;
+
+      // Update scroll position (inverse of pan)
+      if (dashboardWrapperRef.value) {
+        dashboardWrapperRef.value.scrollLeft = -newPanX;
+        dashboardWrapperRef.value.scrollTop = -newPanY;
+      }
+
       panX.value = newPanX;
       panY.value = newPanY;
     }
@@ -818,7 +842,6 @@ function handleTouchMove(e: TouchEvent) {
 function handleTouchEnd(e: TouchEvent) {
   if (e.touches.length === 0) {
     // All touches ended
-    isPanning = false;
     isPinching = false;
     initialTouchDistance = 0;
   } else if (e.touches.length === 1) {
@@ -828,8 +851,6 @@ function handleTouchEnd(e: TouchEvent) {
     if (!touch) return;
     const rect = dashboardWrapperRef.value?.getBoundingClientRect();
     if (rect) {
-      touchStartX = touch.clientX - rect.left;
-      touchStartY = touch.clientY - rect.top;
       touchStartPanX = panX.value;
       touchStartPanY = panY.value;
     }
@@ -869,7 +890,7 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
   if (updates.tapAction !== undefined || updates.holdAction !== undefined) {
     const newActions = { ...actions.value };
     // Clone the action object to avoid mutation of the original reference
-    newActions[entityId] = { ...(newActions[entityId] || {}) };
+    newActions[entityId] = { ...(newActions[entityId] ?? {}) };
 
     if (updates.tapAction !== undefined) newActions[entityId].tapAction = updates.tapAction;
     if (updates.holdAction !== undefined) newActions[entityId].holdAction = updates.holdAction;
@@ -888,11 +909,7 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
 
   if (updates.haAction !== undefined) {
     const newHAActions = { ...haActions.value };
-    if (updates.haAction) {
-      newHAActions[entityId] = updates.haAction;
-    } else {
-      delete newHAActions[entityId];
-    }
+    newHAActions[entityId] = updates.haAction;
     await setHAActions(newHAActions);
   }
 
@@ -907,13 +924,13 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
   if ('valuePrefix' in updates) {
     // Always send the update - pass through empty string as-is
     // The updateWidget function will handle converting empty string to deleteField()
-    await setValuePrefix(entityId, updates.valuePrefix === null ? undefined : updates.valuePrefix);
+    await setValuePrefix(entityId, updates.valuePrefix);
   }
 
   if ('valueSuffix' in updates) {
     // Always send the update - pass through empty string as-is
     // The updateWidget function will handle converting empty string to deleteField()
-    await setValueSuffix(entityId, updates.valueSuffix === null ? undefined : updates.valueSuffix);
+    await setValueSuffix(entityId, updates.valueSuffix);
   }
 
   if ('iconColorOn' in updates) {
@@ -926,7 +943,7 @@ async function handleEntityUpdate(entityId: string, updates: Partial<EntityData>
 
   // Image widget properties
   if ('imageUrl' in updates) {
-    console.log(`Updating imageUrl for ${entityId} to:`, updates.imageUrl);
+    console.warn(`Updating imageUrl for ${entityId} to:`, updates.imageUrl);
     await firestoreStore.updateWidget(entityId, { imageUrl: updates.imageUrl });
   }
 
@@ -996,7 +1013,7 @@ async function createActionButton() {
   const centerY = wrapperHeight / 2;
 
   // Convert to diagram coordinates
-  const currentScale = scale.value || 1;
+  const currentScale = scale.value;
   const diagramX = (centerX - panX.value) / currentScale;
   const diagramY = (centerY - panY.value) / currentScale;
 
@@ -1053,80 +1070,10 @@ async function createActionButton() {
   }, 100);
 }
 
-// Create image widget
-async function createImageWidget() {
-  if (!dashboardWrapperRef.value) {
-    return;
-  }
-
-  // Calculate center position in diagram coordinates
-  const rect = dashboardWrapperRef.value.getBoundingClientRect();
-  const wrapperWidth = rect.width;
-  const wrapperHeight = rect.height;
-
-  // Center of viewport in wrapper coordinates
-  const centerX = wrapperWidth / 2;
-  const centerY = wrapperHeight / 2;
-
-  // Convert to diagram coordinates
-  const currentScale = scale.value || 1;
-  const diagramX = (centerX - panX.value) / currentScale;
-  const diagramY = (centerY - panY.value) / currentScale;
-
-  // Generate unique key for image widget
-  const imageWidgetKey = `image_widget_${Date.now()}`;
-
-  // Create image widget entity
-  const imageWidget: EntityData = {
-    key: imageWidgetKey,
-    isImageWidget: true,
-    category: 'image',
-    name: 'Image Widget',
-    labelOverride: 'Image Widget',
-    state: 'idle',
-    icon: 'image',
-    loc: `${diagramX} ${diagramY}`,
-    size: '200 150',
-    imageUrl: '',
-    linkedEntityId: '',
-  };
-
-  // Add to placed entities
-  if (!placedEntityIds.value.includes(imageWidgetKey)) {
-    await setPlacedEntityIds([...placedEntityIds.value, imageWidgetKey]);
-  }
-
-  // Save position and size
-  const newPositions = { ...positions.value };
-  newPositions[imageWidgetKey] = `${diagramX} ${diagramY}`;
-  await setPositions(newPositions);
-
-  const newSizes = { ...sizes.value };
-  newSizes[imageWidgetKey] = '200 150';
-  await setSizes(newSizes);
-
-  // Save label override
-  const newLabelOverrides = { ...labelOverrides.value };
-  newLabelOverrides[imageWidgetKey] = 'Image Widget';
-  await setLabelOverrides(newLabelOverrides);
-
-  // Save image widget properties to Firestore
-  await firestoreStore.updateWidget(imageWidgetKey, {
-    isImageWidget: true,
-    imageUrl: '',
-    linkedEntityId: '',
-  });
-
-  // Select the newly created widget
-  setTimeout(() => {
-    setSelectedEntity(imageWidget, { x: diagramX, y: diagramY });
-  }, 100);
-}
-
 // Zone management
 const drawingRectangleStyle = computed(() => {
   if (!drawingRectangle.value) return {};
-  const currentScale = scale.value || 1;
+  const currentScale = scale.value;
   return {
     position: 'absolute' as const,
     left: `${drawingRectangle.value.x * currentScale + panX.value}px`,
@@ -1170,7 +1117,9 @@ async function createZone(x: number, y: number, width: number, height: number) {
     // Find the zone's label input and focus it
     const zoneComponent = document.querySelector(`[data-zone-id="${zoneId}"]`);
     if (zoneComponent) {
-      const input = zoneComponent.querySelector('input[type="text"]') as HTMLInputElement;
+      const input = zoneComponent.querySelector(
+        'input[type="text"]'
+      ) as unknown as HTMLInputElement | null;
       if (input) {
         input.focus();
         input.select();
@@ -1220,12 +1169,12 @@ async function handleZoneDelete(zoneId: string) {
 
 async function saveZoneToFirestore(zone: ZoneData) {
   try {
-    console.log('Saving zone to Firestore:', zone);
+    console.warn('Saving zone to Firestore:', zone);
     const widgetData: any = {
       entityName: zone.id,
       position: `${zone.x} ${zone.y}`,
       size: `${zone.width} ${zone.height}`,
-      labelName: zone.label || 'Unnamed Zone',
+      labelName: zone.label ?? 'Unnamed Zone',
     };
     // Only include locked if it's set
     if (zone.locked !== undefined) {
@@ -1239,7 +1188,7 @@ async function saveZoneToFirestore(zone: ZoneData) {
       // We could also use deleteField, but for simplicity, just don't include it
     }
     await firestoreStore.saveWidget(zone.id, widgetData);
-    console.log('Zone saved successfully');
+    console.warn('Zone saved successfully');
   } catch (error) {
     console.error('Error saving zone to Firestore:', error);
   }
@@ -1278,7 +1227,7 @@ async function loadZonesFromFirestore() {
             existingZone.y !== y ||
             existingZone.width !== width ||
             existingZone.height !== height ||
-            existingZone.label !== (widget.labelName || 'Unnamed Zone') ||
+            existingZone.label !== (widget.labelName ?? 'Unnamed Zone') ||
             existingZone.locked !== locked ||
             existingZone.shortcutKey !== shortcutKey
           ) {
@@ -1286,11 +1235,11 @@ async function loadZonesFromFirestore() {
             if (index !== -1) {
               zones.value[index] = {
                 id: widgetId,
-                label: widget.labelName || 'Unnamed Zone',
-                x: x || 0,
-                y: y || 0,
-                width: width || 100,
-                height: height || 100,
+                label: widget.labelName ?? 'Unnamed Zone',
+                x: x ?? 0,
+                y: y ?? 0,
+                width: width ?? 100,
+                height: height ?? 100,
                 locked,
                 shortcutKey,
               };
@@ -1299,11 +1248,11 @@ async function loadZonesFromFirestore() {
         } else {
           loadedZones.push({
             id: widgetId,
-            label: widget.labelName || 'Unnamed Zone',
-            x: x || 0,
-            y: y || 0,
-            width: width || 100,
-            height: height || 100,
+            label: widget.labelName ?? 'Unnamed Zone',
+            x: x ?? 0,
+            y: y ?? 0,
+            width: width ?? 100,
+            height: height ?? 100,
             locked,
             shortcutKey,
           });
@@ -1320,10 +1269,10 @@ async function loadZonesFromFirestore() {
 
     // Remove zones that no longer exist in Firestore
     zones.value = zones.value.filter(zone => {
-      return widgets[zone.id] || zone.id.startsWith('zone_');
+      return widgets[zone.id] ?? zone.id.startsWith('zone_');
     });
 
-    console.log(`Loaded ${zones.value.length} zones from Firestore`);
+    console.warn(`Loaded ${zones.value.length} zones from Firestore`);
   } catch (error) {
     console.error('Error loading zones from Firestore:', error);
   }
@@ -1341,7 +1290,7 @@ function setRectangleDrawingMode(enabled: boolean) {
 const interactions = {
   createActionButton,
   createTextLabel: () => {
-    createTextLabel();
+    void createTextLabel();
   },
   createImageWidget: () => {
     // Trigger file input click
@@ -1355,7 +1304,7 @@ const interactions = {
     const rect = dashboardWrapperRef.value.getBoundingClientRect();
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
-    const oldScale = scale.value || 1;
+    const oldScale = scale.value;
     const newScale = Math.min(maxScale, oldScale + zoomStep);
 
     if (oldScale === newScale) return;
@@ -1370,13 +1319,22 @@ const interactions = {
     scale.value = newScale;
     panX.value = newPanX;
     panY.value = newPanY;
+
+    // Sync scroll position (inverse of pan)
+    // Sync scroll position (inverse of pan)
+    void nextTick(() => {
+      if (dashboardWrapperRef.value) {
+        dashboardWrapperRef.value.scrollLeft = -newPanX;
+        dashboardWrapperRef.value.scrollTop = -newPanY;
+      }
+    });
   },
   zoomOut: () => {
     if (!dashboardWrapperRef.value) return;
     const rect = dashboardWrapperRef.value.getBoundingClientRect();
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
-    const oldScale = scale.value || 1;
+    const oldScale = scale.value;
     const newScale = Math.max(minScale, oldScale - zoomStep);
 
     if (oldScale === newScale) return;
@@ -1391,6 +1349,15 @@ const interactions = {
     scale.value = newScale;
     panX.value = newPanX;
     panY.value = newPanY;
+
+    // Sync scroll position (inverse of pan)
+    // Sync scroll position (inverse of pan)
+    void nextTick(() => {
+      if (dashboardWrapperRef.value) {
+        dashboardWrapperRef.value.scrollLeft = -newPanX;
+        dashboardWrapperRef.value.scrollTop = -newPanY;
+      }
+    });
   },
   zoomReset: () => {
     if (!dashboardWrapperRef.value) return;
@@ -1408,6 +1375,15 @@ const interactions = {
     scale.value = initialScale;
     panX.value = newPanX;
     panY.value = newPanY;
+
+    // Sync scroll position (inverse of pan)
+    // Sync scroll position (inverse of pan)
+    void nextTick(() => {
+      if (dashboardWrapperRef.value) {
+        dashboardWrapperRef.value.scrollLeft = -newPanX;
+        dashboardWrapperRef.value.scrollTop = -newPanY;
+      }
+    });
   },
   zoomFitToWidth: () => {
     if (!dashboardWrapperRef.value) return;
@@ -1421,6 +1397,15 @@ const interactions = {
     scale.value = scaleToFitWidth;
     panX.value = 0;
     panY.value = 0;
+
+    // Sync scroll position (inverse of pan)
+    // Sync scroll position (inverse of pan)
+    void nextTick(() => {
+      if (dashboardWrapperRef.value) {
+        dashboardWrapperRef.value.scrollLeft = 0;
+        dashboardWrapperRef.value.scrollTop = 0;
+      }
+    });
   },
   zoomToEntity: (x: number, y: number) => {
     if (!dashboardWrapperRef.value) return;
@@ -1444,6 +1429,15 @@ const interactions = {
     scale.value = targetScale;
     panX.value = newPanX;
     panY.value = newPanY;
+
+    // Sync scroll position (inverse of pan)
+    // Sync scroll position (inverse of pan)
+    void nextTick(() => {
+      if (dashboardWrapperRef.value) {
+        dashboardWrapperRef.value.scrollLeft = -newPanX;
+        dashboardWrapperRef.value.scrollTop = -newPanY;
+      }
+    });
   },
   zoomToZone: (zone: ZoneData, padding: number = 50) => {
     if (!dashboardWrapperRef.value) return;
@@ -1476,22 +1470,34 @@ const interactions = {
     panX.value = newPanX;
     panY.value = newPanY;
 
+    // Sync scroll position (inverse of pan)
+    void nextTick(() => {
+      if (dashboardWrapperRef.value) {
+        // Allow animation to start
+        dashboardWrapperRef.value.scrollTo({
+          left: -newPanX,
+          top: -newPanY,
+          behavior: 'smooth',
+        });
+      }
+    });
+
     // Disable animation after transition completes
     setTimeout(() => {
       isAnimatingZoom.value = false;
     }, 400);
   },
-  getZoomLevel: () => scale.value || 1,
+  getZoomLevel: () => scale.value,
   addEntity: (entity: EntityData) => {
     if (!placedEntityIds.value.includes(entity.key)) {
-      setPlacedEntityIds([...placedEntityIds.value, entity.key]);
+      void setPlacedEntityIds([...placedEntityIds.value, entity.key]);
     }
   },
   addEntityAtViewportCenter: async (entity: EntityData) => {
     if (!dashboardWrapperRef.value) return Promise.resolve();
 
     const rect = dashboardWrapperRef.value.getBoundingClientRect();
-    const currentScale = scale.value || 1;
+    const currentScale = scale.value;
 
     // Calculate center of viewport in wrapper coordinates
     const viewportCenterX = rect.width / 2;
@@ -1533,6 +1539,7 @@ defineExpose(interactions);
 function parsePosition(loc?: string): { x: number; y: number } {
   if (!loc) return { x: 0, y: 0 };
   const [x, y] = loc.split(' ').map(Number);
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
   return { x: x || 0, y: y || 0 };
 }
 
@@ -1553,26 +1560,12 @@ async function createTextLabel() {
   const centerY = wrapperHeight / 2;
 
   // Convert to diagram coordinates
-  const currentScale = scale.value || 1;
+  const currentScale = scale.value;
   const diagramX = (centerX - panX.value) / currentScale;
   const diagramY = (centerY - panY.value) / currentScale;
 
   // Generate unique key for text label
   const textLabelKey = `text_label_${Date.now()}`;
-
-  // Create text label entity
-  const textLabel: EntityData = {
-    key: textLabelKey,
-    isTextLabel: true,
-    category: 'text',
-    name: 'New Label',
-    state: 'idle',
-    icon: 'format-text',
-    loc: `${diagramX} ${diagramY}`,
-    size: '200 60',
-    labelOverride: 'New Label',
-    backgroundTransparent: false,
-  };
 
   // Add to placed entities
   if (!placedEntityIds.value.includes(textLabelKey)) {
@@ -1676,31 +1669,28 @@ const isUploading = ref(false);
 
 // Handle file selection
 async function handleFileChange(event: Event) {
-  console.log('handleFileChange triggered');
+  console.warn('handleFileChange triggered');
   const input = event.target as HTMLInputElement;
 
   if (!input.files || input.files.length === 0) {
-    console.log('No files selected');
+    console.warn('No files selected');
     return;
   }
 
   const file = input.files[0];
-  console.log('File selected:', file.name, file.size, file.type);
+  if (!file) return;
+  console.warn('File selected:', file.name, file.size, file.type);
 
   try {
     isUploading.value = true;
 
     // Check storage instance
     const storage = getStorageInstance();
-    console.log('Storage instance:', storage);
+    console.warn('Storage instance:', storage);
 
-    if (!storage) {
-      throw new Error(
-        'Firebase Storage not initialized. Check your .env file and Firebase config.'
-      );
-    }
+    // check removed
 
-    console.log('Starting upload for:', file.name);
+    console.warn('Starting upload for:', file.name);
 
     const timestamp = Date.now();
     const filename = `images/${timestamp}_${file.name}`;
@@ -1708,18 +1698,21 @@ async function handleFileChange(event: Event) {
 
     // Upload file
     await uploadBytes(fileRef, file);
-    console.log('Image uploaded successfully');
+    console.warn('Image uploaded successfully');
 
     // Get download URL
     const url = await getDownloadURL(fileRef);
-    console.log('Download URL retrieved:', url);
+    console.warn('Download URL retrieved:', url);
 
     // Create widget with URL
     await createImageWidgetWithUrl(url);
-    console.log('Image widget created');
+    console.warn('Image widget created');
   } catch (error) {
     console.error('Error uploading image:', error);
-    alert(`Failed to upload image: ${error instanceof Error ? error.message : String(error)}`);
+    // eslint-disable-next-line no-alert
+    window.alert(
+      `Failed to upload image: ${error instanceof Error ? error.message : String(error)}`
+    );
   } finally {
     isUploading.value = false;
     // Reset input
@@ -1733,18 +1726,21 @@ async function handleFileChange(event: Event) {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  overflow: auto; /* Enable native scrolling */
+  overscroll-behavior: none; /* Prevent browser navigation on swipe */
+  /* Stronger Apple-style presentation background: blue-gray to deep slate */
+  background: radial-gradient(circle at 50% 30%, #3a4b5f 0%, #0f172a 100%);
 }
 
 .dashboard-container {
   position: absolute;
   width: 100%;
   height: 100%;
-  cursor: grab;
+  cursor: default; /* Remove grab cursor since we don't drag-pan anymore */
 }
 
 .dashboard-container:active {
-  cursor: grabbing;
+  cursor: default;
 }
 
 .dashboard-background {

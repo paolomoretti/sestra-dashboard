@@ -1,0 +1,34 @@
+# Project Context
+
+This is a Vue 3 + TypeScript project using Pinia for state management and Firebase (Firestore) for persistence. It's a Home Assistant dashboard floorplan editor/viewer.
+
+## Key Architecture Decisions
+
+1.  **Native Scrolling**: We use native CSS `overflow: auto` on the `.dashboard-wrapper` for scrolling.
+    - Scale and pan are managed by synchronizing `scrollLeft`/`scrollTop` with our internal `panX`/`panY` state.
+    - Zooming updates the `scale` state and then updates `scrollLeft`/`scrollTop` in a `nextTick` block to keep the view centered.
+
+2.  **Touch Interactions**:
+    - **Single Touch**: Native scrolling (pan).
+    - **Two-Finger Touch**: Pinch-to-zoom. Logic handles scale calculation and adjusting scroll position to zoom towards the center of the pinch.
+    - **Drag**: In "Global Edit Mode", widgets and zones can be dragged.
+
+3.  **Global Edit Mode**:
+    - Mode is toggled via UI.
+    - When active, widgets/zones can be selected, moved, and resized.
+    - `EntityWidget.vue` and `ZoneRectangle.vue` handle their own interactions but respect the global mode.
+
+4.  **Resizing**:
+    - Resize handles appear when an item is selected in Edit Mode.
+    - **Mobile/Touch**: Resize handles MUST support touch events (`touchstart`, `touchmove`, `touchend`) to work on mobile, as `mousedown` is not reliably fired or convenient for dragging handles on touch screens.
+
+## Coding Standards
+
+- **Vue**: Use `<script setup lang="ts">`.
+- **Styling**: Scoped CSS. prefer `flex` and `grid`.
+- **Linting**: Follow project ESlint rules. Fix "unused variable" warnings.
+- **Async/Await**: Use `void` for unawaited promises if they are fire-and-forget (e.g., `void router.push(...)`).
+
+## Common patterns
+
+- **Zoom to Zone**: `zoomToZone(zoneData)` calculates scale/pan to fit the zone and updates `scrollTo` with `behavior: 'smooth'`.

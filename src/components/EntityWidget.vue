@@ -29,15 +29,31 @@
           class="action-button-label"
           >{{ actionButtonLabel }}</span
         > </button
-      > <!-- Resize handles (shown when editing) --> <template v-if="isEditing"
+      > <!-- Resize handles (shown when editing) --> <template v-if="canResize"
         >
-        <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
+        <div
+          class="resize-handle resize-handle-se"
+          @mousedown.stop="startResize('se', $event)"
+          @touchstart.stop.prevent="startResize('se', $event)"
+        />
 
-        <div class="resize-handle resize-handle-sw" @mousedown.stop="startResize('sw', $event)" />
+        <div
+          class="resize-handle resize-handle-sw"
+          @mousedown.stop="startResize('sw', $event)"
+          @touchstart.stop.prevent="startResize('sw', $event)"
+        />
 
-        <div class="resize-handle resize-handle-ne" @mousedown.stop="startResize('ne', $event)" />
+        <div
+          class="resize-handle resize-handle-ne"
+          @mousedown.stop="startResize('ne', $event)"
+          @touchstart.stop.prevent="startResize('ne', $event)"
+        />
 
-        <div class="resize-handle resize-handle-nw" @mousedown.stop="startResize('nw', $event)" />
+        <div
+          class="resize-handle resize-handle-nw"
+          @mousedown.stop="startResize('nw', $event)"
+          @touchstart.stop.prevent="startResize('nw', $event)"
+        />
          </template
       >
     </div>
@@ -70,15 +86,31 @@
          <span class="placeholder-text">{{ imageUrl ? 'Condition not met' : 'No image' }}</span
         >
       </div>
-       <!-- Resize handles (shown when editing) --> <template v-if="isEditing"
+       <!-- Resize handles (shown when editing) --> <template v-if="canResize"
         >
-        <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
+        <div
+          class="resize-handle resize-handle-se"
+          @mousedown.stop="startResize('se', $event)"
+          @touchstart.stop.prevent="startResize('se', $event)"
+        />
 
-        <div class="resize-handle resize-handle-sw" @mousedown.stop="startResize('sw', $event)" />
+        <div
+          class="resize-handle resize-handle-sw"
+          @mousedown.stop="startResize('sw', $event)"
+          @touchstart.stop.prevent="startResize('sw', $event)"
+        />
 
-        <div class="resize-handle resize-handle-ne" @mousedown.stop="startResize('ne', $event)" />
+        <div
+          class="resize-handle resize-handle-ne"
+          @mousedown.stop="startResize('ne', $event)"
+          @touchstart.stop.prevent="startResize('ne', $event)"
+        />
 
-        <div class="resize-handle resize-handle-nw" @mousedown.stop="startResize('nw', $event)" />
+        <div
+          class="resize-handle resize-handle-nw"
+          @mousedown.stop="startResize('nw', $event)"
+          @touchstart.stop.prevent="startResize('nw', $event)"
+        />
          </template
       >
     </div>
@@ -104,7 +136,7 @@
       <div class="text-label-content" :style="textLabelContentStyle"> {{ displayLabel }} </div>
        <!-- Edit Menu -->
       <div
-        v-if="isEditing"
+        v-if="isTextEditing"
         class="text-label-edit-menu"
         @mousedown.stop
         @click.stop
@@ -124,15 +156,31 @@
         <div class="text-label-divider"></div>
          <button class="text-label-delete" @click="deleteTextLabel"> 🗑️ Remove Label </button>
       </div>
-       <!-- Resize handles (shown when editing) --> <template v-if="isEditing"
+       <!-- Resize handles (shown when editing) --> <template v-if="canResize"
         >
-        <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
+        <div
+          class="resize-handle resize-handle-se"
+          @mousedown.stop="startResize('se', $event)"
+          @touchstart.stop.prevent="startResize('se', $event)"
+        />
 
-        <div class="resize-handle resize-handle-sw" @mousedown.stop="startResize('sw', $event)" />
+        <div
+          class="resize-handle resize-handle-sw"
+          @mousedown.stop="startResize('sw', $event)"
+          @touchstart.stop.prevent="startResize('sw', $event)"
+        />
 
-        <div class="resize-handle resize-handle-ne" @mousedown.stop="startResize('ne', $event)" />
+        <div
+          class="resize-handle resize-handle-ne"
+          @mousedown.stop="startResize('ne', $event)"
+          @touchstart.stop.prevent="startResize('ne', $event)"
+        />
 
-        <div class="resize-handle resize-handle-nw" @mousedown.stop="startResize('nw', $event)" />
+        <div
+          class="resize-handle resize-handle-nw"
+          @mousedown.stop="startResize('nw', $event)"
+          @touchstart.stop.prevent="startResize('nw', $event)"
+        />
          </template
       >
     </div>
@@ -158,15 +206,31 @@
       <div v-if="stateDisplay" class="temperature-display" :style="stateDisplayStyle">
          {{ stateDisplay }}
       </div>
-       <!-- Resize handles (shown when editing) --> <template v-if="isEditing"
+       <!-- Resize handles (shown when editing) --> <template v-if="canResize"
         >
-        <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" />
+        <div
+          class="resize-handle resize-handle-se"
+          @mousedown.stop="startResize('se', $event)"
+          @touchstart.stop.prevent="startResize('se', $event)"
+        />
 
-        <div class="resize-handle resize-handle-sw" @mousedown.stop="startResize('sw', $event)" />
+        <div
+          class="resize-handle resize-handle-sw"
+          @mousedown.stop="startResize('sw', $event)"
+          @touchstart.stop.prevent="startResize('sw', $event)"
+        />
 
-        <div class="resize-handle resize-handle-ne" @mousedown.stop="startResize('ne', $event)" />
+        <div
+          class="resize-handle resize-handle-ne"
+          @mousedown.stop="startResize('ne', $event)"
+          @touchstart.stop.prevent="startResize('ne', $event)"
+        />
 
-        <div class="resize-handle resize-handle-nw" @mousedown.stop="startResize('nw', $event)" />
+        <div
+          class="resize-handle resize-handle-nw"
+          @mousedown.stop="startResize('nw', $event)"
+          @touchstart.stop.prevent="startResize('nw', $event)"
+        />
          </template
       >
     </div>
@@ -255,6 +319,15 @@ const emit = defineEmits<{
   edit: [entityId: string];
 }>();
 
+/**
+ * CRITICAL LOGIC NOTE - RESIZING
+ * To prevent regression of resizing functionality:
+ * 1. Do NOT use the `isEditing` prop to control resize handle visibility.
+ * 2. Do NOT name local refs `isEditing` (it shadows the prop). Use `isTextEditing`, etc.
+ * 3. Resize handles should show when `canResize` is true (Global Edit Mode + Selected).
+ * See docs/DESIGN_DECISIONS.md for more details.
+ */
+
 const widgetRef = ref<HTMLElement>();
 const isResizing = ref(false);
 const isDragging = ref(false);
@@ -267,7 +340,7 @@ const uiStore = useUIStore();
 const { isGlobalEditMode } = storeToRefs(uiStore);
 
 // Text Label Editing
-const isEditing = ref(false);
+const isTextEditing = ref(false);
 const editingText = ref('');
 const editingBackgroundTransparent = ref(false);
 const textInputRef = ref<HTMLInputElement>();
@@ -320,6 +393,7 @@ const iconUrl = computed(() => {
 
 // Styles
 const isSelected = computed(() => selectedEntity.value?.key === props.entity.key);
+const canResize = computed(() => isGlobalEditMode.value && isSelected.value);
 
 const widgetStyle = computed(() => {
   // Position is in diagram coordinates, no transform needed here
@@ -397,7 +471,7 @@ function handleTextLabelRightClick() {
 }
 
 function startEditing() {
-  isEditing.value = true;
+  isTextEditing.value = true;
   editingText.value = props.entity.labelOverride || props.entity.name || 'Text Label';
   editingBackgroundTransparent.value = props.entity.backgroundTransparent || false;
   // Focus input on next tick
@@ -435,7 +509,7 @@ function deleteTextLabel() {
 }
 
 // Watch isEditing to add/remove global click listener
-watch(isEditing, newValue => {
+watch(isTextEditing, newValue => {
   if (newValue) {
     document.addEventListener('mousedown', handleGlobalClick);
     document.addEventListener('touchstart', handleGlobalClick);
@@ -460,7 +534,7 @@ function handleGlobalClick(e: Event) {
     return;
   }
   // Click outside -> close
-  isEditing.value = false;
+  isTextEditing.value = false;
 }
 
 // Auto-enter edit mode for new text labels
@@ -801,7 +875,15 @@ let resizeStartEntityX = 0;
 let resizeStartEntityY = 0;
 let resizeDirection: 'se' | 'sw' | 'ne' | 'nw' | null = null;
 
-function startResize(direction: 'se' | 'sw' | 'ne' | 'nw', e: MouseEvent) {
+function getClientPos(e: MouseEvent | TouchEvent) {
+  if ('touches' in e && e.touches.length > 0) {
+    const touch = e.touches[0];
+    if (touch) return { x: touch.clientX, y: touch.clientY };
+  }
+  return { x: (e as MouseEvent).clientX, y: (e as MouseEvent).clientY };
+}
+
+function startResize(direction: 'se' | 'sw' | 'ne' | 'nw', e: MouseEvent | TouchEvent) {
   e.preventDefault();
   e.stopPropagation();
   isResizing.value = true;
@@ -818,9 +900,10 @@ function startResize(direction: 'se' | 'sw' | 'ne' | 'nw', e: MouseEvent) {
   const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
   const scale = props.scale ?? 1;
 
-  // Convert mouse position to diagram coordinates
-  const mouseX = e.clientX - wrapperRect.left;
-  const mouseY = e.clientY - wrapperRect.top;
+  // Convert mouse/touch position to diagram coordinates
+  const { x: clientX, y: clientY } = getClientPos(e);
+  const mouseX = clientX - wrapperRect.left;
+  const mouseY = clientY - wrapperRect.top;
   resizeStartDiagramX = (mouseX - panX) / scale;
   resizeStartDiagramY = (mouseY - panY) / scale;
 
@@ -832,10 +915,17 @@ function startResize(direction: 'se' | 'sw' | 'ne' | 'nw', e: MouseEvent) {
 
   document.addEventListener('mousemove', handleResizeMove);
   document.addEventListener('mouseup', handleResizeEnd);
+  document.addEventListener('touchmove', handleResizeMove, { passive: false });
+  document.addEventListener('touchend', handleResizeEnd);
 }
 
-function handleResizeMove(e: MouseEvent) {
+function handleResizeMove(e: MouseEvent | TouchEvent) {
   if (!isResizing.value || !resizeDirection) return;
+
+  // Prevent scrolling on touch
+  if ('touches' in e) {
+    e.preventDefault();
+  }
 
   // Get dashboard wrapper for coordinate conversion
   const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
@@ -848,9 +938,10 @@ function handleResizeMove(e: MouseEvent) {
   const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
   const scale = props.scale ?? 1;
 
-  // Convert current mouse position to diagram coordinates
-  const mouseX = e.clientX - wrapperRect.left;
-  const mouseY = e.clientY - wrapperRect.top;
+  // Convert current mouse/touch position to diagram coordinates
+  const { x: clientX, y: clientY } = getClientPos(e);
+  const mouseX = clientX - wrapperRect.left;
+  const mouseY = clientY - wrapperRect.top;
   const currentDiagramX = (mouseX - panX) / scale;
   const currentDiagramY = (mouseY - panY) / scale;
 
@@ -904,6 +995,8 @@ function handleResizeEnd() {
   resizeDirection = null;
   document.removeEventListener('mousemove', handleResizeMove);
   document.removeEventListener('mouseup', handleResizeEnd);
+  document.removeEventListener('touchmove', handleResizeMove);
+  document.removeEventListener('touchend', handleResizeEnd);
 
   // Save size
   const newSize = `${width.value} ${height.value}`;
@@ -1691,11 +1784,14 @@ function handleTouchMove(e: TouchEvent) {
 
   // If we moved enough, start dragging
   if (moved && !isDragging.value) {
-    isDragging.value = true;
-    hasDragged.value = true;
-    // Now prevent default to stop scrolling and other behaviors
-    e.preventDefault();
-    e.stopPropagation();
+    // CRITICAL: Only allow dragging if in Global Edit Mode AND Selected
+    if (isGlobalEditMode.value && isSelected.value) {
+      isDragging.value = true;
+      hasDragged.value = true;
+      // Now prevent default to stop scrolling and other behaviors
+      e.preventDefault();
+      e.stopPropagation();
+    }
   }
 
   // Only handle dragging if we're actually dragging
