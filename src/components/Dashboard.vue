@@ -551,7 +551,7 @@ function handleScroll(e: Event) {
 
 // Zoom
 const minScale = 0.1;
-const maxScale = 3;
+const maxScale = 1;
 const zoomStep = 0.1;
 
 function handleWheel(e: WheelEvent) {
@@ -790,6 +790,10 @@ function handleTouchMove(e: TouchEvent) {
     // We do NOT update pan functionality here.
   } else if (e.touches.length === 2 && isPinching) {
     // Pinch-to-zoom
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+
     const touch1 = e.touches[0];
     const touch2 = e.touches[1];
     if (!touch1 || !touch2) return;
@@ -801,14 +805,9 @@ function handleTouchMove(e: TouchEvent) {
     );
 
     // Calculate scale change
-    // Calculate scale change with dampening
-    // Dampen the zoom speed (e.g., 0.5 power or just a multiplier on the delta)
-    // A multiplier on the ratio change is safer: newRatio = 1 + (ratio - 1) * sensitivity
+    // Use natural 1:1 zoom logic for smoother control
     const ratio = currentDistance / initialTouchDistance;
-    const sensitivity = 0.5; // Reduce sensitivity to 50%
-    const dampenedRatio = 1 + (ratio - 1) * sensitivity;
-
-    const newScale = Math.max(minScale, Math.min(maxScale, touchStartScale * dampenedRatio));
+    const newScale = Math.max(minScale, Math.min(maxScale, touchStartScale * ratio));
 
     if (newScale !== scale.value) {
       // Get center point in wrapper coordinates
@@ -1717,6 +1716,7 @@ async function handleFileChange(event: Event) {
     isUploading.value = false;
     // Reset input
     input.value = '';
+    w;
   }
 }
 </script>
