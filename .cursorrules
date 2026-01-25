@@ -32,3 +32,7 @@ This is a Vue 3 + TypeScript project using Pinia for state management and Fireba
 ## Common patterns
 
 - **Zoom to Zone**: `zoomToZone(zoneData)` calculates scale/pan to fit the zone and updates `scrollTo` with `behavior: 'smooth'`.
+
+## Environment Setup
+
+- **Tailscale**: The Home Assistant server (`halaptop`) is only accessible via the Tailscale network. You MUST be connected to Tailscale to effectively use the API or run the app with live data. If API requests fail (e.g. 500 errors), check VPN connection first.

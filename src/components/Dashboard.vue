@@ -1516,6 +1516,14 @@ const interactions = {
     newPositions[entity.key] = `${x} ${y}`;
     await setPositions(newPositions);
 
+    // Save size (twice as big as default 60x80)
+    const newSizes = { ...sizes.value };
+    newSizes[entity.key] = '120 160';
+    await setSizes(newSizes);
+
+    // Switch to edit mode so the user can immediately edit/move the widget
+    uiStore.setGlobalEditMode(true);
+
     // Select the newly added entity so user can see it
     setSelectedEntity(entity, { x, y });
   },
@@ -1716,7 +1724,6 @@ async function handleFileChange(event: Event) {
     isUploading.value = false;
     // Reset input
     input.value = '';
-    w;
   }
 }
 </script>

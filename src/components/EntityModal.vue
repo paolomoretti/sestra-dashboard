@@ -53,20 +53,7 @@
           </div>
 
           <div class="filter-dropdown-wrapper">
-             <select
-              :value="activeEntityTab"
-              @change="
-                e => {
-                  const newTab = (e.target as HTMLSelectElement).value;
-                  activeEntityTab = newTab;
-                  setStoredTab(newTab);
-                  if (window.updatePaletteFilter) {
-                    window.updatePaletteFilter(newTab, searchQuery);
-                  }
-                }
-              "
-              class="filter-dropdown"
-            >
+             <select :value="activeEntityTab" @change="handleTabChange" class="filter-dropdown">
 
               <option v-for="tab in entityTabs" :key="tab.value" :value="tab.value">
                  {{ tab.icon }} {{ tab.label }}
@@ -142,10 +129,16 @@ async function handleEntitySelected(entity: EntityData) {
   } else if (window.addEntity) {
     window.addEntity(entity);
   }
-  // Close modal after selection? Maybe keep it open for multiple additions.
-  // User didn't specify, but usually "Add Entity" implies adding one.
-  // However, for a dashboard builder, adding multiple might be common.
-  // I'll keep it open for now, user can close it.
+  emit('close');
+}
+
+function handleTabChange(e: Event) {
+  const newTab = (e.target as HTMLSelectElement).value;
+  activeEntityTab.value = newTab;
+  setStoredTab(newTab);
+  if (window.updatePaletteFilter) {
+    window.updatePaletteFilter(newTab, searchQuery.value);
+  }
 }
 
 // Debounce function for search
@@ -197,7 +190,7 @@ watch(
   () => props.isOpen,
   newVal => {
     if (newVal) {
-      nextTick(() => {
+      void nextTick(() => {
         searchInput.value?.focus();
         // Re-initialize palette filter when opening
         if (window.updatePaletteFilter) {
