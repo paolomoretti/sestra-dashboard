@@ -133,9 +133,24 @@ function showMoreInfo(entityData: EntityData, config: HAConfig): void {
 
   // If in iframe, try to trigger native HA more-info dialog
   if (window.self !== window.top) {
+    // Use postMessage for cross-origin iframe communication
     try {
-      // Attempt to find the main HA element in the parent document and dispatch event
-      // This requires same-origin or appropriate access permissions
+      // Send postMessage to parent Home Assistant instance
+      window.parent.postMessage(
+        {
+          type: 'show-more-info',
+          entityId: entityId,
+        },
+        '*' // Target origin - use '*' or specify your HA URL for security
+      );
+      console.log('Sent show-more-info postMessage to parent HA for entity:', entityId);
+      return;
+    } catch (e) {
+      console.warn('Failed to send postMessage to parent:', e);
+    }
+
+    // Fallback: Try direct DOM access (only works if same-origin)
+    try {
       const haElement =
         window.parent.document.querySelector('home-assistant') ||
         window.parent.document.querySelector('hui-root');
@@ -169,14 +184,22 @@ function navigateTo(navigationPath: string, config: HAConfig): void {
   console.log('Navigate to:', navigationPath);
 
   let fullUrl: string;
+  let path: string;
 
   // If it's already a full URL, use it as-is
   if (navigationPath.startsWith('http://') || navigationPath.startsWith('https://')) {
     fullUrl = navigationPath;
+    // Extract path from full URL for postMessage
+    try {
+      const url = new URL(navigationPath);
+      path = url.pathname + url.search + url.hash;
+    } catch (e) {
+      path = navigationPath;
+    }
   } else {
     // Construct full Home Assistant URL
     // Ensure navigation path starts with /
-    const path = navigationPath.startsWith('/') ? navigationPath : `/${navigationPath}`;
+    path = navigationPath.startsWith('/') ? navigationPath : `/${navigationPath}`;
     fullUrl = `${config.address}${path}`;
   }
 
@@ -186,29 +209,50 @@ function navigateTo(navigationPath: string, config: HAConfig): void {
   const isIframe = window.self !== window.top;
 
   if (isIframe) {
+    // First try: Use postMessage for cross-origin iframe communication
     try {
-      // Try to navigate via top location (works if same-origin or allowed)
-      // This is generally more reliable for navigation than window.open in iframes
+      // Send postMessage to parent Home Assistant instance
+      window.parent.postMessage(
+        {
+          type: 'navigate',
+          path: path,
+        },
+        '*' // Target origin - use '*' or specify your HA URL for security
+      );
+      console.log('Sent navigate postMessage to parent HA with path:', path);
+      return;
+    } catch (e) {
+      console.warn('Failed to send postMessage to parent:', e);
+    }
+
+    // Second try: Direct navigation (works if same-origin)
+    try {
       window.top!.location.href = fullUrl;
+      return;
     } catch (e) {
       // SecurityError (cross-origin) or Sandbox-blocked
       console.log('Direct top navigation blocked, trying window.open target=_top');
-
-      // Try opening with target='_top'
-      const newWindow = window.open(fullUrl, '_top');
-
-      // If window.open returns null, it was likely blocked by popup blocker or sandbox
-      if (!newWindow) {
-        console.warn('Navigation to _top failed, falling back to _blank');
-        window.open(fullUrl, '_blank');
-
-        // Notify user if possible (toast)
-        import('../composables/useToast').then(({ useToast }) => {
-          const { info } = useToast();
-          info('Opening in new tab (navigation restricted by Home Assistant)');
-        });
-      }
     }
+
+    // Third try: window.open with _top target
+    try {
+      const newWindow = window.open(fullUrl, '_top');
+      if (newWindow) {
+        return;
+      }
+    } catch (e) {
+      console.warn('Navigation to _top failed:', e);
+    }
+
+    // Final fallback: Open in new tab
+    console.warn('All navigation methods failed, falling back to _blank');
+    window.open(fullUrl, '_blank');
+
+    // Notify user
+    import('../composables/useToast').then(({ useToast }) => {
+      const { info } = useToast();
+      info('Opening in new tab (navigation restricted by Home Assistant)');
+    });
   } else {
     // Standalone - open in new tab
     window.open(fullUrl, '_blank');

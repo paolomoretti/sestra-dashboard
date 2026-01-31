@@ -5,10 +5,24 @@ import { readFileSync } from 'fs';
 export default defineConfig(({ mode }: ConfigEnv) => {
   // Load env file based on `mode` in the current working directory.
   const env = loadEnv(mode, process.cwd(), '');
-  
+
+  // Generate build timestamp
+  const buildTimestamp = new Date().toISOString();
+  const buildDate = new Date().toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short'
+  });
+
+  console.log(`📅 Build timestamp: ${buildDate}`);
+
       // Try to get HA address from env, or read from config.ts, or use default
   let haAddress = env.VITE_HA_ADDRESS;
-  
+
   if (!haAddress) {
     try {
       // Try to extract address from config.ts
@@ -21,14 +35,18 @@ export default defineConfig(({ mode }: ConfigEnv) => {
       // If reading fails, use default
     }
   }
-  
+
   // Default fallback
   haAddress = haAddress || 'http://halaptop:8123';
-  
+
   console.log(`🔧 Using Home Assistant proxy target: ${haAddress}`);
 
   return {
     plugins: [vue()],
+    define: {
+      __BUILD_TIMESTAMP__: JSON.stringify(buildTimestamp),
+      __BUILD_DATE__: JSON.stringify(buildDate),
+    },
     server: {
       port: 3333,
       open: true,

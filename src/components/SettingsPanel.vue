@@ -21,6 +21,22 @@
             </div>
              <!-- Content -->
             <div class="settings-content">
+               <!-- Build Information -->
+              <div class="settings-section">
+                <div class="settings-section-header">
+                  <h3 class="settings-section-title">Build Information</h3>
+                </div>
+                <div class="build-info">
+                  <div class="build-info-row">
+                    <span class="build-info-label">Last Build:</span>
+                    <span class="build-info-value">{{ buildDate }}</span>
+                  </div>
+                </div>
+                <p class="settings-description">
+                  Application build date and time
+                </p>
+              </div>
+
                <!-- Label Visibility Toggle -->
               <div class="settings-section">
                  <label class="settings-label"
@@ -95,6 +111,10 @@ const { toggleLabels } = uiStore;
 
 const isProduction = import.meta.env.PROD;
 const isClearingCache = ref(false);
+
+// Get build timestamp from Vite-injected constants
+const buildDate = __BUILD_DATE__ || 'Development Build';
+const buildTimestamp = __BUILD_TIMESTAMP__;
 
 function close() {
   emit('close');
@@ -294,6 +314,32 @@ onUnmounted(() => {
   font-size: 16px;
   font-weight: 600;
   color: #ffffff;
+}
+
+.build-info {
+  background-color: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  padding: 12px 16px;
+}
+
+.build-info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.build-info-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #a0a0a0;
+}
+
+.build-info-value {
+  font-size: 14px;
+  font-weight: 400;
+  color: #ffffff;
+  font-family: 'Courier New', monospace;
 }
 
 .clear-cache-button {
