@@ -8,7 +8,7 @@
     "sestra-dashboard.tail8c24dc.ts.net:443": {
       "Handlers": {
         "/": {
-          "Proxy": "http://127.0.0.1:80"
+          "Proxy": "http://sestra-dashboard:80"
         }
       }
     }
