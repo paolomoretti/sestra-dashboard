@@ -37,7 +37,7 @@ export default defineConfig(({ mode }: ConfigEnv) => {
   }
 
   // Default fallback
-  haAddress = haAddress || 'http://halaptop:8123';
+  haAddress = haAddress || 'https://halaptop.tail8c24dc.ts.net';
 
   console.log(`🔧 Using Home Assistant proxy target: ${haAddress}`);
 

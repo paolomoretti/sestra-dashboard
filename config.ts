@@ -82,7 +82,7 @@ export const haConfig: HAConfig = {
     import.meta.env['VITE_HA_ADDRESS'] ??
     (window.location.pathname.includes('/local/')
       ? window.location.origin
-      : 'http://halaptop:8123'),
+      : 'https://halaptop.tail8c24dc.ts.net'),
   accessToken:
     localStorageConfig.accessToken ??
     (window.env?.HA_ACCESS_TOKEN || null) ??
