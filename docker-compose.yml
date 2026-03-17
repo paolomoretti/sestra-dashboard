@@ -26,7 +26,14 @@ services:
     volumes:
       - tailscale-state:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun
-      - ./tailscale-config:/config
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /config
+        cat <<'EJSON' > /config/serve.json
+        {"TCP":{"443":{"HTTPS":true}},"Web":{"sestra-dashboard.tail8c24dc.ts.net:443":{"Handlers":{"/":{"Proxy":"http://sestra-dashboard:80"}}}}}
+        EJSON
+        exec /usr/local/bin/containerboot
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
