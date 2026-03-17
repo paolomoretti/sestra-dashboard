@@ -3,8 +3,7 @@ services:
     image: littlebrown/sestra-dashboard:latest
     container_name: sestra-dashboard
     restart: unless-stopped
-    ports:
-      - '8787:80'
+    network_mode: service:tailscale
     environment:
       - HA_ADDRESS=${HA_ADDRESS}
       - HA_ACCESS_TOKEN=${HA_ACCESS_TOKEN}
@@ -14,6 +13,26 @@ services:
       - VITE_FIREBASE_STORAGE_BUCKET=${VITE_FIREBASE_STORAGE_BUCKET}
       - VITE_FIREBASE_MESSAGING_SENDER_ID=${VITE_FIREBASE_MESSAGING_SENDER_ID}
       - VITE_FIREBASE_APP_ID=${VITE_FIREBASE_APP_ID}
+    depends_on:
+      - tailscale
+
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: sestra-tailscale
+    hostname: sestra-dashboard
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+      - ./tailscale-config:/config
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=false
 
   watchtower:
     image: containrrr/watchtower
@@ -22,3 +41,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 300 --cleanup
     restart: unless-stopped
+
+volumes:
+  tailscale-state:
