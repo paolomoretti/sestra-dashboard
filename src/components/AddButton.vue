@@ -13,6 +13,8 @@
     <div v-if="isMenuOpen" class="add-menu">
        <button class="add-menu-item" @click="handleAddEntity">
          <span class="menu-icon">📋</span> <span class="menu-label">Add Entity</span> </button
+      > <button class="add-menu-item" @click="handleAddDeviceGroup">
+        <span class="menu-icon">▦</span> <span class="menu-label">Add Device</span> </button
       > <button class="add-menu-item" @click="handleAddActionButton">
          <span class="menu-icon">⚡</span> <span class="menu-label">Action Button</span> </button
       > <button class="add-menu-item" @click="handleAddImageWidget">
@@ -33,6 +35,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 
 const emit = defineEmits<{
   addEntity: [];
+  addDeviceGroup: [];
   addActionButton: [];
   addImageWidget: [];
   addTextLabel: [];
@@ -47,6 +50,11 @@ function toggleMenu() {
 
 function handleAddEntity() {
   emit('addEntity');
+  isMenuOpen.value = false;
+}
+
+function handleAddDeviceGroup() {
+  emit('addDeviceGroup');
   isMenuOpen.value = false;
 }
 

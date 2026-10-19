@@ -1,3 +1,4 @@
+import type { DeviceGroupConfig } from '../types/deviceGroup';
 import { ref, type Ref } from 'vue';
 import type { TapAction } from '../utils/actionHandler';
 
@@ -43,6 +44,7 @@ export interface EntityData {
   // Text Label fields
   isTextLabel?: boolean;
   backgroundTransparent?: boolean;
+  deviceGroup?: DeviceGroupConfig;
 }
 
 export interface Position {

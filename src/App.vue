@@ -21,15 +21,17 @@
     </div>
 
     <div class="flex flex-1 overflow-hidden relative">
-       <Dashboard ref="dashboardRef" class="flex-1 bg-[#1a1a1a] overflow-hidden" /> <NumericValues />
+       <Dashboard ref="dashboardRef" class="flex-1 bg-[#1a1a1a] overflow-hidden" @edit-device-group="handleEditDeviceGroup" /> <NumericValues />
       <ZoomControls /> <AddButton
         @add-action-button="handleAddActionButton"
         @add-image-widget="handleAddImageWidget"
         @add-text-label="handleAddTextLabel"
         @add-zone="handleAddZone"
         @add-entity="openEntityModal"
+        @add-device-group="openDeviceGroupModal"
       /> <ToastContainer /> <SettingsPanel :is-open="settingsOpen" @close="closeSettings" />
       <EntityModal :is-open="entityModalOpen" @close="closeEntityModal" />
+      <DeviceGroupModal :is-open="deviceGroupModalOpen" :initial-config="deviceGroupDraft" @close="closeDeviceGroupModal" @save="saveDeviceGroup" />
     </div>
 
   </div>
@@ -51,11 +53,16 @@ import SettingsPanel from './components/SettingsPanel.vue';
 import AddButton from './components/AddButton.vue';
 import ToastContainer from './components/ToastContainer.vue';
 import EntityModal from './components/EntityModal.vue';
+import DeviceGroupModal from './components/DeviceGroupModal.vue';
+import type { DeviceGroupConfig } from './types/deviceGroup';
 import './style.css';
 
 const dashboardRef = ref<InstanceType<typeof Dashboard>>();
 const settingsOpen = ref(false);
 const entityModalOpen = ref(false);
+const deviceGroupModalOpen = ref(false);
+const deviceGroupDraft = ref<DeviceGroupConfig | null>(null);
+const deviceGroupEditingId = ref<string | null>(null);
 const firestoreStore = useFirestoreStore();
 const uiStore = useUIStore();
 const { isGlobalEditMode } = storeToRefs(uiStore);
@@ -77,6 +84,31 @@ function openSettings() {
 
 function closeSettings() {
   settingsOpen.value = false;
+}
+
+function openDeviceGroupModal() {
+  deviceGroupDraft.value = null;
+  deviceGroupEditingId.value = null;
+  deviceGroupModalOpen.value = true;
+}
+
+function closeDeviceGroupModal() {
+  deviceGroupModalOpen.value = false;
+}
+
+async function saveDeviceGroup(config: DeviceGroupConfig) {
+  if (deviceGroupEditingId.value) {
+    await firestoreStore.updateWidget(deviceGroupEditingId.value, { deviceGroup: config });
+  } else {
+    await dashboardRef.value?.createDeviceGroup(config);
+  }
+  closeDeviceGroupModal();
+}
+
+function handleEditDeviceGroup(widgetId: string, config: DeviceGroupConfig) {
+  deviceGroupEditingId.value = widgetId;
+  deviceGroupDraft.value = config;
+  deviceGroupModalOpen.value = true;
 }
 
 function openEntityModal() {

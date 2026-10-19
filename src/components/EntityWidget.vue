@@ -184,6 +184,27 @@
          </template
       >
     </div>
+     <!-- Device group content shares this widget canvas frame -->
+    <div
+      v-else-if="entity.deviceGroup"
+      class="entity-widget device-group-frame"
+      :class="{ selected: isSelected, resizing: isResizing, dragging: isDragging, 'group-view-mode': !isGlobalEditMode }"
+      @touchstart="handleTouchStart"
+      @touchmove="handleTouchMove"
+      @touchend="handleTouchEnd"
+    >
+      <DeviceGroupWidget
+        :group="entity.deviceGroup"
+        :editing="isGlobalEditMode"
+        @run-automation="handleGroupAutomation"
+      />
+      <template v-if="canResize">
+        <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" @touchstart.stop.prevent="startResize('se', $event)" />
+        <div class="resize-handle resize-handle-sw" @mousedown.stop="startResize('sw', $event)" @touchstart.stop.prevent="startResize('sw', $event)" />
+        <div class="resize-handle resize-handle-ne" @mousedown.stop="startResize('ne', $event)" @touchstart.stop.prevent="startResize('ne', $event)" />
+        <div class="resize-handle resize-handle-nw" @mousedown.stop="startResize('nw', $event)" @touchstart.stop.prevent="startResize('nw', $event)" />
+      </template>
+    </div>
      <!-- Regular Entity Widget Style -->
     <div
       v-else
@@ -236,7 +257,7 @@
     </div>
      <!-- Entity Label - positioned relative to wrapper (only for non-action buttons) -->
     <div
-      v-if="!entity.isActionButton"
+      v-if="!entity.isActionButton && !entity.deviceGroup"
       v-show="showLabel && !isSelected"
       class="entity-label"
       :style="labelStyle"
@@ -304,6 +325,7 @@ import { useEntitiesStore } from '../stores/entities';
 import { haConfig } from '../../config';
 
 import CameraModal from './CameraModal.vue';
+import DeviceGroupWidget from './DeviceGroupWidget.vue';
 
 interface Props {
   entity: EntityData;
@@ -1081,6 +1103,18 @@ const stateConditionMet = computed(() => {
       return true;
   }
 });
+
+async function handleGroupAutomation() {
+  if (isGlobalEditMode.value || !props.entity.deviceGroup?.automationId) return;
+  if (hasDragged.value) {
+    hasDragged.value = false;
+    return;
+  }
+  await executeHAAction({
+    service: 'automation.trigger',
+    serviceData: { entity_id: props.entity.deviceGroup.automationId },
+  }, haConfig);
+}
 
 // Click handlers
 function handleClick() {
@@ -2322,5 +2356,7 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 .text-label-delete:hover {
   background: rgba(255, 68, 68, 0.1);
 }
+
+.entity-widget.device-group-frame.group-view-mode { touch-action: pan-y; }
 </style>
 
