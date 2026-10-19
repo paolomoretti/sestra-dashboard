@@ -57,7 +57,7 @@ export const useEntitiesStore = defineStore('entities', () => {
   ): Promise<T | null> {
     return new Promise((resolve, reject) => {
       const wsProtocol = config.address.startsWith('https') ? 'wss' : 'ws';
-      const baseUrl = config.address.replace(/^https?/, wsProtocol).replace(/\/api\/?$/, '');
+      const baseUrl = config.address.replace(/^https?/, wsProtocol).replace(/\/(?:api\/?)?$/, '');
       const wsUrl = `${baseUrl}/api/websocket`;
 
       const ws = new WebSocket(wsUrl);
@@ -403,7 +403,7 @@ export const useEntitiesStore = defineStore('entities', () => {
 
     // Determine WebSocket URL
     const wsProtocol = config.address.startsWith('https') ? 'wss' : 'ws';
-    const baseUrl = config.address.replace(/^https?/, wsProtocol).replace(/\/api\/?$/, '');
+    const baseUrl = config.address.replace(/^https?/, wsProtocol).replace(/\/(?:api\/?)?$/, '');
     const wsUrl = `${baseUrl}/api/websocket`;
 
     // eslint-disable-next-line no-console
