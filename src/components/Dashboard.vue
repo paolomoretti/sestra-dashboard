@@ -261,7 +261,6 @@ const placedEntities = computed(() => {
           icon: iconsData[entityId] ?? 'gesture-tap-button',
           loc: positionsData[entityId] ?? '0 0',
           size: sizesData[entityId] ?? '120 80',
-          tapAction: actionsData[entityId]?.tapAction ?? { action: 'call-service', service: '' },
           labelOverride: labelOverridesData[entityId] ?? 'Action Button',
           haAction: haActionsData[entityId] ?? { service: '' },
         };
@@ -311,7 +310,9 @@ const placedEntities = computed(() => {
         loc: positionsData[entityId] ?? entity.loc,
         size: sizesData[entityId] ?? entity.size,
         icon: iconsData[entityId] ?? entity.icon,
-        tapAction: actionsData[entityId]?.tapAction ?? entity.tapAction,
+        tapAction: isActionButton
+          ? undefined
+          : (actionsData[entityId]?.tapAction ?? entity.tapAction),
         holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
         labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
         labelVisible: labelVisible.value[entityId] ?? true,
@@ -1203,10 +1204,6 @@ async function createActionButton() {
     icon: 'gesture-tap-button',
     loc: `${diagramX} ${diagramY}`,
     size: '120 80',
-    tapAction: {
-      action: 'call-service',
-      service: '',
-    },
     haAction: {
       service: '',
     },

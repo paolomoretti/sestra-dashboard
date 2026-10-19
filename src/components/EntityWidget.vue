@@ -298,11 +298,10 @@ import {
   type EntityData,
 } from '../composables/useEntitySelection';
 import { getMDIIconPath, createIconSVG, getIconColor } from '../utils/iconUtils';
-import { executeTapAction } from '../utils/actionHandler';
+import { executeHAAction, executeTapAction } from '../utils/actionHandler';
 import { useUIStore } from '../stores/ui';
 import { useEntitiesStore } from '../stores/entities';
 import { haConfig } from '../../config';
-import { getApiBaseUrl } from '../utils/haServices';
 
 import CameraModal from './CameraModal.vue';
 
@@ -1246,13 +1245,7 @@ async function handleActionButtonClick(e: MouseEvent) {
       window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
     }
   } else {
-    // Execute Action
-    if (props.entity.tapAction) {
-      void executeTapAction(props.entity.tapAction, props.entity, haConfig);
-    } else {
-      // Default toggle
-      void executeTapAction({ action: 'toggle' }, props.entity, haConfig);
-    }
+    void executeHAAction(props.entity.haAction, haConfig);
   }
 }
 
@@ -1382,37 +1375,9 @@ async function handleActionButtonTouchEnd(e: TouchEvent) {
   const moved = dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD;
   const wasQuickTap = timeDiff < TAP_TIME_THRESHOLD && !moved && !actionButtonTouchMoved;
 
-  // If it was a quick tap, execute action
-  if (wasQuickTap) {
-    if (!isSelected.value && props.entity.haAction?.service) {
-      const service = props.entity.haAction.service;
-      const [domain, serviceName] = service.split('.');
-      if (domain && serviceName) {
-        try {
-          const apiBaseUrl = getApiBaseUrl(haConfig);
-          const url = `${apiBaseUrl}/services/${domain}/${serviceName}`;
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${haConfig.accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(props.entity.haAction.serviceData || {}),
-          });
-          if (!response.ok) {
-            throw new Error(`Failed to call service: ${response.statusText}`);
-          }
-          // Show success toast
-          const { success } = useToast();
-          success(`Action executed: ${serviceName}`);
-        } catch (error) {
-          console.error('Error executing HA action:', error);
-          // Show error toast
-          const { error: showError } = useToast();
-          showError(`Failed to execute action: ${serviceName}`);
-        }
-      }
-    }
+  if (wasQuickTap && !isSelected.value && props.entity.haAction?.service) {
+    e.preventDefault();
+    await executeHAAction(props.entity.haAction, haConfig);
   }
 
   actionButtonTouchMoved = false;
