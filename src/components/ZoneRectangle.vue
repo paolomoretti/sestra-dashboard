@@ -839,7 +839,6 @@ onUnmounted(() => {
   background: linear-gradient(135deg, rgba(33, 150, 243, 0.9) 0%, rgba(25, 118, 210, 0.9) 100%);
   border: 1px solid rgba(33, 150, 243, 1);
   cursor: pointer;
-  transition: all 0.2s ease;
   white-space: nowrap;
   font-weight: 600;
   color: #ffffff;

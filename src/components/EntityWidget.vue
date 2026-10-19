@@ -223,7 +223,7 @@
         @mousedown.stop="handleIconMouseDown"
         @contextmenu.stop="handleIconRightClick"
       /> <!-- State value display (numeric or string) -->
-      <div v-if="stateDisplay" class="temperature-display" :style="stateDisplayStyle">
+      <div v-if="stateDisplay" class="temperature-display">
          {{ stateDisplay }}
       </div>
        <!-- Resize handles (shown when editing) --> <template v-if="canResize"
@@ -259,7 +259,6 @@
       v-if="!entity.isActionButton && !entity.deviceGroup"
       v-show="showLabel && !isSelected"
       class="entity-label"
-      :style="labelStyle"
       :title="displayLabel"
       @click.stop="handleLabelClick"
       @mousedown.stop="handleLabelMouseDown"
@@ -653,59 +652,19 @@ const shouldShowImage = computed(() => {
   }
 });
 
-// Helper to compute scale factor for label scaling (using square root for gradual scaling)
-const labelScaleFactor = computed(() => {
+// Action buttons use square-root scaling to keep their controls usable at low zoom.
+const actionButtonScaleFactor = computed(() => {
   const scale = uiScale.value ?? props.scale ?? 1;
   // Clamp scale to prevent division by zero or extreme values
-  // Minimum scale of 0.1 to prevent labels from becoming too large
+  // Minimum scale of 0.1 to limit button scaling
   const clampedScale = Math.max(0.1, scale);
-  // Use square root for more gradual scaling - labels will scale but not as dramatically
+  // Use the square root to reduce the change in button size.
   return Math.sqrt(clampedScale);
-});
-
-// Label style - scales inversely with zoom to stay readable
-const labelStyle = computed(() => {
-  const scaleFactor = labelScaleFactor.value;
-  // Base font-size is 1.5rem
-  // At scale 0.5: fontSize = 1.5 / sqrt(0.5) ≈ 2.12rem (instead of 3rem linear)
-  // At scale 2: fontSize = 1.5 / sqrt(2) ≈ 1.06rem (instead of 0.75rem linear)
-  const fontSize = 1.5 / scaleFactor;
-  // Also scale padding and other dimensions proportionally
-  const padding = `${4 / scaleFactor}px ${8 / scaleFactor}px`;
-  const marginTop = `${4 / scaleFactor}px`;
-  const borderRadius = `${3 / scaleFactor}px`;
-  const maxWidth = `${250 / scaleFactor}px`;
-
-  return {
-    fontSize: `${fontSize}rem`,
-    padding,
-    marginTop,
-    borderRadius,
-    maxWidth,
-  };
-});
-
-// State display style (temperature, humidity, power, etc.) - scales with zoom
-const stateDisplayStyle = computed(() => {
-  const scaleFactor = labelScaleFactor.value;
-  // Base font-size is 2rem
-  const fontSize = 2 / scaleFactor;
-  // Scale padding and other dimensions proportionally
-  const padding = `${6 / scaleFactor}px ${12 / scaleFactor}px`;
-  const borderRadius = `${8 / scaleFactor}px`;
-  const marginLeft = `${8 / scaleFactor}px`;
-
-  return {
-    fontSize: `${fontSize}rem`,
-    padding,
-    borderRadius,
-    marginLeft,
-  };
 });
 
 // Action button style - scales entire button with zoom using transform
 const actionButtonStyle = computed(() => {
-  const scaleFactor = labelScaleFactor.value;
+  const scaleFactor = actionButtonScaleFactor.value;
   // Scale the entire button inversely to zoom (when zoomed out, button gets bigger)
   // scaleFactor is sqrt(zoom), so we scale by 1/scaleFactor
   const scale = 1 / scaleFactor;
