@@ -1,7 +1,7 @@
 <template>
    <Teleport to="body"
     >
-    <div v-if="isOpen" class="camera-modal-overlay" @click.self="close" @keydown.esc="close">
+    <div v-if="isOpen" class="camera-modal-overlay" :style="{ zIndex: shortcutZIndex }" @click.self="close">
 
       <div class="camera-modal" @click.stop>
 
@@ -129,7 +129,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
+import { useShortcutLayer } from '../composables/useHotkeys';
 import { haConfig } from '../../config';
 import { getApiBaseUrl } from '../utils/haServices';
 
@@ -419,18 +420,7 @@ watch(viewMode, newMode => {
   }
 });
 
-// Handle Escape key
-onMounted(() => {
-  const handleEscape = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && props.isOpen) {
-      close();
-    }
-  };
-  document.addEventListener('keydown', handleEscape);
-  onUnmounted(() => {
-    document.removeEventListener('keydown', handleEscape);
-  });
-});
+const { zIndex: shortcutZIndex } = useShortcutLayer(() => props.isOpen, close, 'modal');
 
 onUnmounted(() => {
   // Clean up
@@ -455,7 +445,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: 30000;
   padding: 20px;
 }
 

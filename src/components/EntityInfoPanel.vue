@@ -4,6 +4,7 @@
     v-if="isOpen"
     ref="panelRef"
     class="entity-info-panel"
+    :style="{ zIndex: shortcutZIndex }"
     :class="{ expanded: isExpanded }"
     @mousedown.stop
     @click.stop
@@ -189,7 +190,6 @@
                       if (currentHAAction) haActionSearchQuery = '';
                     }
                   "
-                  @keydown="handleHAActionSearchKeydown"
                   :placeholder="currentHAAction ? currentHAActionLabel : 'Search actions...'"
                   class="icon-search-input"
                 />
@@ -682,7 +682,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
+import { useShortcutLayer } from '../composables/useHotkeys';
+import { matchesShortcut } from '../shortcuts/controller';
+import { shortcuts } from '../shortcuts/catalog';
 import { debouncedRef } from '@vueuse/core';
 
 import { useLocalStorage } from '../composables/useLocalStorage';
@@ -918,44 +921,29 @@ const allVisibleOptions = computed(() => {
   return options;
 });
 
-function handleIconDropdownKeydown(e: KeyboardEvent) {
+function handleIconDropdownKeydown(event: KeyboardEvent) {
+  if (!shortcutsActive.value) return;
   if (!isExpanded.value) return;
-
-  const options = allVisibleOptions.value;
-  const totalOptions = options.length;
-  if (totalOptions === 0) return;
-
-  if (e.key === 'Enter' && highlightedIndex.value < 0 && totalOptions > 0) {
-    highlightedIndex.value = 0;
+  if (matchesShortcut(event, shortcuts.closePanel)) {
+    event.preventDefault();
+    isExpanded.value = false;
+    emit('close');
+    return;
   }
-
-  switch (e.key) {
-    case 'ArrowDown':
-      e.preventDefault();
-      highlightedIndex.value =
-        highlightedIndex.value < totalOptions - 1 ? highlightedIndex.value + 1 : 0;
-      scrollToHighlighted();
-      break;
-    case 'ArrowUp':
-      e.preventDefault();
-      highlightedIndex.value =
-        highlightedIndex.value <= 0 ? totalOptions - 1 : highlightedIndex.value - 1;
-      scrollToHighlighted();
-      break;
-    case 'Enter':
-      e.preventDefault();
-      if (highlightedIndex.value >= 0 && highlightedIndex.value < totalOptions) {
-        const option = options[highlightedIndex.value];
-        if (option) {
-          selectIcon(option.value);
-        }
-      }
-      break;
-    case 'Escape':
-      e.preventDefault();
-      isExpanded.value = false;
-      emit('close');
-      break;
+  const options = allVisibleOptions.value;
+  if (options.length === 0) return;
+  if (matchesShortcut(event, shortcuts.nextOption)) {
+    event.preventDefault();
+    highlightedIndex.value = highlightedIndex.value < options.length - 1 ? highlightedIndex.value + 1 : 0;
+    scrollToHighlighted();
+  } else if (matchesShortcut(event, shortcuts.previousOption)) {
+    event.preventDefault();
+    highlightedIndex.value = highlightedIndex.value <= 0 ? options.length - 1 : highlightedIndex.value - 1;
+    scrollToHighlighted();
+  } else if (matchesShortcut(event, shortcuts.selectOption)) {
+    event.preventDefault();
+    const option = options[Math.max(0, highlightedIndex.value)];
+    if (option) selectIcon(option.value);
   }
 }
 
@@ -978,17 +966,18 @@ function scrollToHighlighted() {
   });
 }
 
-function handleIconSearchKeydown(e: KeyboardEvent) {
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
+function handleIconSearchKeydown(event: KeyboardEvent) {
+  if (!shortcutsActive.value) return;
+  const next = matchesShortcut(event, shortcuts.nextOption);
+  const previous = matchesShortcut(event, shortcuts.previousOption);
+  if (next || previous) {
+    event.preventDefault();
     if (allVisibleOptions.value.length > 0) {
-      if (highlightedIndex.value < 0) {
-        highlightedIndex.value = e.key === 'ArrowDown' ? 0 : allVisibleOptions.value.length - 1;
-      }
+      if (highlightedIndex.value < 0) highlightedIndex.value = next ? 0 : allVisibleOptions.value.length - 1;
       iconDropdownRef.value?.focus();
     }
-  }
-  if (e.key === 'Escape') {
+  } else if (matchesShortcut(event, shortcuts.closePanel)) {
+    event.preventDefault();
     isExpanded.value = false;
     emit('close');
   }
@@ -1299,50 +1288,34 @@ function handleAutomationChange(event: Event) {
   localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
 }
 
-function handleHAActionSearchKeydown() {
-  // Could implement keyboard navigation for HA actions if needed
-}
-
 function selectLinkedEntity(entityId: string) {
   emit('update', props.entity.key, { linkedEntityId: entityId });
   entitySearchQuery.value = '';
   entityHighlightedIndex.value = -1;
 }
 
-function handleEntitySearchKeydown(e: KeyboardEvent) {
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    const options = ['', ...filteredEntities.value.map(e => e.key)];
-    if (options.length > 0) {
-      if (entityHighlightedIndex.value < 0) {
-        entityHighlightedIndex.value = e.key === 'ArrowDown' ? 0 : options.length - 1;
-      } else {
-        if (e.key === 'ArrowDown') {
-          entityHighlightedIndex.value =
-            entityHighlightedIndex.value < options.length - 1
-              ? entityHighlightedIndex.value + 1
-              : 0;
-        } else {
-          entityHighlightedIndex.value =
-            entityHighlightedIndex.value > 0
-              ? entityHighlightedIndex.value - 1
-              : options.length - 1;
-        }
-      }
-      scrollToHighlightedEntity();
+function handleEntitySearchKeydown(event: KeyboardEvent) {
+  if (!shortcutsActive.value) return;
+  const next = matchesShortcut(event, shortcuts.nextOption);
+  const previous = matchesShortcut(event, shortcuts.previousOption);
+  const options = ['', ...filteredEntities.value.map(entity => entity.key)];
+  if (next || previous) {
+    event.preventDefault();
+    if (entityHighlightedIndex.value < 0) {
+      entityHighlightedIndex.value = next ? 0 : options.length - 1;
+    } else if (next) {
+      entityHighlightedIndex.value = entityHighlightedIndex.value < options.length - 1 ? entityHighlightedIndex.value + 1 : 0;
+    } else {
+      entityHighlightedIndex.value = entityHighlightedIndex.value > 0 ? entityHighlightedIndex.value - 1 : options.length - 1;
     }
-  }
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const options = ['', ...filteredEntities.value.map(e => e.key)];
-    if (entityHighlightedIndex.value >= 0 && entityHighlightedIndex.value < options.length) {
-      const selectedOption = options[entityHighlightedIndex.value];
-      if (selectedOption !== undefined) {
-        selectLinkedEntity(selectedOption);
-      }
-    }
-  }
-  if (e.key === 'Escape') {
+    scrollToHighlightedEntity();
+  } else if (matchesShortcut(event, shortcuts.selectOption)) {
+    event.preventDefault();
+    const selectedOption = options[entityHighlightedIndex.value];
+    if (selectedOption !== undefined) selectLinkedEntity(selectedOption);
+  } else if (matchesShortcut(event, shortcuts.clearEntitySearch) &&
+    (entitySearchQuery.value !== '' || entityHighlightedIndex.value >= 0)) {
+    event.preventDefault();
     entitySearchQuery.value = '';
     entityHighlightedIndex.value = -1;
   }
@@ -1597,18 +1570,7 @@ function handleDelete() {
   }
 }
 
-// Handle Escape key
-onMounted(() => {
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && props.isOpen) {
-      emit('close');
-    }
-  };
-  document.addEventListener('keydown', handleKeyDown);
-  onUnmounted(() => {
-    document.removeEventListener('keydown', handleKeyDown);
-  });
-});
+const { zIndex: shortcutZIndex, isActive: shortcutsActive } = useShortcutLayer(() => props.isOpen, () => emit('close'));
 </script>
 
 <style scoped>

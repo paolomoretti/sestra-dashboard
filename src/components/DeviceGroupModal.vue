@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isOpen" class="overlay" @click.self="emit('close')">
+  <div v-if="isOpen" class="overlay" :style="{ zIndex: shortcutZIndex }" @click.self="emit('close')">
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="device-group-title">
       <header class="header">
         <h2 id="device-group-title">{{ initialConfig ? 'Edit device group' : 'Add device group' }}</h2>
@@ -54,6 +54,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
+import { useShortcutLayer } from '../composables/useHotkeys';
 import { useEntitiesStore, type HADevice } from '../stores/entities';
 import { fetchAutomations } from '../utils/haServices';
 import { haConfig } from '../../config';
@@ -61,6 +62,7 @@ import type { DeviceGroupConfig } from '../types/deviceGroup';
 
 const props = defineProps<{ isOpen: boolean; initialConfig?: DeviceGroupConfig | null }>();
 const emit = defineEmits<{ close: []; save: [config: DeviceGroupConfig] }>();
+const { zIndex: shortcutZIndex } = useShortcutLayer(() => props.isOpen, () => emit('close'), 'modal');
 const entitiesStore = useEntitiesStore();
 const { devices, allEntities } = storeToRefs(entitiesStore);
 const selectedDeviceId = ref('');

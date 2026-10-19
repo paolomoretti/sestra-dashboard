@@ -1,63 +1,65 @@
-import { onMounted, onUnmounted, type Ref } from 'vue';
+import {
+  computed,
+  inject,
+  onMounted,
+  onScopeDispose,
+  onUnmounted,
+  provide,
+  shallowRef,
+  toValue,
+  watch,
+  type InjectionKey,
+  type MaybeRefOrGetter,
+} from 'vue';
+import {
+  createShortcutController,
+  shortcutLayerPriority,
+  type ShortcutBinding,
+} from '../shortcuts/controller';
 
-export interface HotkeyHandler {
-  key: string;
-  handler: (event: KeyboardEvent) => void;
-  description?: string;
-  // Whether to prevent default behavior
-  preventDefault?: boolean;
-  // Whether to stop propagation
-  stopPropagation?: boolean;
+const shortcutControllerKey: InjectionKey<ReturnType<typeof createShortcutController>> =
+  Symbol('shortcuts');
+
+export function provideShortcuts() {
+  const controller = createShortcutController();
+  provide(shortcutControllerKey, controller);
+  onMounted(() => document.addEventListener('keydown', controller.dispatch));
+  onUnmounted(() => document.removeEventListener('keydown', controller.dispatch));
+  return controller;
 }
 
-/**
- * Composable for handling global keyboard shortcuts
- * Only triggers when not typing in input fields
- */
-export function useHotkeys(handlers: HotkeyHandler[]): void {
-  let handler: ((event: KeyboardEvent) => void) | null = null;
-
-  onMounted(() => {
-    handler = (event: KeyboardEvent) => {
-      // Don't trigger hotkeys if meta/ctrl keys are pressed (e.g., CMD+C, CTRL+C)
-      if (event.metaKey || event.ctrlKey) {
-        return;
-      }
-
-      // Don't trigger hotkeys when user is typing in input fields
-      const target = event.target as HTMLElement;
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
-      ) {
-        return;
-      }
-
-      // Find matching handler
-      const matchedHandler = handlers.find(h => {
-        // Case-insensitive key matching
-        return h.key.toLowerCase() === event.key.toLowerCase();
-      });
-
-      if (matchedHandler) {
-        if (matchedHandler.preventDefault) {
-          event.preventDefault();
-        }
-        if (matchedHandler.stopPropagation) {
-          event.stopPropagation();
-        }
-        matchedHandler.handler(event);
-      }
-    };
-
-    document.addEventListener('keydown', handler);
-  });
-
-  onUnmounted(() => {
-    if (handler) {
-      document.removeEventListener('keydown', handler);
-    }
-  });
+export function useShortcutController() {
+  const controller = inject(shortcutControllerKey);
+  if (!controller) throw new Error('Call provideShortcuts() in an ancestor component.');
+  return controller;
 }
 
+export function useHotkeys(bindings: MaybeRefOrGetter<readonly ShortcutBinding[]>): void {
+  const controller = useShortcutController();
+  onScopeDispose(controller.register(() => toValue(bindings)));
+}
+
+export function useShortcutLayer(
+  open: MaybeRefOrGetter<boolean>,
+  close: () => void,
+  kind: keyof typeof shortcutLayerPriority = 'editor'
+) {
+  const controller = useShortcutController();
+  const activeLayer = shallowRef<ReturnType<typeof controller.openLayer>>();
+  watch(
+    () => toValue(open),
+    (isOpen, _previous, onCleanup) => {
+      activeLayer.value = undefined;
+      if (isOpen) {
+        const layer = controller.openLayer({ close, priority: shortcutLayerPriority[kind] });
+        activeLayer.value = layer;
+        onCleanup(layer.dispose);
+      }
+    },
+    { immediate: true, flush: 'sync' }
+  );
+  return {
+    zIndex: computed(() => activeLayer.value?.zIndex.value),
+    isActive: computed(() => activeLayer.value?.isActive.value === true),
+  };
+}

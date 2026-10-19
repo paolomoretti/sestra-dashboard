@@ -147,8 +147,7 @@
           v-model="editingText"
           class="text-label-input"
           placeholder="Label Text"
-          @keydown.enter="saveTextLabel"
-          @blur="saveTextLabel"
+          @keydown="handleLabelKeydown"
         /> <label class="text-label-toggle"
           > <input type="checkbox" v-model="editingBackgroundTransparent" /> Transparent Background
           </label
@@ -309,13 +308,15 @@
 <script setup lang="ts">
 import { clientToDashboardPoint } from '../utils/dashboardCoordinates';
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { useShortcutLayer } from '../composables/useHotkeys';
+import { shortcuts } from '../shortcuts/catalog';
+import { matchesShortcut } from '../shortcuts/controller';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useToast } from '../composables/useToast';
 import {
   selectedEntity,
   selectedEntityPosition,
-  clearSelection,
   type EntityData,
 } from '../composables/useEntitySelection';
 import { getMDIIconPath, createIconSVG, getIconColor } from '../utils/iconUtils';
@@ -423,7 +424,9 @@ const widgetStyle = computed(() => {
   // Determine z-index: dragging > panel open > selected > normal
   // When panel is open, widget needs high z-index to be above other widgets
   let zIndex = 1;
-  if (isDragging.value) {
+  if (isTextEditing.value) {
+    zIndex = shortcutZIndex.value ?? 20000;
+  } else if (isDragging.value) {
     zIndex = 20002; // Highest priority when dragging (above everything)
   } else if (isPanelOpen.value) {
     zIndex = 20000; // High priority when panel is open (ensures widget is above other widgets)
@@ -503,26 +506,14 @@ function startEditing() {
   }, 50);
 }
 
-function saveTextLabel() {
-  // Delay slightly to allow checkbox click to register if that's what caused blur
-  setTimeout(() => {
-    // Only save if we are still effectively editing or if it was a blur that ends editing
-    // But since we want to allow clicking the checkbox without closing, we need to be careful.
-    // Actually, clicking checkbox inside the container shouldn't trigger blur of the input if we don't refocus?
-    // Wait, checkbox click will blur the input.
-    // If we want to keep menu open when interacting with checkbox, we should check active element?
-    // User requirement: "Exit edit mode when clicking outside... or pressing Enter".
-    // "The edit menu should include a toggle".
-    // If I click the toggle, the input loses focus (blur).
-    // If I close on blur, I can't click the toggle easily.
-    // Solution: Don't close on blur immediately if related target is in the menu.
-    // But relatedTarget might not be available on all browsers reliably?
-    // Let's assume standard behavior.
-    // Better approach: Exit ONLY on Enter or Click Outside (handled by directive or global click).
-    // But "clicking outside" needs a listener.
-    // Let's use a global click listener when isEditing is true.
-  }, 0);
+function handleLabelKeydown(event: KeyboardEvent) {
+  if (!shortcutsActive.value) return;
+  if (!matchesShortcut(event, shortcuts.finishLabel)) return;
+  event.preventDefault();
+  isTextEditing.value = false;
 }
+
+const { zIndex: shortcutZIndex, isActive: shortcutsActive } = useShortcutLayer(isTextEditing, () => { isTextEditing.value = false; }, 'canvas');
 
 function deleteTextLabel() {
   if (confirm('Are you sure you want to remove this label?')) {
@@ -1889,17 +1880,6 @@ watch(
 
 // Click outside detection
 onMounted(() => {
-  const handleKeyDown = (e: KeyboardEvent) => {
-    // Delete key is now handled in Dashboard.vue
-    if (e.key === 'Escape') {
-      if (isPanelOpen.value) {
-        isPanelOpen.value = false;
-      }
-      // Clear selection on Escape
-      clearSelection();
-    }
-  };
-
   const handleClickOutside = (e: MouseEvent) => {
     // Don't close if clicking on the panel or widget
     const target = e.target as HTMLElement;
@@ -1925,10 +1905,8 @@ onMounted(() => {
     }
   };
 
-  document.addEventListener('keydown', handleKeyDown);
   document.addEventListener('click', handleClickOutside);
   onUnmounted(() => {
-    document.removeEventListener('keydown', handleKeyDown);
     document.removeEventListener('click', handleClickOutside);
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);

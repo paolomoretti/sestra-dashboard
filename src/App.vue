@@ -29,7 +29,8 @@
         @add-zone="handleAddZone"
         @add-entity="openEntityModal"
         @add-device-group="openDeviceGroupModal"
-      /> <ToastContainer /> <SettingsPanel :is-open="settingsOpen" @close="closeSettings" />
+      /> <ToastContainer /> <SettingsPanel :is-open="settingsOpen" @close="closeSettings" @show-shortcuts="shortcutsOpen = true" />
+      <KeyboardShortcutsPanel :is-open="shortcutsOpen" @close="shortcutsOpen = false" />
       <EntityModal :is-open="entityModalOpen" @close="closeEntityModal" />
       <DeviceGroupModal :is-open="deviceGroupModalOpen" :initial-config="deviceGroupDraft" @close="closeDeviceGroupModal" @save="saveDeviceGroup" />
     </div>
@@ -39,8 +40,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
-import { useHotkeys } from './composables/useHotkeys';
+import { ref, onMounted, onScopeDispose, watch } from 'vue';
+import { provideShortcuts } from './composables/useHotkeys';
+import { shortcuts } from './shortcuts/catalog';
+import KeyboardShortcutsPanel from './components/KeyboardShortcutsPanel.vue';
 import { storeToRefs } from 'pinia';
 import { useFirestoreStore } from './stores/firestore';
 import { useUIStore } from './stores/ui';
@@ -59,6 +62,12 @@ import './style.css';
 
 const dashboardRef = ref<InstanceType<typeof Dashboard>>();
 const settingsOpen = ref(false);
+const shortcutsOpen = ref(false);
+const shortcutController = provideShortcuts();
+onScopeDispose(shortcutController.register(() => [{
+  shortcut: shortcuts.showShortcuts,
+  handler: () => { shortcutsOpen.value = true; },
+}]));
 const entityModalOpen = ref(false);
 const deviceGroupModalOpen = ref(false);
 const deviceGroupDraft = ref<DeviceGroupConfig | null>(null);
@@ -118,51 +127,6 @@ function openEntityModal() {
 function closeEntityModal() {
   entityModalOpen.value = false;
 }
-
-// Setup hotkeys
-useHotkeys([
-  {
-    key: 'z',
-    handler: () => {
-      dashboardRef.value?.zoomReset();
-    },
-    description: 'Reset zoom (Fit to Screen)',
-    preventDefault: true,
-  },
-  {
-    key: 'w',
-    handler: () => {
-      dashboardRef.value?.zoomFitToWidth();
-    },
-    description: 'Fit to width',
-    preventDefault: true,
-  },
-  {
-    key: '+',
-    handler: () => {
-      dashboardRef.value?.zoomIn();
-    },
-    description: 'Zoom in',
-    preventDefault: true,
-  },
-  {
-    key: '=',
-    handler: () => {
-      // Also handle '=' key (which is '+' without shift on some keyboards)
-      dashboardRef.value?.zoomIn();
-    },
-    description: 'Zoom in',
-    preventDefault: true,
-  },
-  {
-    key: '-',
-    handler: () => {
-      dashboardRef.value?.zoomOut();
-    },
-    description: 'Zoom out',
-    preventDefault: true,
-  },
-]);
 
 // Expose dashboard functions to window for backward compatibility
 onMounted(() => {
