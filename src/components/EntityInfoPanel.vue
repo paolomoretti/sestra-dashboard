@@ -1120,7 +1120,13 @@ const currentHAActionLabel = computed(() => {
 const haServices = ref<HAService[]>([]);
 const haActionSearchQuery = ref('');
 const isLoadingHAActions = ref(false);
-const debouncedHAActionSearchQuery = debouncedRef(haActionSearchQuery, 500);
+
+function actionWords(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
 
 const automations = ref<Array<{ entity_id: string; name: string }>>([]);
 const isLoadingAutomations = ref(false);
@@ -1131,29 +1137,33 @@ const selectedAutomation = computed(() => {
 });
 
 const filteredHAActions = computed(() => {
-  if (debouncedHAActionSearchQuery.value.trim().length === 0) {
+  const queryWords = actionWords(haActionSearchQuery.value);
+  if (queryWords.length === 0) {
     return [];
   }
   const allServices = getAllServices(haServices.value);
-  const query = debouncedHAActionSearchQuery.value.toLowerCase();
-  return allServices.filter(
-    service =>
-      service.service.toLowerCase().includes(query) || service.label.toLowerCase().includes(query)
-  );
+  return allServices.filter(service => {
+    const words = actionWords(`${service.service} ${service.label}`);
+    return queryWords.every(queryWord => words.some(word => word.startsWith(queryWord)));
+  });
 });
 
-watch(isExpanded, async expanded => {
-  if (expanded && props.entity.isActionButton && haServices.value.length === 0) {
-    isLoadingHAActions.value = true;
-    try {
-      haServices.value = await fetchHAServices(haConfig);
-    } catch (error) {
-      console.error('Error loading HA services:', error);
-    } finally {
-      isLoadingHAActions.value = false;
+watch(
+  [isExpanded, () => props.entity.isActionButton],
+  async ([expanded, isActionButton]) => {
+    if (expanded && isActionButton && haServices.value.length === 0 && !isLoadingHAActions.value) {
+      isLoadingHAActions.value = true;
+      try {
+        haServices.value = await fetchHAServices(haConfig);
+      } catch (error) {
+        console.error('Error loading HA services:', error);
+      } finally {
+        isLoadingHAActions.value = false;
+      }
     }
-  }
-});
+  },
+  { immediate: true }
+);
 
 watch(
   currentHAAction,
@@ -1264,20 +1274,9 @@ function selectHAAction(service: string) {
 
   emit('update', props.entity.key, { haAction });
 
-  const tapAction = {
-    action: 'call-service' as const,
-    service,
-  };
-  emit('update', props.entity.key, { tapAction });
-
   const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
   haActions[props.entity.key] = haAction;
   localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
-
-  const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
-  if (!actions[props.entity.key]) actions[props.entity.key] = {};
-  actions[props.entity.key].tapAction = tapAction;
-  localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
 
   haActionSearchQuery.value = '';
 }

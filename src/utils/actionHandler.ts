@@ -19,6 +19,40 @@ export interface TapAction {
   };
 }
 
+export async function executeHAAction(
+  action: EntityData['haAction'],
+  config: HAConfig
+): Promise<void> {
+  if (!action?.service) return;
+
+  const [domain, serviceName] = action.service.split('.');
+  if (!domain || !serviceName) {
+    const { error: showError } = useToast();
+    showError(`Invalid HA action: ${action.service}`);
+    return;
+  }
+
+  try {
+    const response = await fetch(`${getApiBaseUrl(config)}/services/${domain}/${serviceName}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(action.serviceData ?? {}),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to call service: ${response.statusText}`);
+    }
+    const { success } = useToast();
+    success(`Action executed: ${serviceName}`);
+  } catch (error) {
+    console.error('Error executing HA action:', error);
+    const { error: showError } = useToast();
+    showError(`Failed to execute action: ${serviceName}`);
+  }
+}
+
 /**
  * Execute a tap action on an entity
  * @param action - Action configuration { action: 'toggle'|'more-info'|'navigate', navigation_path?: string }

@@ -27,6 +27,7 @@
          <!-- Background image --> <img
           :src="floorplanImage"
           class="dashboard-background"
+          :class="{ 'dashboard-background-editing': uiStore.isGlobalEditMode }"
           :style="backgroundStyle"
           draggable="false"
           alt="Floor plan"
@@ -103,6 +104,8 @@ import {
 import { useEntitiesStore } from '../stores/entities';
 import { useFirestoreStore } from '../stores/firestore';
 import { useUIStore } from '../stores/ui';
+import { deviceGroupInitialSize } from '../utils/deviceGroup';
+import { parseDeviceGroup, type DeviceGroupConfig } from '../types/deviceGroup';
 
 // Constants
 const FLOORPLAN_WIDTH = 2190;
@@ -120,6 +123,7 @@ let zoomIndicatorTimeout: ReturnType<typeof setTimeout> | undefined;
 const fileInputRef = ref<HTMLInputElement>();
 const isAnimatingZoom = ref(false);
 const entitiesStore = useEntitiesStore();
+const emit = defineEmits<{ editDeviceGroup: [widgetId: string, config: DeviceGroupConfig] }>();
 
 // Rectangle drawing state
 const isDrawingRectangle = ref(false);
@@ -133,6 +137,11 @@ const selectedZoneId = ref<string | null>(null);
 const widgetEditingId = ref<string | null>(null);
 
 function handleWidgetEdit(entityId: string) {
+  const group = parseDeviceGroup(firestoreStore.widgets[entityId]?.deviceGroup);
+  if (group) {
+    emit('editDeviceGroup', entityId, group);
+    return;
+  }
   widgetEditingId.value = entityId;
 }
 
@@ -245,10 +254,27 @@ const placedEntities = computed(() => {
       const isActionButton = entityId.startsWith('action_button_');
       const isImageWidget = entityId.startsWith('image_widget_');
       const isTextLabel = entityId.startsWith('text_label_');
+      const deviceGroup = parseDeviceGroup(firestoreStore.widgets[entityId]?.deviceGroup);
 
       // Find entity in store (or create synthetic entity for action buttons/image widgets)
       let entity: EntityData | null =
         entitiesStore.allEntities.find(e => e.key === entityId) ?? null;
+
+      // If not found and it is a device group, create its synthetic canvas entity
+      if (!entity && deviceGroup) {
+        const device = entitiesStore.devices.find(item => item.id === deviceGroup.deviceId);
+        entity = {
+          key: entityId,
+          category: 'device_group',
+          name: device?.name_by_user || device?.name || deviceGroup.deviceName,
+          state: 'idle',
+          icon: 'devices',
+          loc: positionsData[entityId] ?? '0 0',
+          size: sizesData[entityId] ?? deviceGroupInitialSize(deviceGroup.entityIds.length),
+          deviceId: deviceGroup.deviceId,
+          deviceGroup,
+        };
+      }
 
       // If not found and it's an action button, create a synthetic entity
       if (!entity && isActionButton) {
@@ -261,7 +287,6 @@ const placedEntities = computed(() => {
           icon: iconsData[entityId] ?? 'gesture-tap-button',
           loc: positionsData[entityId] ?? '0 0',
           size: sizesData[entityId] ?? '120 80',
-          tapAction: actionsData[entityId]?.tapAction ?? { action: 'call-service', service: '' },
           labelOverride: labelOverridesData[entityId] ?? 'Action Button',
           haAction: haActionsData[entityId] ?? { service: '' },
         };
@@ -311,7 +336,9 @@ const placedEntities = computed(() => {
         loc: positionsData[entityId] ?? entity.loc,
         size: sizesData[entityId] ?? entity.size,
         icon: iconsData[entityId] ?? entity.icon,
-        tapAction: actionsData[entityId]?.tapAction ?? entity.tapAction,
+        tapAction: isActionButton
+          ? undefined
+          : (actionsData[entityId]?.tapAction ?? entity.tapAction),
         holdAction: actionsData[entityId]?.holdAction ?? entity.holdAction,
         labelOverride: labelOverridesData[entityId] ?? entity.labelOverride,
         labelVisible: labelVisible.value[entityId] ?? true,
@@ -1203,10 +1230,6 @@ async function createActionButton() {
     icon: 'gesture-tap-button',
     loc: `${diagramX} ${diagramY}`,
     size: '120 80',
-    tapAction: {
-      action: 'call-service',
-      service: '',
-    },
     haAction: {
       service: '',
     },
@@ -1460,6 +1483,23 @@ function setRectangleDrawingMode(enabled: boolean) {
 
 // Expose functions for external use
 const interactions = {
+  async createDeviceGroup(config: DeviceGroupConfig) {
+    if (!dashboardWrapperRef.value) return;
+    const rect = dashboardWrapperRef.value.getBoundingClientRect();
+    const diagramX = (rect.width / 2 - panX.value) / scale.value;
+    const diagramY = (rect.height / 2 - panY.value) / scale.value;
+    const widgetId = `device_group_${crypto.randomUUID()}`;
+    const widgetSize = deviceGroupInitialSize(config.entityIds.length);
+    await firestoreStore.saveWidget(widgetId, {
+      entityName: widgetId,
+      position: `${diagramX} ${diagramY}`,
+      size: widgetSize,
+      deviceGroup: config,
+    });
+    uiStore.setGlobalEditMode(true);
+    const groupEntity = placedEntities.value.find(item => item.key === widgetId);
+    if (groupEntity) setSelectedEntity(groupEntity, { x: diagramX, y: diagramY });
+  },
   createActionButton,
   createTextLabel: () => {
     void createTextLabel();
@@ -1943,6 +1983,12 @@ async function handleFileChange(event: Event) {
   pointer-events: none;
   max-width: none;
   max-height: none;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+
+.dashboard-background-editing {
+  filter: grayscale(1);
+  opacity: 0.2;
 }
 
 .drop-zone-overlay {

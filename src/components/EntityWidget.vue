@@ -184,6 +184,27 @@
          </template
       >
     </div>
+     <!-- Device group content shares this widget canvas frame -->
+    <div
+      v-else-if="entity.deviceGroup"
+      class="entity-widget device-group-frame"
+      :class="{ selected: isSelected, resizing: isResizing, dragging: isDragging, 'group-view-mode': !isGlobalEditMode }"
+      @touchstart="handleTouchStart"
+      @touchmove="handleTouchMove"
+      @touchend="handleTouchEnd"
+    >
+      <DeviceGroupWidget
+        :group="entity.deviceGroup"
+        :editing="isGlobalEditMode"
+        @run-automation="handleGroupAutomation"
+      />
+      <template v-if="canResize">
+        <div class="resize-handle resize-handle-se" @mousedown.stop="startResize('se', $event)" @touchstart.stop.prevent="startResize('se', $event)" />
+        <div class="resize-handle resize-handle-sw" @mousedown.stop="startResize('sw', $event)" @touchstart.stop.prevent="startResize('sw', $event)" />
+        <div class="resize-handle resize-handle-ne" @mousedown.stop="startResize('ne', $event)" @touchstart.stop.prevent="startResize('ne', $event)" />
+        <div class="resize-handle resize-handle-nw" @mousedown.stop="startResize('nw', $event)" @touchstart.stop.prevent="startResize('nw', $event)" />
+      </template>
+    </div>
      <!-- Regular Entity Widget Style -->
     <div
       v-else
@@ -236,7 +257,7 @@
     </div>
      <!-- Entity Label - positioned relative to wrapper (only for non-action buttons) -->
     <div
-      v-if="!entity.isActionButton"
+      v-if="!entity.isActionButton && !entity.deviceGroup"
       v-show="showLabel && !isSelected"
       class="entity-label"
       :style="labelStyle"
@@ -298,13 +319,13 @@ import {
   type EntityData,
 } from '../composables/useEntitySelection';
 import { getMDIIconPath, createIconSVG, getIconColor } from '../utils/iconUtils';
-import { executeTapAction } from '../utils/actionHandler';
+import { executeHAAction, executeTapAction } from '../utils/actionHandler';
 import { useUIStore } from '../stores/ui';
 import { useEntitiesStore } from '../stores/entities';
 import { haConfig } from '../../config';
-import { getApiBaseUrl } from '../utils/haServices';
 
 import CameraModal from './CameraModal.vue';
+import DeviceGroupWidget from './DeviceGroupWidget.vue';
 
 interface Props {
   entity: EntityData;
@@ -1083,6 +1104,18 @@ const stateConditionMet = computed(() => {
   }
 });
 
+async function handleGroupAutomation() {
+  if (isGlobalEditMode.value || !props.entity.deviceGroup?.automationId) return;
+  if (hasDragged.value) {
+    hasDragged.value = false;
+    return;
+  }
+  await executeHAAction({
+    service: 'automation.trigger',
+    serviceData: { entity_id: props.entity.deviceGroup.automationId },
+  }, haConfig);
+}
+
 // Click handlers
 function handleClick() {
   // Don't handle click if we just finished dragging
@@ -1246,13 +1279,7 @@ async function handleActionButtonClick(e: MouseEvent) {
       window.zoomToEntity(x.value + width.value / 2, y.value + height.value / 2);
     }
   } else {
-    // Execute Action
-    if (props.entity.tapAction) {
-      void executeTapAction(props.entity.tapAction, props.entity, haConfig);
-    } else {
-      // Default toggle
-      void executeTapAction({ action: 'toggle' }, props.entity, haConfig);
-    }
+    void executeHAAction(props.entity.haAction, haConfig);
   }
 }
 
@@ -1382,37 +1409,9 @@ async function handleActionButtonTouchEnd(e: TouchEvent) {
   const moved = dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD;
   const wasQuickTap = timeDiff < TAP_TIME_THRESHOLD && !moved && !actionButtonTouchMoved;
 
-  // If it was a quick tap, execute action
-  if (wasQuickTap) {
-    if (!isSelected.value && props.entity.haAction?.service) {
-      const service = props.entity.haAction.service;
-      const [domain, serviceName] = service.split('.');
-      if (domain && serviceName) {
-        try {
-          const apiBaseUrl = getApiBaseUrl(haConfig);
-          const url = `${apiBaseUrl}/services/${domain}/${serviceName}`;
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${haConfig.accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(props.entity.haAction.serviceData || {}),
-          });
-          if (!response.ok) {
-            throw new Error(`Failed to call service: ${response.statusText}`);
-          }
-          // Show success toast
-          const { success } = useToast();
-          success(`Action executed: ${serviceName}`);
-        } catch (error) {
-          console.error('Error executing HA action:', error);
-          // Show error toast
-          const { error: showError } = useToast();
-          showError(`Failed to execute action: ${serviceName}`);
-        }
-      }
-    }
+  if (wasQuickTap && !isSelected.value && props.entity.haAction?.service) {
+    e.preventDefault();
+    await executeHAAction(props.entity.haAction, haConfig);
   }
 
   actionButtonTouchMoved = false;
@@ -2357,5 +2356,7 @@ function parseSize(size?: string | null): { width?: number; height?: number } {
 .text-label-delete:hover {
   background: rgba(255, 68, 68, 0.1);
 }
+
+.entity-widget.device-group-frame.group-view-mode { touch-action: pan-y; }
 </style>
 

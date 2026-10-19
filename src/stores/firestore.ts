@@ -18,6 +18,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { initFirebase } from '../utils/firebase';
+import type { DeviceGroupConfig } from '../types/deviceGroup';
 import {
   signInAnonymously,
   setPersistence,
@@ -49,6 +50,7 @@ export interface WidgetData {
   // Text Label fields
   isTextLabel?: boolean | undefined;
   backgroundTransparent?: boolean | undefined;
+  deviceGroup?: DeviceGroupConfig | undefined;
 }
 
 export interface UIData {
@@ -186,6 +188,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
     const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
     const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
     const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+    const deviceGroups = JSON.parse(localStorage.getItem('ha_dashboard_device_groups') ?? '{}');
 
     // Convert old format to new format
     for (const entityId of entities) {
@@ -210,6 +213,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
         size: sizes[entityId] || '80 40',
         action: actions[entityId],
         haAction: haActions[entityId],
+        deviceGroup: deviceGroups[entityId],
       };
     }
 
@@ -448,6 +452,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
     const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
     const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
     const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+    const deviceGroups = JSON.parse(localStorage.getItem('ha_dashboard_device_groups') ?? '{}');
 
     // Update old format
     if (!entities.includes(widgetId)) {
@@ -459,6 +464,8 @@ export const useFirestoreStore = defineStore('firestore', () => {
     if (widgetData.action) actions[widgetId] = widgetData.action;
     if (widgetData.labelName) labelOverrides[widgetId] = widgetData.labelName;
     if (widgetData.haAction) haActions[widgetId] = widgetData.haAction;
+    if (widgetData.deviceGroup) deviceGroups[widgetId] = widgetData.deviceGroup;
+    else delete deviceGroups[widgetId];
 
     // Save back
     localStorage.setItem('ha_dashboard_entities', JSON.stringify(entities));
@@ -468,6 +475,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
     localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
     localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
     localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+    localStorage.setItem('ha_dashboard_device_groups', JSON.stringify(deviceGroups));
   }
 
   /**
@@ -481,6 +489,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
     const actions = JSON.parse(localStorage.getItem('ha_dashboard_actions') ?? '{}');
     const labelOverrides = JSON.parse(localStorage.getItem('ha_dashboard_label_overrides') ?? '{}');
     const haActions = JSON.parse(localStorage.getItem('ha_dashboard_ha_actions') ?? '{}');
+    const deviceGroups = JSON.parse(localStorage.getItem('ha_dashboard_device_groups') ?? '{}');
 
     // Remove from arrays/objects
     const entityIndex = entities.indexOf(widgetId);
@@ -491,6 +500,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
     delete actions[widgetId];
     delete labelOverrides[widgetId];
     delete haActions[widgetId];
+    delete deviceGroups[widgetId];
 
     // Save back
     localStorage.setItem('ha_dashboard_entities', JSON.stringify(entities));
@@ -500,6 +510,7 @@ export const useFirestoreStore = defineStore('firestore', () => {
     localStorage.setItem('ha_dashboard_actions', JSON.stringify(actions));
     localStorage.setItem('ha_dashboard_label_overrides', JSON.stringify(labelOverrides));
     localStorage.setItem('ha_dashboard_ha_actions', JSON.stringify(haActions));
+    localStorage.setItem('ha_dashboard_device_groups', JSON.stringify(deviceGroups));
   }
 
   /**
