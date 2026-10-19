@@ -7,6 +7,7 @@
     @touchstart="handleTouchStart"
     @touchmove="handleTouchMove"
     @touchend="handleTouchEnd"
+    @dblclick="handleEmptySpaceDoubleClick"
     @mousedown="handleMouseDown"
     @mousemove="handleMouseMove"
     @mouseup="handleMouseUp"
@@ -59,6 +60,9 @@
       class="drawing-rectangle"
       :style="drawingRectangleStyle"
     />
+    <Transition name="zoom-indicator">
+      <div v-if="zoomPercentage !== null" class="zoom-indicator">{{ zoomPercentage }}%</div>
+    </Transition>
      <!-- Entity Info Panel (Context Menu) - Fixed position --> <EntityInfoPanel
       v-if="editingEntity"
       :entity="editingEntity"
@@ -89,6 +93,7 @@ import { getStorageInstance } from '../utils/firebase';
 import EntityWidget from './EntityWidget.vue';
 import EntityInfoPanel from './EntityInfoPanel.vue';
 import ZoneRectangle, { type ZoneData } from './ZoneRectangle.vue';
+import { clientToDashboardPoint } from '../utils/dashboardCoordinates';
 import {
   setSelectedEntity,
   clearSelection,
@@ -102,10 +107,15 @@ import { useUIStore } from '../stores/ui';
 // Constants
 const FLOORPLAN_WIDTH = 2190;
 const FLOORPLAN_HEIGHT = 6501;
+const minScale = 0.4;
 const floorplanImage = '/floorplan.png';
 
 // Refs
 const dashboardWrapperRef = ref<HTMLElement>();
+const dashboardRef = ref<HTMLElement>();
+const zoomPercentage = ref<number | null>(null);
+const isScaleInitialized = ref(false);
+let zoomIndicatorTimeout: ReturnType<typeof setTimeout> | undefined;
 
 const fileInputRef = ref<HTMLInputElement>();
 const isAnimatingZoom = ref(false);
@@ -186,11 +196,36 @@ const panY = ref(0);
 
 // Computed scale that uses UI store scale if available, otherwise falls back to local
 const scale = computed({
-  get: () => uiScale.value ?? 1,
+  get: () => Math.max(minScale, uiScale.value ?? 1),
   set: (value: number) => {
-    setUIScale(value);
+    setUIScale(Math.max(minScale, value));
   },
 });
+
+watch(
+  uiScale,
+  value => {
+    if (value !== undefined && value < minScale) {
+      setUIScale(minScale);
+    }
+  },
+  { flush: 'sync' }
+);
+
+watch(
+  scale,
+  value => {
+    if (!isScaleInitialized.value) return;
+
+    zoomPercentage.value = Math.round(value * 100);
+    clearTimeout(zoomIndicatorTimeout);
+    zoomIndicatorTimeout = setTimeout(() => {
+      zoomPercentage.value = null;
+      zoomIndicatorTimeout = undefined;
+    }, 3000);
+  },
+  { flush: 'sync' }
+);
 
 // Computed: Get full entity data for placed entities
 const placedEntities = computed(() => {
@@ -316,7 +351,7 @@ function calculateInitialScale(): number {
   const scaleX = wrapperWidth / FLOORPLAN_WIDTH;
   const initialScale = Math.min(scaleX, 1); // Fit to width, but don't scale up beyond 1
 
-  return Math.max(0.1, initialScale); // Minimum scale
+  return Math.max(minScale, initialScale);
 }
 
 // Scale and pan are now from Firestore (defined above)
@@ -349,9 +384,14 @@ watch(
 
 // eslint-disable-next-line
 let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+let dashboardResizeObserver: ResizeObserver | null = null;
 
 // Initialize scale on mount if not set
 onMounted(() => {
+  if (dashboardWrapperRef.value) {
+    dashboardResizeObserver = new ResizeObserver(() => syncPanFromViewport());
+    dashboardResizeObserver.observe(dashboardWrapperRef.value);
+  }
   // Handle Escape key to deselect and Backspace/Delete to remove selected entity
   escapeHandler = (e: KeyboardEvent) => {
     // Don't trigger if user is typing in input fields
@@ -429,6 +469,8 @@ onMounted(() => {
       panX.value = newPanX;
       panY.value = newPanY;
       scaleInitialized = true;
+      isScaleInitialized.value = true;
+      void nextTick(syncPanFromViewport);
     }
   };
 
@@ -499,6 +541,8 @@ onMounted(() => {
 let zoneShortcutHandlerRef: ((e: KeyboardEvent) => void) | null = null;
 
 onUnmounted(() => {
+  clearTimeout(zoomIndicatorTimeout);
+  dashboardResizeObserver?.disconnect();
   if (escapeHandler) {
     document.removeEventListener('keydown', escapeHandler);
   }
@@ -516,6 +560,7 @@ const scrollContentStyle = computed(() => {
     width: `${FLOORPLAN_WIDTH * currentScaleValue}px`,
     height: `${FLOORPLAN_HEIGHT * currentScaleValue}px`,
     position: 'relative' as const,
+    marginInline: 'auto',
   };
 });
 
@@ -541,16 +586,51 @@ const backgroundStyle = computed(() => ({
   display: 'block',
 }));
 
+function getHorizontalInset(targetScale = scale.value): number {
+  const wrapper = dashboardWrapperRef.value;
+  if (!wrapper) return 0;
+
+  return Math.max(0, (wrapper.clientWidth - FLOORPLAN_WIDTH * targetScale) / 2);
+}
+
+function syncPanFromViewport() {
+  const wrapper = dashboardWrapperRef.value;
+  const dashboard = dashboardRef.value;
+  if (!wrapper || !dashboard) return;
+
+  const wrapperBounds = wrapper.getBoundingClientRect();
+  const dashboardBounds = dashboard.getBoundingClientRect();
+  panX.value = dashboardBounds.left - wrapperBounds.left - wrapper.clientLeft;
+  panY.value = dashboardBounds.top - wrapperBounds.top - wrapper.clientTop;
+}
+
+function scrollToPan(targetPanX: number, targetPanY: number, behavior: ScrollBehavior = 'auto') {
+  const wrapper = dashboardWrapperRef.value;
+  if (!wrapper) return;
+
+  wrapper.scrollTo({
+    left: Math.max(0, getHorizontalInset() - targetPanX),
+    top: Math.max(0, -targetPanY),
+    behavior,
+  });
+  syncPanFromViewport();
+}
+
+function diagramPointAt(clientX: number, clientY: number) {
+  const dashboard = dashboardRef.value;
+  return dashboard ? clientToDashboardPoint(dashboard, clientX, clientY) : { x: 0, y: 0 };
+}
+
+watch(scale, () => {
+  void nextTick(syncPanFromViewport);
+}, { flush: 'post' });
+
 // Sync Scroll with Pan variables
 function handleScroll(e: Event) {
-  const target = e.target as HTMLElement;
-  // Pan is negative of scroll position to maintain coordinate logic
-  panX.value = -target.scrollLeft;
-  panY.value = -target.scrollTop;
+  if (e.target === dashboardWrapperRef.value) syncPanFromViewport();
 }
 
 // Zoom
-const minScale = 0.1;
 const maxScale = 1;
 const zoomStep = 0.1;
 
@@ -573,10 +653,7 @@ function handleWheel(e: WheelEvent) {
 
     if (oldScale === newScale) return;
 
-    // Calculate the point in diagram coordinates before zoom
-    // Note: panX/panY are negative scroll offsets here
-    const diagramX = (mouseX - panX.value) / oldScale;
-    const diagramY = (mouseY - panY.value) / oldScale;
+    const { x: diagramX, y: diagramY } = diagramPointAt(e.clientX, e.clientY);
 
     // We want to keep (diagramX, diagramY) at the same mouse position (mouseX, mouseY)
     // newPanX = mouseX - diagramX * newScale
@@ -593,10 +670,9 @@ function handleWheel(e: WheelEvent) {
     // Let's rely on panX/panY watchers or manual update?
 
     // For native scroll, we must set properties on the element
-    nextTick(() => {
+    void nextTick(() => {
       if (dashboardWrapperRef.value) {
-        dashboardWrapperRef.value.scrollLeft = -newPanX;
-        dashboardWrapperRef.value.scrollTop = -newPanY;
+        scrollToPan(newPanX, newPanY);
       }
     });
 
@@ -614,6 +690,70 @@ let touchStartPanY = 0;
 let touchStartScale = 1;
 let initialTouchDistance = 0;
 let isPinching = false;
+let emptySpaceTouchStart: { x: number; y: number; time: number } | null = null;
+let lastEmptySpaceTap: { x: number; y: number; time: number } | null = null;
+let lastTouchZoomAt = 0;
+
+const EMPTY_SPACE_EXCLUDED_SELECTOR =
+  '.entity-widget-wrapper, .zone-rectangle-wrapper, .entity-info-panel, .zone-edit-panel, .drop-zone-overlay, .drawing-rectangle, .zoom-indicator, button, input, textarea, select, [role="button"]';
+
+function isEmptyDashboardSpace(
+  target: EventTarget | null,
+  clientX: number,
+  clientY: number
+): target is Element {
+  if (!(target instanceof Element) || target.closest(EMPTY_SPACE_EXCLUDED_SELECTOR)) return false;
+
+  if (!dashboardWrapperRef.value || !dashboardRef.value) return false;
+
+  const { x: diagramX, y: diagramY } = diagramPointAt(clientX, clientY);
+  return !zones.value.some(
+    zone =>
+      diagramX >= zone.x &&
+      diagramX <= zone.x + zone.width &&
+      diagramY >= zone.y &&
+      diagramY <= zone.y + zone.height
+  );
+}
+
+function zoomInAtPoint(clientX: number, clientY: number) {
+  if (!dashboardWrapperRef.value) return;
+
+  const rect = dashboardWrapperRef.value.getBoundingClientRect();
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
+  const oldScale = scale.value;
+  const newScale = Math.min(maxScale, oldScale * 1.2);
+  if (newScale === oldScale) return;
+
+  const { x: diagramX, y: diagramY } = diagramPointAt(clientX, clientY);
+  const newPanX = centerX - diagramX * newScale;
+  const newPanY = centerY - diagramY * newScale;
+
+  isAnimatingZoom.value = true;
+  scale.value = newScale;
+  panX.value = newPanX;
+  panY.value = newPanY;
+
+  void nextTick(() => {
+    scrollToPan(newPanX, newPanY, 'smooth');
+  });
+
+  setTimeout(() => {
+    isAnimatingZoom.value = false;
+  }, 400);
+}
+
+function handleEmptySpaceDoubleClick(e: MouseEvent) {
+  if (isDrawingRectangle.value || !isEmptyDashboardSpace(e.target, e.clientX, e.clientY)) return;
+
+  e.preventDefault();
+  if (Date.now() - lastTouchZoomAt < 500) {
+    lastTouchZoomAt = 0;
+    return;
+  }
+  zoomInAtPoint(e.clientX, e.clientY);
+}
 
 function handleMouseDown(e: MouseEvent) {
   if (!dashboardWrapperRef.value) return;
@@ -642,14 +782,8 @@ function handleMouseDown(e: MouseEvent) {
   if (!isInteractiveControl) {
     // If in rectangle drawing mode, start drawing
     if (isDrawingRectangle.value) {
-      const rect = dashboardWrapperRef.value.getBoundingClientRect();
-      const currentScale = scale.value;
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
       // Convert to diagram coordinates
-      const diagramX = (mouseX - panX.value) / currentScale;
-      const diagramY = (mouseY - panY.value) / currentScale;
+      const { x: diagramX, y: diagramY } = diagramPointAt(e.clientX, e.clientY);
 
       rectangleStartX.value = diagramX;
       rectangleStartY.value = diagramY;
@@ -681,14 +815,8 @@ function handleMouseDown(e: MouseEvent) {
 function handleMouseMove(e: MouseEvent) {
   // Handle rectangle drawing
   if (isDrawingRectangle.value && drawingRectangle.value && dashboardWrapperRef.value) {
-    const rect = dashboardWrapperRef.value.getBoundingClientRect();
-    const currentScale = scale.value;
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
     // Convert to diagram coordinates
-    const diagramX = (mouseX - panX.value) / currentScale;
-    const diagramY = (mouseY - panY.value) / currentScale;
+    const { x: diagramX, y: diagramY } = diagramPointAt(e.clientX, e.clientY);
 
     // Calculate rectangle dimensions
     const width = diagramX - rectangleStartX.value;
@@ -751,6 +879,22 @@ function handleTouchStart(e: TouchEvent) {
 
     // Check if touching background
     const target = e.target as HTMLElement;
+    if (isEmptyDashboardSpace(target, touch.clientX, touch.clientY)) {
+      emptySpaceTouchStart = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now(),
+      };
+    } else {
+      emptySpaceTouchStart = null;
+      lastEmptySpaceTap = null;
+    }
+
+    if (isDrawingRectangle.value) {
+      emptySpaceTouchStart = null;
+      lastEmptySpaceTap = null;
+    }
+
     if (
       target.classList.contains('dashboard-container') ||
       target.classList.contains('dashboard-background') ||
@@ -762,6 +906,8 @@ function handleTouchStart(e: TouchEvent) {
     }
   } else if (e.touches.length === 2) {
     // Two touches - prepare for pinch-to-zoom
+    emptySpaceTouchStart = null;
+    lastEmptySpaceTap = null;
     isPinching = true;
     isPinching = true;
     const touch1 = e.touches[0];
@@ -827,10 +973,7 @@ function handleTouchMove(e: TouchEvent) {
       scale.value = newScale;
 
       // Update scroll position (inverse of pan)
-      if (dashboardWrapperRef.value) {
-        dashboardWrapperRef.value.scrollLeft = -newPanX;
-        dashboardWrapperRef.value.scrollTop = -newPanY;
-      }
+      void nextTick(() => scrollToPan(newPanX, newPanY));
 
       panX.value = newPanX;
       panY.value = newPanY;
@@ -843,6 +986,36 @@ function handleTouchEnd(e: TouchEvent) {
     // All touches ended
     isPinching = false;
     initialTouchDistance = 0;
+
+    const start = emptySpaceTouchStart;
+    const touch = e.changedTouches[0];
+    emptySpaceTouchStart = null;
+
+    if (
+      !start ||
+      !touch ||
+      isDrawingRectangle.value ||
+      !isEmptyDashboardSpace(e.target, touch.clientX, touch.clientY) ||
+      Date.now() - start.time > 300 ||
+      Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 20
+    ) {
+      lastEmptySpaceTap = null;
+      return;
+    }
+
+    const now = Date.now();
+    if (
+      lastEmptySpaceTap &&
+      now - lastEmptySpaceTap.time <= 300 &&
+      Math.hypot(touch.clientX - lastEmptySpaceTap.x, touch.clientY - lastEmptySpaceTap.y) <= 40
+    ) {
+      lastEmptySpaceTap = null;
+      lastTouchZoomAt = now;
+      if (e.cancelable) e.preventDefault();
+      zoomInAtPoint(touch.clientX, touch.clientY);
+    } else {
+      lastEmptySpaceTap = { x: touch.clientX, y: touch.clientY, time: now };
+    }
   } else if (e.touches.length === 1) {
     // One touch remaining - switch to panning
     isPinching = false;
@@ -1323,8 +1496,7 @@ const interactions = {
     // Sync scroll position (inverse of pan)
     void nextTick(() => {
       if (dashboardWrapperRef.value) {
-        dashboardWrapperRef.value.scrollLeft = -newPanX;
-        dashboardWrapperRef.value.scrollTop = -newPanY;
+        scrollToPan(newPanX, newPanY);
       }
     });
   },
@@ -1353,8 +1525,7 @@ const interactions = {
     // Sync scroll position (inverse of pan)
     void nextTick(() => {
       if (dashboardWrapperRef.value) {
-        dashboardWrapperRef.value.scrollLeft = -newPanX;
-        dashboardWrapperRef.value.scrollTop = -newPanY;
+        scrollToPan(newPanX, newPanY);
       }
     });
   },
@@ -1379,8 +1550,7 @@ const interactions = {
     // Sync scroll position (inverse of pan)
     void nextTick(() => {
       if (dashboardWrapperRef.value) {
-        dashboardWrapperRef.value.scrollLeft = -newPanX;
-        dashboardWrapperRef.value.scrollTop = -newPanY;
+        scrollToPan(newPanX, newPanY);
       }
     });
   },
@@ -1401,8 +1571,7 @@ const interactions = {
     // Sync scroll position (inverse of pan)
     void nextTick(() => {
       if (dashboardWrapperRef.value) {
-        dashboardWrapperRef.value.scrollLeft = 0;
-        dashboardWrapperRef.value.scrollTop = 0;
+        scrollToPan(0, 0);
       }
     });
   },
@@ -1433,8 +1602,7 @@ const interactions = {
     // Sync scroll position (inverse of pan)
     void nextTick(() => {
       if (dashboardWrapperRef.value) {
-        dashboardWrapperRef.value.scrollLeft = -newPanX;
-        dashboardWrapperRef.value.scrollTop = -newPanY;
+        scrollToPan(newPanX, newPanY);
       }
     });
   },
@@ -1453,7 +1621,7 @@ const interactions = {
     // Calculate scale so the zone takes up about 95% of the viewport width and height
     const scaleX = wrapperWidth / 1.05 / zoneWidthWithPadding;
     const scaleY = wrapperHeight / 1.05 / zoneHeightWithPadding;
-    const targetScale = Math.min(scaleX, scaleY, maxScale);
+    const targetScale = Math.max(minScale, Math.min(scaleX, scaleY, maxScale));
 
     // Calculate pan to center the zone in the viewport
     const centerX = wrapperWidth / 2;
@@ -1473,11 +1641,7 @@ const interactions = {
     void nextTick(() => {
       if (dashboardWrapperRef.value) {
         // Allow animation to start
-        dashboardWrapperRef.value.scrollTo({
-          left: -newPanX,
-          top: -newPanY,
-          behavior: 'smooth',
-        });
+        scrollToPan(newPanX, newPanY, 'smooth');
       }
     });
 
@@ -1737,6 +1901,29 @@ async function handleFileChange(event: Event) {
   overscroll-behavior: none; /* Prevent browser navigation on swipe */
   /* Stronger Apple-style presentation background: blue-gray to deep slate */
   background: radial-gradient(circle at 50% 30%, #3a4b5f 0%, #0f172a 100%);
+}
+
+.zoom-indicator {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  z-index: 20;
+  transform: translateX(-50%);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #3a3a3a;
+  border-radius: 0.375rem;
+  background: rgb(42 42 42 / 90%);
+  color: white;
+  font-size: 0.875rem;
+  pointer-events: none;
+}
+
+.zoom-indicator-leave-active {
+  transition: opacity 0.5s ease;
+}
+
+.zoom-indicator-leave-to {
+  opacity: 0;
 }
 
 .dashboard-container {

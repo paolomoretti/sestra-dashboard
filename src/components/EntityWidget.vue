@@ -286,6 +286,7 @@
 </template>
 
 <script setup lang="ts">
+import { clientToDashboardPoint } from '../utils/dashboardCoordinates';
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
@@ -883,29 +884,21 @@ function getClientPos(e: MouseEvent | TouchEvent) {
   return { x: (e as MouseEvent).clientX, y: (e as MouseEvent).clientY };
 }
 
+function getDiagramPoint(clientX: number, clientY: number) {
+  const dashboard = document.querySelector<HTMLElement>('.dashboard-container');
+  return dashboard ? clientToDashboardPoint(dashboard, clientX, clientY) : { x: 0, y: 0 };
+}
+
 function startResize(direction: 'se' | 'sw' | 'ne' | 'nw', e: MouseEvent | TouchEvent) {
   e.preventDefault();
   e.stopPropagation();
   isResizing.value = true;
   resizeDirection = direction;
 
-  // Get dashboard wrapper for coordinate conversion
-  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!dashboardWrapper) return;
-
-  const wrapperRect = dashboardWrapper.getBoundingClientRect();
-
-  // Get current pan and scale
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-  const scale = props.scale ?? 1;
-
-  // Convert mouse/touch position to diagram coordinates
   const { x: clientX, y: clientY } = getClientPos(e);
-  const mouseX = clientX - wrapperRect.left;
-  const mouseY = clientY - wrapperRect.top;
-  resizeStartDiagramX = (mouseX - panX) / scale;
-  resizeStartDiagramY = (mouseY - panY) / scale;
+  const point = getDiagramPoint(clientX, clientY);
+  resizeStartDiagramX = point.x;
+  resizeStartDiagramY = point.y;
 
   // Store initial size and position
   resizeStartWidth = width.value;
@@ -927,23 +920,10 @@ function handleResizeMove(e: MouseEvent | TouchEvent) {
     e.preventDefault();
   }
 
-  // Get dashboard wrapper for coordinate conversion
-  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!dashboardWrapper) return;
-
-  const wrapperRect = dashboardWrapper.getBoundingClientRect();
-
-  // Get current pan and scale
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-  const scale = props.scale ?? 1;
-
-  // Convert current mouse/touch position to diagram coordinates
   const { x: clientX, y: clientY } = getClientPos(e);
-  const mouseX = clientX - wrapperRect.left;
-  const mouseY = clientY - wrapperRect.top;
-  const currentDiagramX = (mouseX - panX) / scale;
-  const currentDiagramY = (mouseY - panY) / scale;
+  const point = getDiagramPoint(clientX, clientY);
+  const currentDiagramX = point.x;
+  const currentDiagramY = point.y;
 
   // Calculate delta in diagram coordinates
   const deltaX = currentDiagramX - resizeStartDiagramX;
@@ -1578,23 +1558,9 @@ function handleMouseMove(e: MouseEvent) {
     e.preventDefault();
   }
 
-  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!dashboardWrapper) return;
-
-  const wrapperRect = dashboardWrapper.getBoundingClientRect();
-
-  // Get current pan and scale
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-  const scale = props.scale ?? 1;
-
-  // Current mouse position in wrapper coordinates
-  const currentMouseX = e.clientX - wrapperRect.left;
-  const currentMouseY = e.clientY - wrapperRect.top;
-
-  // Convert mouse position to diagram coordinates
-  const diagramMouseX = (currentMouseX - panX) / scale;
-  const diagramMouseY = (currentMouseY - panY) / scale;
+  const point = getDiagramPoint(e.clientX, e.clientY);
+  const diagramMouseX = point.x;
+  const diagramMouseY = point.y;
 
   // Get stored offset (only set after we start dragging)
   let offsetX = (window as any).__entityDragOffsetX;
@@ -1735,24 +1701,9 @@ function handleTouchStart(e: TouchEvent) {
 
   // Only set up drag tracking if we're actually dragging
   if (isDragging.value) {
-    // Get dashboard wrapper for coordinate conversion
-    const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-    if (!dashboardWrapper) return;
-
-    const wrapperRect = dashboardWrapper.getBoundingClientRect();
-
-    // Get current pan and scale
-    const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-    const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-    const scale = props.scale ?? 1;
-
-    // Touch position in wrapper coordinates
-    const touchX = touch.clientX - wrapperRect.left;
-    const touchY = touch.clientY - wrapperRect.top;
-
-    // Convert touch position to diagram coordinates
-    const diagramTouchX = (touchX - panX) / scale;
-    const diagramTouchY = (touchY - panY) / scale;
+    const point = getDiagramPoint(touch.clientX, touch.clientY);
+    const diagramTouchX = point.x;
+    const diagramTouchY = point.y;
 
     // Current entity position in diagram coordinates
     const entityX = x.value;
@@ -1797,23 +1748,9 @@ function handleTouchMove(e: TouchEvent) {
   // Only handle dragging if we're actually dragging
   if (!isDragging.value) return;
 
-  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!dashboardWrapper) return;
-
-  const wrapperRect = dashboardWrapper.getBoundingClientRect();
-
-  // Get current pan and scale
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-  const scale = props.scale ?? 1;
-
-  // Current touch position in wrapper coordinates
-  const currentTouchX = touch.clientX - wrapperRect.left;
-  const currentTouchY = touch.clientY - wrapperRect.top;
-
-  // Convert touch position to diagram coordinates
-  const diagramTouchX = (currentTouchX - panX) / scale;
-  const diagramTouchY = (currentTouchY - panY) / scale;
+  const point = getDiagramPoint(touch.clientX, touch.clientY);
+  const diagramTouchX = point.x;
+  const diagramTouchY = point.y;
 
   // Get stored offset (set it if not already set)
   if (!(window as any).__entityDragOffsetX) {

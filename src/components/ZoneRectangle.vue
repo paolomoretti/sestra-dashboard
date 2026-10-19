@@ -137,6 +137,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { clearSelection } from '../composables/useEntitySelection';
 import { useUIStore } from '../stores/ui';
+import { clientToDashboardPoint } from '../utils/dashboardCoordinates';
 
 export interface ZoneData {
   id: string;
@@ -162,6 +163,11 @@ const emit = defineEmits<{
   update: [zoneId: string, updates: Partial<ZoneData>];
   delete: [zoneId: string];
 }>();
+
+function getDiagramPoint(clientX: number, clientY: number) {
+  const dashboard = document.querySelector<HTMLElement>('.dashboard-container');
+  return dashboard ? clientToDashboardPoint(dashboard, clientX, clientY) : { x: 0, y: 0 };
+}
 
 const uiStore = useUIStore();
 const { scale: uiScale, isGlobalEditMode } = storeToRefs(uiStore);
@@ -264,18 +270,9 @@ function startResize(direction: 'se' | 'sw' | 'ne' | 'nw', e: MouseEvent) {
   isResizing.value = true;
   resizeDirection = direction;
 
-  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!dashboardWrapper) return;
-
-  const wrapperRect = dashboardWrapper.getBoundingClientRect();
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-  const scale = props.scale ?? 1;
-
-  const mouseX = e.clientX - wrapperRect.left;
-  const mouseY = e.clientY - wrapperRect.top;
-  resizeStartDiagramX = (mouseX - panX) / scale;
-  resizeStartDiagramY = (mouseY - panY) / scale;
+  const point = getDiagramPoint(e.clientX, e.clientY);
+  resizeStartDiagramX = point.x;
+  resizeStartDiagramY = point.y;
 
   resizeStartWidth = width.value;
   resizeStartHeight = height.value;
@@ -289,18 +286,9 @@ function startResize(direction: 'se' | 'sw' | 'ne' | 'nw', e: MouseEvent) {
 function handleResizeMove(e: MouseEvent) {
   if (!isResizing.value || !resizeDirection) return;
 
-  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!dashboardWrapper) return;
-
-  const wrapperRect = dashboardWrapper.getBoundingClientRect();
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-  const scale = props.scale ?? 1;
-
-  const mouseX = e.clientX - wrapperRect.left;
-  const mouseY = e.clientY - wrapperRect.top;
-  const currentDiagramX = (mouseX - panX) / scale;
-  const currentDiagramY = (mouseY - panY) / scale;
+  const point = getDiagramPoint(e.clientX, e.clientY);
+  const currentDiagramX = point.x;
+  const currentDiagramY = point.y;
 
   const deltaX = currentDiagramX - resizeStartDiagramX;
   const deltaY = currentDiagramY - resizeStartDiagramY;
@@ -656,18 +644,9 @@ function handleMouseMove(e: MouseEvent) {
     e.preventDefault();
   }
 
-  const dashboardWrapper = document.querySelector('.dashboard-wrapper') as HTMLElement;
-  if (!dashboardWrapper) return;
-
-  const wrapperRect = dashboardWrapper.getBoundingClientRect();
-  const panX = parseFloat(localStorage.getItem('ha_dashboard_pan_x') ?? '0');
-  const panY = parseFloat(localStorage.getItem('ha_dashboard_pan_y') ?? '0');
-  const scale = props.scale ?? 1;
-
-  const currentMouseX = e.clientX - wrapperRect.left;
-  const currentMouseY = e.clientY - wrapperRect.top;
-  const diagramMouseX = (currentMouseX - panX) / scale;
-  const diagramMouseY = (currentMouseY - panY) / scale;
+  const point = getDiagramPoint(e.clientX, e.clientY);
+  const diagramMouseX = point.x;
+  const diagramMouseY = point.y;
 
   let offsetX = (window as any).__zoneDragOffsetX;
   let offsetY = (window as any).__zoneDragOffsetY;
