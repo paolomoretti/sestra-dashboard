@@ -27,6 +27,7 @@
          <!-- Background image --> <img
           :src="floorplanImage"
           class="dashboard-background"
+          :class="{ 'dashboard-background-editing': uiStore.isGlobalEditMode }"
           :style="backgroundStyle"
           draggable="false"
           alt="Floor plan"
@@ -1982,6 +1983,12 @@ async function handleFileChange(event: Event) {
   pointer-events: none;
   max-width: none;
   max-height: none;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+
+.dashboard-background-editing {
+  filter: grayscale(1);
+  opacity: 0.2;
 }
 
 .drop-zone-overlay {
