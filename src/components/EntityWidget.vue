@@ -147,8 +147,7 @@
           v-model="editingText"
           class="text-label-input"
           placeholder="Label Text"
-          @keydown.enter="saveTextLabel"
-          @blur="saveTextLabel"
+          @keydown="handleLabelKeydown"
         /> <label class="text-label-toggle"
           > <input type="checkbox" v-model="editingBackgroundTransparent" /> Transparent Background
           </label
@@ -224,7 +223,7 @@
         @mousedown.stop="handleIconMouseDown"
         @contextmenu.stop="handleIconRightClick"
       /> <!-- State value display (numeric or string) -->
-      <div v-if="stateDisplay" class="temperature-display" :style="stateDisplayStyle">
+      <div v-if="stateDisplay" class="temperature-display">
          {{ stateDisplay }}
       </div>
        <!-- Resize handles (shown when editing) --> <template v-if="canResize"
@@ -260,7 +259,6 @@
       v-if="!entity.isActionButton && !entity.deviceGroup"
       v-show="showLabel && !isSelected"
       class="entity-label"
-      :style="labelStyle"
       :title="displayLabel"
       @click.stop="handleLabelClick"
       @mousedown.stop="handleLabelMouseDown"
@@ -309,13 +307,15 @@
 <script setup lang="ts">
 import { clientToDashboardPoint } from '../utils/dashboardCoordinates';
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { useShortcutLayer } from '../composables/useHotkeys';
+import { shortcuts } from '../shortcuts/catalog';
+import { matchesShortcut } from '../shortcuts/controller';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useToast } from '../composables/useToast';
 import {
   selectedEntity,
   selectedEntityPosition,
-  clearSelection,
   type EntityData,
 } from '../composables/useEntitySelection';
 import { getMDIIconPath, createIconSVG, getIconColor } from '../utils/iconUtils';
@@ -423,7 +423,9 @@ const widgetStyle = computed(() => {
   // Determine z-index: dragging > panel open > selected > normal
   // When panel is open, widget needs high z-index to be above other widgets
   let zIndex = 1;
-  if (isDragging.value) {
+  if (isTextEditing.value) {
+    zIndex = shortcutZIndex.value ?? 20000;
+  } else if (isDragging.value) {
     zIndex = 20002; // Highest priority when dragging (above everything)
   } else if (isPanelOpen.value) {
     zIndex = 20000; // High priority when panel is open (ensures widget is above other widgets)
@@ -503,26 +505,14 @@ function startEditing() {
   }, 50);
 }
 
-function saveTextLabel() {
-  // Delay slightly to allow checkbox click to register if that's what caused blur
-  setTimeout(() => {
-    // Only save if we are still effectively editing or if it was a blur that ends editing
-    // But since we want to allow clicking the checkbox without closing, we need to be careful.
-    // Actually, clicking checkbox inside the container shouldn't trigger blur of the input if we don't refocus?
-    // Wait, checkbox click will blur the input.
-    // If we want to keep menu open when interacting with checkbox, we should check active element?
-    // User requirement: "Exit edit mode when clicking outside... or pressing Enter".
-    // "The edit menu should include a toggle".
-    // If I click the toggle, the input loses focus (blur).
-    // If I close on blur, I can't click the toggle easily.
-    // Solution: Don't close on blur immediately if related target is in the menu.
-    // But relatedTarget might not be available on all browsers reliably?
-    // Let's assume standard behavior.
-    // Better approach: Exit ONLY on Enter or Click Outside (handled by directive or global click).
-    // But "clicking outside" needs a listener.
-    // Let's use a global click listener when isEditing is true.
-  }, 0);
+function handleLabelKeydown(event: KeyboardEvent) {
+  if (!shortcutsActive.value) return;
+  if (!matchesShortcut(event, shortcuts.finishLabel)) return;
+  event.preventDefault();
+  isTextEditing.value = false;
 }
+
+const { zIndex: shortcutZIndex, isActive: shortcutsActive } = useShortcutLayer(isTextEditing, () => { isTextEditing.value = false; }, 'canvas');
 
 function deleteTextLabel() {
   if (confirm('Are you sure you want to remove this label?')) {
@@ -662,59 +652,19 @@ const shouldShowImage = computed(() => {
   }
 });
 
-// Helper to compute scale factor for label scaling (using square root for gradual scaling)
-const labelScaleFactor = computed(() => {
+// Action buttons use square-root scaling to keep their controls usable at low zoom.
+const actionButtonScaleFactor = computed(() => {
   const scale = uiScale.value ?? props.scale ?? 1;
   // Clamp scale to prevent division by zero or extreme values
-  // Minimum scale of 0.1 to prevent labels from becoming too large
+  // Minimum scale of 0.1 to limit button scaling
   const clampedScale = Math.max(0.1, scale);
-  // Use square root for more gradual scaling - labels will scale but not as dramatically
+  // Use the square root to reduce the change in button size.
   return Math.sqrt(clampedScale);
-});
-
-// Label style - scales inversely with zoom to stay readable
-const labelStyle = computed(() => {
-  const scaleFactor = labelScaleFactor.value;
-  // Base font-size is 1.5rem
-  // At scale 0.5: fontSize = 1.5 / sqrt(0.5) ≈ 2.12rem (instead of 3rem linear)
-  // At scale 2: fontSize = 1.5 / sqrt(2) ≈ 1.06rem (instead of 0.75rem linear)
-  const fontSize = 1.5 / scaleFactor;
-  // Also scale padding and other dimensions proportionally
-  const padding = `${4 / scaleFactor}px ${8 / scaleFactor}px`;
-  const marginTop = `${4 / scaleFactor}px`;
-  const borderRadius = `${3 / scaleFactor}px`;
-  const maxWidth = `${250 / scaleFactor}px`;
-
-  return {
-    fontSize: `${fontSize}rem`,
-    padding,
-    marginTop,
-    borderRadius,
-    maxWidth,
-  };
-});
-
-// State display style (temperature, humidity, power, etc.) - scales with zoom
-const stateDisplayStyle = computed(() => {
-  const scaleFactor = labelScaleFactor.value;
-  // Base font-size is 2rem
-  const fontSize = 2 / scaleFactor;
-  // Scale padding and other dimensions proportionally
-  const padding = `${6 / scaleFactor}px ${12 / scaleFactor}px`;
-  const borderRadius = `${8 / scaleFactor}px`;
-  const marginLeft = `${8 / scaleFactor}px`;
-
-  return {
-    fontSize: `${fontSize}rem`,
-    padding,
-    borderRadius,
-    marginLeft,
-  };
 });
 
 // Action button style - scales entire button with zoom using transform
 const actionButtonStyle = computed(() => {
-  const scaleFactor = labelScaleFactor.value;
+  const scaleFactor = actionButtonScaleFactor.value;
   // Scale the entire button inversely to zoom (when zoomed out, button gets bigger)
   // scaleFactor is sqrt(zoom), so we scale by 1/scaleFactor
   const scale = 1 / scaleFactor;
@@ -1889,17 +1839,6 @@ watch(
 
 // Click outside detection
 onMounted(() => {
-  const handleKeyDown = (e: KeyboardEvent) => {
-    // Delete key is now handled in Dashboard.vue
-    if (e.key === 'Escape') {
-      if (isPanelOpen.value) {
-        isPanelOpen.value = false;
-      }
-      // Clear selection on Escape
-      clearSelection();
-    }
-  };
-
   const handleClickOutside = (e: MouseEvent) => {
     // Don't close if clicking on the panel or widget
     const target = e.target as HTMLElement;
@@ -1925,10 +1864,8 @@ onMounted(() => {
     }
   };
 
-  document.addEventListener('keydown', handleKeyDown);
   document.addEventListener('click', handleClickOutside);
   onUnmounted(() => {
-    document.removeEventListener('keydown', handleKeyDown);
     document.removeEventListener('click', handleClickOutside);
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);

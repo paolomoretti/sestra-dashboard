@@ -1,6 +1,6 @@
 <template>
 
-  <div class="add-button-container">
+  <div class="add-button-container" :style="{ zIndex: shortcutZIndex }">
      <button
       class="add-button"
       :class="{ active: isMenuOpen }"
@@ -32,6 +32,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
+import { useShortcutLayer } from '../composables/useHotkeys';
 
 const emit = defineEmits<{
   addEntity: [];
@@ -43,6 +44,7 @@ const emit = defineEmits<{
 }>();
 
 const isMenuOpen = ref(false);
+const { zIndex: shortcutZIndex } = useShortcutLayer(isMenuOpen, () => { isMenuOpen.value = false; }, 'menu');
 
 function toggleMenu() {
   isMenuOpen.value = !isMenuOpen.value;

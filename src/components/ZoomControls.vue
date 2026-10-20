@@ -4,7 +4,7 @@
      <button
       @click="zoomFitToWidth"
       class="zoom-button bg-[#2a2a2a] hover:bg-[#3a3a3a] border border-[#3a3a3a] rounded px-4 py-3 sm:px-3 sm:py-2 text-white text-lg sm:text-xs transition-colors duration-200 shadow-lg min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
-      title="Fit to Width (W)"
+      :title="`${shortcuts.fitWidth.name} (${formatShortcutKey(shortcuts.fitWidth.keys[0])})`"
     >
        ↺ </button
     >
@@ -13,6 +13,8 @@
 </template>
 
 <script setup lang="ts">
+import { formatShortcutKey, shortcuts } from '../shortcuts/catalog';
+
 function zoomFitToWidth() {
   if ((window as any).zoomFitToWidth) {
     (window as any).zoomFitToWidth();

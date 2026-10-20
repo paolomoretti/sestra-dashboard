@@ -50,6 +50,7 @@
       v-if="isPanelOpen"
       ref="panelRef"
       class="zone-edit-panel"
+      :style="{ zIndex: shortcutZIndex }"
       :class="{ expanded: isExpanded }"
       @mousedown.stop
       @click.stop
@@ -115,7 +116,7 @@
                 @click.stop="handleDelete"
                 @mousedown.stop
                 class="delete-button"
-                title="Delete zone (or press Backspace)"
+                title="Delete zone"
               >
                  🗑️ Delete Zone </button
               >
@@ -135,6 +136,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
+import { useShortcutLayer } from '../composables/useHotkeys';
+import { getZoneShortcutError } from '../shortcuts/catalog';
+import { useToast } from '../composables/useToast';
 import { clearSelection } from '../composables/useEntitySelection';
 import { useUIStore } from '../stores/ui';
 import { clientToDashboardPoint } from '../utils/dashboardCoordinates';
@@ -153,6 +157,7 @@ export interface ZoneData {
 
 interface Props {
   zone: ZoneData;
+  zones: readonly ZoneData[];
   scale: number;
   selected?: boolean;
 }
@@ -227,13 +232,11 @@ const labelStyle = computed(() => {
 
 // Styles
 const rectangleStyle = computed(() => {
-  // Zones should always be behind widgets (widgets have z-index 1+)
-  // Only raise z-index when dragging or panel is open, but still keep it lower than widgets
   let zIndex = -1; // Behind widgets (which are at z-index 1+)
-  if (isDragging.value) {
-    zIndex = 1000; // Raise when dragging, but still below widgets (20000+)
-  } else if (isPanelOpen.value) {
-    zIndex = 1000; // Raise when panel open, but still below widgets (20000+)
+  if (isPanelOpen.value) {
+    zIndex = shortcutZIndex.value ?? 1000;
+  } else if (isDragging.value) {
+    zIndex = 1000;
   } else if (isSelected) {
     zIndex = 0; // Slightly raise when selected, but still below widgets (z-index 1+)
   }
@@ -571,26 +574,19 @@ function handleLockChange(event: Event) {
 function handleShortcutKeyChange(event: Event) {
   const target = event.target as HTMLInputElement;
   const key = target.value.trim().toLowerCase();
-  // Only allow alphanumeric characters
-  if (key === '' || /^[a-z0-9]$/.test(key)) {
-    const updates: Partial<ZoneData> = {};
-    if (key) {
-      updates.shortcutKey = key;
-    } else {
-      // Explicitly clear shortcutKey by setting it to empty string
-      // This will be handled in saveZoneToFirestore to remove it
-      updates.shortcutKey = '';
-    }
-    emit('update', props.zone.id, updates);
-  } else {
-    // Reset to empty if invalid character
+  const error = getZoneShortcutError(key, props.zone.id, props.zones);
+  if (error) {
     target.value = props.zone.shortcutKey ?? '';
+    useToast().error(error);
+    return;
   }
+  target.value = key;
+  emit('update', props.zone.id, { shortcutKey: key });
 }
 
 function handleShortcutKeyKeydown(event: KeyboardEvent) {
   // Prevent the key from being entered if it's a special key
-  if (event.key.length > 1 && !['Backspace', 'Delete', 'Tab'].includes(event.key)) {
+  if (event.key.length > 1 && !['Backspace', 'Delete', 'Tab', 'Escape', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
     event.preventDefault();
   }
 }
@@ -769,27 +765,17 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
-// Keyboard handler
-function handleKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    if (isPanelOpen.value) {
-      isPanelOpen.value = false;
-      isExpanded.value = false;
-    }
-    clearSelection();
-  }
-  // Delete key is now handled in Dashboard.vue to avoid duplicate handlers
-  // Only handle it here if the panel is open and this zone is selected
-  // (The Dashboard handler will take care of it)
-}
+const { zIndex: shortcutZIndex } = useShortcutLayer(isPanelOpen, () => {
+  isPanelOpen.value = false;
+  isExpanded.value = false;
+  clearSelection();
+}, 'canvas');
 
 onMounted(() => {
-  document.addEventListener('keydown', handleKeyDown);
   document.addEventListener('click', handleClickOutside);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeyDown);
   document.removeEventListener('click', handleClickOutside);
   document.removeEventListener('mousemove', handleMouseMove);
   document.removeEventListener('mouseup', handleMouseUp);
@@ -853,7 +839,6 @@ onUnmounted(() => {
   background: linear-gradient(135deg, rgba(33, 150, 243, 0.9) 0%, rgba(25, 118, 210, 0.9) 100%);
   border: 1px solid rgba(33, 150, 243, 1);
   cursor: pointer;
-  transition: all 0.2s ease;
   white-space: nowrap;
   font-weight: 600;
   color: #ffffff;

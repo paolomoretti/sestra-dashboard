@@ -35,6 +35,7 @@
           v-for="zone in zones"
           :key="zone.id"
           :zone="zone"
+          :zones="zones"
           :scale="currentScale"
           :selected="selectedZoneId === zone.id"
           @select="handleZoneSelect"
@@ -87,6 +88,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
+import { useHotkeys } from '../composables/useHotkeys';
+import { getZoneShortcuts, shortcuts } from '../shortcuts/catalog';
 import { storeToRefs } from 'pinia';
 import { useFirestoreData } from '../composables/useFirestoreData';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -409,8 +412,6 @@ watch(
   { immediate: false }
 );
 
-// eslint-disable-next-line
-let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 let dashboardResizeObserver: ResizeObserver | null = null;
 
 // Initialize scale on mount if not set
@@ -419,62 +420,6 @@ onMounted(() => {
     dashboardResizeObserver = new ResizeObserver(() => syncPanFromViewport());
     dashboardResizeObserver.observe(dashboardWrapperRef.value);
   }
-  // Handle Escape key to deselect and Backspace/Delete to remove selected entity
-  escapeHandler = (e: KeyboardEvent) => {
-    // Don't trigger if user is typing in input fields
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-      return;
-    }
-
-    if (e.key === 'Escape') {
-      clearSelection();
-      selectedZoneId.value = null;
-    } else if (e.key === 'Backspace' || e.key === 'Delete') {
-      // Delete selected entity or zone when Backspace or Delete is pressed
-      e.preventDefault();
-      if (selectedEntity.value) {
-        // eslint-disable-next-line no-alert
-        if (window.confirm('Are you sure you want to delete this widget?')) {
-          void handleEntityDelete(selectedEntity.value.key);
-          clearSelection();
-        }
-      } else if (selectedZoneId.value) {
-        // eslint-disable-next-line no-alert
-        if (window.confirm('Are you sure you want to delete this zone?')) {
-          void handleZoneDelete(selectedZoneId.value);
-        }
-      }
-    }
-  };
-  document.addEventListener('keydown', escapeHandler);
-
-  // Register keyboard shortcuts for zones
-  zoneShortcutHandlerRef = (e: KeyboardEvent) => {
-    // Don't trigger if user is typing in input fields
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-      return;
-    }
-
-    // Don't trigger if meta/ctrl keys are pressed
-    if (e.metaKey || e.ctrlKey) {
-      return;
-    }
-
-    // Find zone with matching shortcut key
-    const key = e.key.toLowerCase();
-    const zone = zones.value.find(z => z.shortcutKey?.toLowerCase() === key);
-    if (zone) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (window.zoomToZone) {
-        window.zoomToZone(zone, 50);
-      }
-    }
-  };
-  document.addEventListener('keydown', zoneShortcutHandlerRef);
-
   // Initialize scale: wait for Firestore to load, then restore from UI store if available, otherwise calculate initial
   let scaleInitialized = false;
 
@@ -564,19 +509,43 @@ onMounted(() => {
   );
 });
 
-// eslint-disable-next-line
-let zoneShortcutHandlerRef: ((e: KeyboardEvent) => void) | null = null;
-
 onUnmounted(() => {
   clearTimeout(zoomIndicatorTimeout);
   dashboardResizeObserver?.disconnect();
-  if (escapeHandler) {
-    document.removeEventListener('keydown', escapeHandler);
-  }
-  if (zoneShortcutHandlerRef) {
-    document.removeEventListener('keydown', zoneShortcutHandlerRef);
-  }
 });
+
+useHotkeys(() => [
+  { shortcut: shortcuts.fitScreen, handler: interactions.zoomReset },
+  { shortcut: shortcuts.fitWidth, handler: interactions.zoomFitToWidth },
+  { shortcut: shortcuts.zoomIn, handler: interactions.zoomIn },
+  { shortcut: shortcuts.zoomOut, handler: interactions.zoomOut },
+  {
+    shortcut: shortcuts.clearSelection,
+    handler: () => { clearSelection(); selectedZoneId.value = null; },
+    enabled: () => selectedEntity.value !== null || selectedZoneId.value !== null,
+  },
+  {
+    shortcut: shortcuts.deleteSelection,
+    enabled: () => selectedEntity.value !== null || selectedZoneId.value !== null,
+    handler: () => {
+      if (selectedEntity.value) {
+        if (window.confirm('Are you sure you want to delete this widget?')) {
+          void handleEntityDelete(selectedEntity.value.key);
+          clearSelection();
+        }
+      } else if (selectedZoneId.value && window.confirm('Are you sure you want to delete this zone?')) {
+        void handleZoneDelete(selectedZoneId.value);
+      }
+    },
+  },
+  ...getZoneShortcuts(zones.value).map(({ zoneId, shortcut }) => ({
+    shortcut,
+    handler: () => {
+      const zone = zones.value.find(zone => zone.id === zoneId);
+      if (zone) interactions.zoomToZone(zone, 50);
+    },
+  })),
+]);
 
 // Computed
 const currentScale = computed(() => scale.value);

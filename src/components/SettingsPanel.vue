@@ -2,7 +2,7 @@
    <Teleport to="body"
     > <Transition name="fade"
       >
-      <div v-if="isOpen" class="settings-overlay" @click.self="close">
+      <div v-if="isOpen" class="settings-overlay" :style="{ zIndex: shortcutZIndex }" @click.self="close">
          <Transition name="slide"
           >
           <div v-if="isOpen" class="settings-panel" @click.stop>
@@ -21,6 +21,10 @@
             </div>
              <!-- Content -->
             <div class="settings-content">
+              <div class="settings-section">
+                <button class="shortcuts-button" @click="emit('showShortcuts')"><span>{{ shortcuts.showShortcuts.name }}</span><kbd>{{ formatShortcutKey(shortcuts.showShortcuts.keys[0]) }}</kbd></button>
+                <p class="settings-description">View keys for the dashboard, editors, and zones.</p>
+              </div>
                <!-- Build Information -->
               <div class="settings-section">
                 <div class="settings-section-header">
@@ -93,7 +97,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
+import { useShortcutLayer } from '../composables/useHotkeys';
+import { formatShortcutKey, shortcuts } from '../shortcuts/catalog';
 import { storeToRefs } from 'pinia';
 import { useUIStore } from '../stores/ui';
 
@@ -103,6 +109,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
+  showShortcuts: [];
 }>();
 
 const uiStore = useUIStore();
@@ -178,24 +185,25 @@ async function handleClearCache() {
   }
 }
 
-// Close on Escape key
-
-function handleEscape(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.isOpen) {
-    close();
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('keydown', handleEscape);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('keydown', handleEscape);
-});
+const { zIndex: shortcutZIndex } = useShortcutLayer(() => props.isOpen, close, 'modal');
 </script>
 
 <style scoped>
+.shortcuts-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #4a4a4a;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  cursor: pointer;
+}
+.shortcuts-button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.shortcuts-button kbd { padding: 2px 8px; border: 1px solid #666; border-radius: 4px; }
 .settings-overlay {
   position: fixed;
   top: 0;
@@ -206,7 +214,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: 30000;
   backdrop-filter: blur(4px);
 }
 

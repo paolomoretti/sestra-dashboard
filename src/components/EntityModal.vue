@@ -2,7 +2,8 @@
 
   <div
     v-if="isOpen"
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    class="fixed inset-0 z-[30000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    :style="{ zIndex: shortcutZIndex }"
     @click.self="$emit('close')"
   >
 
@@ -84,6 +85,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { useShortcutLayer } from '../composables/useHotkeys';
 import { storeToRefs } from 'pinia';
 import { useLocalStorage } from '../composables/useLocalStorage';
 import { useEntitiesStore } from '../stores/entities';
@@ -97,6 +99,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
 }>();
+
+const { zIndex: shortcutZIndex } = useShortcutLayer(() => props.isOpen, () => emit('close'), 'modal');
 
 const entitiesStore = useEntitiesStore();
 const { allEntities, areas } = storeToRefs(entitiesStore);
