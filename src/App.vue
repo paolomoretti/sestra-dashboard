@@ -64,10 +64,6 @@ const dashboardRef = ref<InstanceType<typeof Dashboard>>();
 const settingsOpen = ref(false);
 const shortcutsOpen = ref(false);
 const shortcutController = provideShortcuts();
-onScopeDispose(shortcutController.register(() => [{
-  shortcut: shortcuts.showShortcuts,
-  handler: () => { shortcutsOpen.value = true; },
-}]));
 const entityModalOpen = ref(false);
 const deviceGroupModalOpen = ref(false);
 const deviceGroupDraft = ref<DeviceGroupConfig | null>(null);
@@ -75,6 +71,16 @@ const deviceGroupEditingId = ref<string | null>(null);
 const firestoreStore = useFirestoreStore();
 const uiStore = useUIStore();
 const { isGlobalEditMode } = storeToRefs(uiStore);
+onScopeDispose(shortcutController.register(() => [
+  {
+    shortcut: shortcuts.showShortcuts,
+    handler: () => { shortcutsOpen.value = true; },
+  },
+  {
+    shortcut: shortcuts.toggleEditMode,
+    handler: uiStore.toggleGlobalEditMode,
+  },
+]));
 const toast = useToast();
 
 // Watch for Firestore errors

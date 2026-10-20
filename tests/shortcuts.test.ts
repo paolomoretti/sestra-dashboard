@@ -59,6 +59,33 @@ test('existing zoom keys and shifted letter aliases invoke one action each', con
   ]);
 });
 
+test('E toggles edit mode once per press outside inputs and panels', context => {
+  const controller = createShortcutController();
+  listen(controller, context);
+  let editMode = false;
+  controller.register(() => [{
+    shortcut: shortcuts.toggleEditMode,
+    handler: () => { editMode = !editMode; },
+  }]);
+  press('e');
+  assert.equal(editMode, true);
+  press('E', undefined, { shiftKey: true });
+  assert.equal(editMode, false);
+  press('e', undefined, { repeat: true });
+  assert.equal(editMode, false);
+  const input = browser.document.createElement('input');
+  browser.document.body.append(input);
+  assert.equal(press('e', input).defaultPrevented, false);
+  assert.equal(editMode, false);
+  const panel = controller.openLayer({ priority: shortcutLayerPriority.modal, close: () => {} });
+  assert.equal(press('e').defaultPrevented, false);
+  assert.equal(editMode, false);
+  panel.dispose();
+  press('e');
+  assert.equal(editMode, true);
+  assert.match(getZoneShortcutError('e', 'zone', [])!, /reserved/);
+});
+
 test('modifiers, composition, dead keys, consumed events, and held destructive keys do not dispatch', context => {
   const controller = createShortcutController();
   listen(controller, context);

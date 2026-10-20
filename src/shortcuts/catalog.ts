@@ -49,6 +49,15 @@ export const shortcuts = {
     scope: 'dashboard',
     repeat: true,
   },
+  toggleEditMode: {
+    id: 'toggle-edit-mode',
+    keys: ['e'],
+    name: 'Toggle edit mode',
+    description: 'Turn dashboard editing on or off.',
+    group: 'Editing',
+    context: 'Dashboard',
+    scope: 'dashboard',
+  },
   clearSelection: {
     id: 'clear-selection',
     keys: ['Escape'],
