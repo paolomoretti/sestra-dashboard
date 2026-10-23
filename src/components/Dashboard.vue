@@ -113,11 +113,14 @@ import { parseDeviceGroup, type DeviceGroupConfig } from '../types/deviceGroup';
 // Constants
 const FLOORPLAN_WIDTH = 2190;
 const FLOORPLAN_HEIGHT = 6501;
-const minScale = 0.4;
 const floorplanImage = '/floorplan.png';
 
 // Refs
 const dashboardWrapperRef = ref<HTMLElement>();
+const viewportWidth = ref(0);
+const minScale = computed(() =>
+  viewportWidth.value > 0 ? Math.min(0.4, viewportWidth.value / FLOORPLAN_WIDTH) : 0.4
+);
 const dashboardRef = ref<HTMLElement>();
 const zoomPercentage = ref<number | null>(null);
 const isScaleInitialized = ref(false);
@@ -208,17 +211,17 @@ const panY = ref(0);
 
 // Computed scale that uses UI store scale if available, otherwise falls back to local
 const scale = computed({
-  get: () => Math.max(minScale, uiScale.value ?? 1),
+  get: () => Math.max(minScale.value, uiScale.value ?? 1),
   set: (value: number) => {
-    setUIScale(Math.max(minScale, value));
+    setUIScale(Math.max(minScale.value, value));
   },
 });
 
 watch(
-  uiScale,
-  value => {
-    if (value !== undefined && value < minScale) {
-      setUIScale(minScale);
+  [uiScale, minScale],
+  ([value, minimum]) => {
+    if (value !== undefined && value < minimum) {
+      setUIScale(minimum);
     }
   },
   { flush: 'sync' }
@@ -381,7 +384,7 @@ function calculateInitialScale(): number {
   const scaleX = wrapperWidth / FLOORPLAN_WIDTH;
   const initialScale = Math.min(scaleX, 1); // Fit to width, but don't scale up beyond 1
 
-  return Math.max(minScale, initialScale);
+  return Math.max(minScale.value, initialScale);
 }
 
 // Scale and pan are now from Firestore (defined above)
@@ -417,7 +420,11 @@ let dashboardResizeObserver: ResizeObserver | null = null;
 // Initialize scale on mount if not set
 onMounted(() => {
   if (dashboardWrapperRef.value) {
-    dashboardResizeObserver = new ResizeObserver(() => syncPanFromViewport());
+    viewportWidth.value = dashboardWrapperRef.value.clientWidth;
+    dashboardResizeObserver = new ResizeObserver(() => {
+      viewportWidth.value = dashboardWrapperRef.value?.clientWidth ?? 0;
+      syncPanFromViewport();
+    });
     dashboardResizeObserver.observe(dashboardWrapperRef.value);
   }
   // Initialize scale: wait for Firestore to load, then restore from UI store if available, otherwise calculate initial
@@ -645,7 +652,7 @@ function handleWheel(e: WheelEvent) {
     // Calculate zoom factor
     const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
     const oldScale = scale.value;
-    const newScale = Math.max(minScale, Math.min(maxScale, oldScale + delta));
+    const newScale = Math.max(minScale.value, Math.min(maxScale, oldScale + delta));
 
     if (oldScale === newScale) return;
 
@@ -949,7 +956,7 @@ function handleTouchMove(e: TouchEvent) {
     // Calculate scale change
     // Use natural 1:1 zoom logic for smoother control
     const ratio = currentDistance / initialTouchDistance;
-    const newScale = Math.max(minScale, Math.min(maxScale, touchStartScale * ratio));
+    const newScale = Math.max(minScale.value, Math.min(maxScale, touchStartScale * ratio));
 
     if (newScale !== scale.value) {
       // Get center point in wrapper coordinates
@@ -1515,7 +1522,7 @@ const interactions = {
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
     const oldScale = scale.value;
-    const newScale = Math.max(minScale, oldScale - zoomStep);
+    const newScale = Math.max(minScale.value, oldScale - zoomStep);
 
     if (oldScale === newScale) return;
 
@@ -1630,7 +1637,7 @@ const interactions = {
     // Calculate scale so the zone takes up about 95% of the viewport width and height
     const scaleX = wrapperWidth / 1.05 / zoneWidthWithPadding;
     const scaleY = wrapperHeight / 1.05 / zoneHeightWithPadding;
-    const targetScale = Math.max(minScale, Math.min(scaleX, scaleY, maxScale));
+    const targetScale = Math.max(minScale.value, Math.min(scaleX, scaleY, maxScale));
 
     // Calculate pan to center the zone in the viewport
     const centerX = wrapperWidth / 2;
